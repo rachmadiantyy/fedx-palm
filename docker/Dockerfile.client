@@ -1,15 +1,15 @@
 # FedX-PALM Client Dockerfile
-# Federated Learning Client with YOLOv11, Local DP, and XAI
+# FL Client Node with YOLOv11, Opacus DP-SGD, and Grad-CAM++ XAI
+# Thesis Section 3.1.2: Client Nodes (Dockerized)
 
 FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1
 
-# Install system dependencies
+# System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-glx \
     libglib2.0-0 \
@@ -21,10 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
@@ -32,12 +31,12 @@ RUN pip install --upgrade pip && \
 # Copy application code
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p /app/data /app/client_results /app/logs
+# Create directories
+RUN mkdir -p /app/data /app/results /app/logs
 
-# Volume for client data
+# Volume for client data (read-only mount as per thesis Section 3.2.3.2)
 VOLUME ["/app/data"]
 
-# Run the FL client
+# Run FL Client (Flower)
 ENTRYPOINT ["python", "-m", "client.fed_client"]
-CMD ["--client-id", "client_1", "--server-url", "http://fl-server:8080", "--dp-enabled"]
+CMD ["--server", "fl-server:8080", "--client-id", "client_1", "--data-config", "/app/data/data.yaml", "--privacy", "moderate"]

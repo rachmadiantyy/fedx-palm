@@ -2,11 +2,20 @@
 Dataset Download Script for FedX-PALM.
 
 Downloads the Palm Fruit Ripeness Detection dataset from Roboflow
-and optionally splits it across multiple federated learning clients.
+and splits it across 4 federated learning clients using Non-IID
+Dirichlet distribution as specified in the thesis.
+
+6 Classes: Unripe, Underripe, Ripe, Overripe, Abnormal, Empty Bunch
+
+Non-IID Distribution (Dirichlet α per client):
+  - Client A (α=0.1): Dominated by Unripe & Underripe
+  - Client B (α=0.3): Dominated by Underripe & Ripe
+  - Client C (α=0.5): Fairly balanced distribution
+  - Client D (α=0.7): Dominated by Abnormal & Empty Bunch
 
 Usage:
     python scripts/download_dataset.py --api-key YOUR_API_KEY
-    python scripts/download_dataset.py --api-key YOUR_API_KEY --split-clients 3
+    python scripts/download_dataset.py --api-key YOUR_API_KEY --split-strategy non_iid
 """
 
 import os
@@ -16,12 +25,33 @@ import random
 import argparse
 import logging
 from pathlib import Path
+from collections import defaultdict
+
+import numpy as np
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# 6 classes as defined in thesis Section 2.1.2
+CLASS_NAMES = {
+    0: "Unripe",
+    1: "Underripe",
+    2: "Ripe",
+    3: "Overripe",
+    4: "Abnormal",
+    5: "Empty Bunch"
+}
 
-def download_dataset(api_key: str, output_dir: str = "./data") -> str:
+# Dirichlet α per client as defined in thesis Table 3.3
+DIRICHLET_ALPHA_PER_CLIENT = {
+    "client_1": 0.1,  # Client A: highly skewed → Unripe/Underripe dominant
+    "client_2": 0.3,  # Client B: moderately skewed → Underripe/Ripe dominant
+    "client_3": 0.5,  # Client C: fairly balanced
+    "client_4": 0.7,  # Client D: near-balanced → Abnormal/Empty Bunch emphasis
+}
+
+
+def download_dataset(api_key: str, output_dir: str = "./data/raw") -> str:
     """
     Download Palm Fruit Ripeness Detection dataset from Roboflow.
 
@@ -48,28 +78,136 @@ def download_dataset(api_key: str, output_dir: str = "./data") -> str:
     return dataset.location
 
 
+def get_image_class(label_path: Path) -> int:
+    """
+    Get the primary class of an image from its YOLO label file.
+
+    Args:
+        label_path: Path to the .txt label file
+
+    Returns:
+        Primary class index (0-5), or 0 if label not found
+    """
+    if not label_path.exists():
+        return 0
+
+    with open(label_path) as f:
+        lines = f.readlines()
+        if lines:
+            # Use the first annotation's class as primary
+            return int(lines[0].split()[0])
+    return 0
+
+
+def dirichlet_non_iid_split(
+    images_by_class: dict,
+    num_clients: int = 4,
+    alpha_per_client: dict = None,
+    seed: int = 42
+) -> list:
+    """
+    Split dataset using Dirichlet distribution for Non-IID allocation.
+
+    As described in thesis Section 3.3.4:
+    pk ~ Dir(α) where pk is the class proportion vector for client k.
+
+    Small α → highly skewed (Non-IID)
+    Large α → near uniform (IID-like)
+
+    Args:
+        images_by_class: Dict mapping class_id -> list of image paths
+        num_clients: Number of FL clients
+        alpha_per_client: Dict mapping client_name -> α value
+        seed: Random seed
+
+    Returns:
+        List of lists, where splits[k] contains image paths for client k
+    """
+    np.random.seed(seed)
+    random.seed(seed)
+
+    if alpha_per_client is None:
+        alpha_per_client = DIRICHLET_ALPHA_PER_CLIENT
+
+    num_classes = len(images_by_class)
+    splits = [[] for _ in range(num_clients)]
+
+    # For each client, sample a proportion vector from Dir(α)
+    # Then allocate images from each class according to those proportions
+    client_proportions = {}
+    for k, (client_name, alpha) in enumerate(alpha_per_client.items()):
+        # Sample class proportions from Dirichlet distribution
+        # Use alpha as concentration parameter for all classes
+        proportions = np.random.dirichlet([alpha] * num_classes)
+        client_proportions[k] = proportions
+        logger.info(
+            f"  {client_name} (α={alpha}): "
+            f"class proportions = [{', '.join(f'{p:.3f}' for p in proportions)}]"
+        )
+
+    # Normalize proportions so they sum to 1 across clients for each class
+    for class_id, class_images in images_by_class.items():
+        random.shuffle(class_images)
+        n_images = len(class_images)
+
+        if n_images == 0:
+            continue
+
+        # Get each client's proportion for this class
+        props = np.array([client_proportions[k][class_id] for k in range(num_clients)])
+        props = props / props.sum()  # Normalize
+
+        # Allocate images according to proportions
+        allocated = 0
+        for k in range(num_clients):
+            if k == num_clients - 1:
+                # Last client gets the remainder
+                n_alloc = n_images - allocated
+            else:
+                n_alloc = int(round(props[k] * n_images))
+                n_alloc = min(n_alloc, n_images - allocated)
+
+            splits[k].extend(class_images[allocated:allocated + n_alloc])
+            allocated += n_alloc
+
+    return splits
+
+
+def iid_split(images: list, num_clients: int = 4, seed: int = 42) -> list:
+    """Split images uniformly (IID) across clients."""
+    random.seed(seed)
+    random.shuffle(images)
+
+    chunk_size = len(images) // num_clients
+    splits = []
+    for i in range(num_clients):
+        start = i * chunk_size
+        end = start + chunk_size if i < num_clients - 1 else len(images)
+        splits.append(images[start:end])
+    return splits
+
+
 def split_dataset_for_clients(
     dataset_dir: str,
-    num_clients: int = 3,
+    num_clients: int = 4,
     output_base: str = "./data",
-    split_strategy: str = "iid",
+    split_strategy: str = "non_iid",
     seed: int = 42
 ):
     """
     Split dataset across multiple FL clients.
 
     Supports:
-    - IID: Each client gets a random uniform split
-    - Non-IID: Each client gets a skewed class distribution
+    - non_iid: Dirichlet-based Non-IID split (thesis default)
+    - iid: Uniform random split
 
     Args:
         dataset_dir: Path to the downloaded dataset
-        num_clients: Number of FL clients to split data for
+        num_clients: Number of FL clients (default: 4)
         output_base: Base output directory
-        split_strategy: 'iid' or 'non_iid'
+        split_strategy: 'non_iid' (Dirichlet) or 'iid' (uniform)
         seed: Random seed for reproducibility
     """
-    random.seed(seed)
     dataset_path = Path(dataset_dir)
     output_base = Path(output_base)
 
@@ -100,17 +238,33 @@ def split_dataset_for_clients(
         f for f in train_images_dir.iterdir()
         if f.suffix.lower() in image_extensions
     ]
-    random.shuffle(train_images)
 
     logger.info(f"Found {len(train_images)} training images")
 
-    # Split images across clients
-    if split_strategy == "iid":
-        splits = _iid_split(train_images, num_clients)
-    else:
-        splits = _non_iid_split(train_images, train_labels_dir, num_clients)
+    # Group images by class for Non-IID split
+    images_by_class = defaultdict(list)
+    for img_path in train_images:
+        label_path = train_labels_dir / (img_path.stem + ".txt")
+        class_id = get_image_class(label_path)
+        images_by_class[class_id].append(img_path)
 
-    # Get validation images
+    # Log class distribution
+    logger.info("Dataset class distribution:")
+    for cls_id in sorted(images_by_class.keys()):
+        cls_name = CLASS_NAMES.get(cls_id, f"Class_{cls_id}")
+        logger.info(f"  {cls_name} (C{cls_id+1}): {len(images_by_class[cls_id])} images")
+
+    # Split images across clients
+    if split_strategy == "non_iid":
+        logger.info(f"\nApplying Non-IID Dirichlet split (4 clients):")
+        splits = dirichlet_non_iid_split(
+            images_by_class, num_clients, seed=seed
+        )
+    else:
+        logger.info(f"\nApplying IID uniform split ({num_clients} clients):")
+        splits = iid_split(train_images, num_clients, seed=seed)
+
+    # Get validation images (shared across all clients)
     val_images = []
     if val_images_dir.exists():
         val_images = [
@@ -120,7 +274,8 @@ def split_dataset_for_clients(
 
     # Create client directories and copy data
     for client_idx in range(num_clients):
-        client_dir = output_base / f"client_{client_idx + 1}"
+        client_name = f"client_{client_idx + 1}"
+        client_dir = output_base / client_name
         client_train_img = client_dir / "images" / "train"
         client_train_lbl = client_dir / "labels" / "train"
         client_val_img = client_dir / "images" / "val"
@@ -158,85 +313,50 @@ def split_dataset_for_clients(
         with open(client_dir / "data.yaml", "w") as f:
             f.write(data_yaml_content)
 
+        # Log class distribution for this client
+        client_class_dist = defaultdict(int)
+        for img_path in client_images:
+            label_path = train_labels_dir / (img_path.stem + ".txt")
+            cls_id = get_image_class(label_path)
+            client_class_dist[cls_id] += 1
+
+        alpha = list(DIRICHLET_ALPHA_PER_CLIENT.values())[client_idx]
         logger.info(
-            f"Client {client_idx + 1}: {len(client_images)} train images, "
-            f"{len(val_images)} val images -> {client_dir}"
+            f"\n{client_name} (α={alpha}): {len(client_images)} train, "
+            f"{len(val_images)} val images"
         )
+        for cls_id in sorted(client_class_dist.keys()):
+            cls_name = CLASS_NAMES.get(cls_id, f"Class_{cls_id}")
+            count = client_class_dist[cls_id]
+            pct = count / max(len(client_images), 1) * 100
+            logger.info(f"    {cls_name}: {count} ({pct:.1f}%)")
 
-    logger.info(f"Dataset split complete for {num_clients} clients ({split_strategy})")
-
-
-def _iid_split(images: list, num_clients: int) -> list:
-    """Split images uniformly (IID) across clients."""
-    chunk_size = len(images) // num_clients
-    splits = []
-    for i in range(num_clients):
-        start = i * chunk_size
-        end = start + chunk_size if i < num_clients - 1 else len(images)
-        splits.append(images[start:end])
-    return splits
-
-
-def _non_iid_split(images: list, labels_dir: Path, num_clients: int) -> list:
-    """
-    Split images non-IID based on class distribution.
-    Each client gets a skewed subset of classes.
-    """
-    # Group images by their primary class
-    class_images = {}
-    for img_path in images:
-        label_path = labels_dir / (img_path.stem + ".txt")
-        primary_class = 0
-        if label_path.exists():
-            with open(label_path) as f:
-                lines = f.readlines()
-                if lines:
-                    primary_class = int(lines[0].split()[0])
-
-        if primary_class not in class_images:
-            class_images[primary_class] = []
-        class_images[primary_class].append(img_path)
-
-    # Distribute classes unevenly across clients
-    all_classes = sorted(class_images.keys())
-    splits = [[] for _ in range(num_clients)]
-
-    for i, cls in enumerate(all_classes):
-        # Primary client gets 60% of this class, rest shared
-        primary_client = i % num_clients
-        cls_imgs = class_images[cls]
-        random.shuffle(cls_imgs)
-
-        primary_share = int(len(cls_imgs) * 0.6)
-        splits[primary_client].extend(cls_imgs[:primary_share])
-
-        # Distribute remaining across other clients
-        remaining = cls_imgs[primary_share:]
-        other_clients = [c for c in range(num_clients) if c != primary_client]
-        for j, img in enumerate(remaining):
-            splits[other_clients[j % len(other_clients)]].append(img)
-
-    return splits
+    logger.info(f"\n{'='*50}")
+    logger.info(f"Dataset split complete: {num_clients} clients ({split_strategy})")
+    logger.info(f"{'='*50}")
 
 
 def _generate_data_yaml(client_dir: Path) -> str:
-    """Generate data.yaml content for a client."""
+    """Generate data.yaml content for a client (6 classes)."""
     return f"""# Palm Fruit Ripeness Detection - Client Data Configuration
 # Auto-generated by FedX-PALM dataset split script
+# 6 Classes as per thesis specification
 
 path: {client_dir.absolute()}
 train: images/train
 val: images/val
 
 # Number of classes
-nc: 4
+nc: 6
 
-# Class names for Palm Fruit Ripeness
+# Class names for Palm Fruit Ripeness (6 classes)
 names:
-  0: unripe
-  1: underripe
-  2: ripe
-  3: overripe
+  0: Unripe
+  1: Underripe
+  2: Ripe
+  3: Overripe
+  4: Abnormal
+  5: Empty Bunch
 """
 
 
@@ -265,9 +385,9 @@ def main():
     parser.add_argument(
         "--split-strategy",
         type=str,
-        default="iid",
+        default="non_iid",
         choices=["iid", "non_iid"],
-        help="Data split strategy: iid (uniform) or non_iid (skewed)"
+        help="Data split strategy: non_iid (Dirichlet, thesis default) or iid (uniform)"
     )
     parser.add_argument(
         "--client-data-dir",
@@ -302,7 +422,7 @@ def main():
         dataset_dir = args.output_dir
         logger.info(f"Skipping download, using existing data at: {dataset_dir}")
 
-    # Step 2: Split for FL clients
+    # Step 2: Split for FL clients using Non-IID Dirichlet
     if args.split_clients > 0:
         split_dataset_for_clients(
             dataset_dir=dataset_dir,
@@ -312,7 +432,12 @@ def main():
             seed=args.seed
         )
 
-    logger.info("Done! Dataset ready for federated learning.")
+    logger.info("\nDone! Dataset ready for federated learning.")
+    logger.info("Distribution strategy: Non-IID Dirichlet (α varies per client)")
+    logger.info("  Client A (α=0.1): Highly skewed → Unripe/Underripe dominant")
+    logger.info("  Client B (α=0.3): Moderately skewed → Underripe/Ripe dominant")
+    logger.info("  Client C (α=0.5): Fairly balanced")
+    logger.info("  Client D (α=0.7): Near-balanced → Abnormal/Empty Bunch emphasis")
 
 
 if __name__ == "__main__":

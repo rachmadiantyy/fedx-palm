@@ -1,5 +1,5 @@
-# FedX-PALM: CPU-only Docker Compose
-# Use this for development/testing without GPU
+# FedX-PALM: CPU-only Docker Compose (development/testing)
+# Same architecture as GPU version but without NVIDIA runtime
 
 version: "3.8"
 
@@ -12,21 +12,18 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - FL_NUM_ROUNDS=10
-      - FL_MIN_CLIENTS=4
-      - FL_AGGREGATION=fedavg
-      - FL_MODEL_VARIANT=yolo11n.pt
-      - FL_NUM_CLASSES=4
-      - DP_ENABLED=true
-      - DP_EPSILON=1.0
-      - DP_DELTA=1e-5
       - CUDA_VISIBLE_DEVICES=""
     volumes:
       - server_checkpoints:/app/checkpoints
       - ./configs:/app/configs:ro
     networks:
-      - fl-network
+      - fed-network
     restart: unless-stopped
+    command: >
+      --address 0.0.0.0:8080
+      --num-rounds 10
+      --num-classes 6
+      --min-clients 4
 
   fl-client-1:
     build:
@@ -36,20 +33,20 @@ services:
     environment:
       - CUDA_VISIBLE_DEVICES=""
     volumes:
-      - ./data/client_1:/app/data
+      - ./data/client_1:/app/data:ro
     networks:
-      - fl-network
+      - fed-network
     depends_on:
       - fl-server
     restart: unless-stopped
     command: >
+      --server fl-server:8080
       --client-id client_1
-      --server-url http://fl-server:8080
       --data-config /app/data/data.yaml
-      --num-classes 4
+      --num-classes 6
       --local-epochs 2
       --batch-size 8
-      --dp-enabled
+      --privacy moderate
 
   fl-client-2:
     build:
@@ -59,20 +56,20 @@ services:
     environment:
       - CUDA_VISIBLE_DEVICES=""
     volumes:
-      - ./data/client_2:/app/data
+      - ./data/client_2:/app/data:ro
     networks:
-      - fl-network
+      - fed-network
     depends_on:
       - fl-server
     restart: unless-stopped
     command: >
+      --server fl-server:8080
       --client-id client_2
-      --server-url http://fl-server:8080
       --data-config /app/data/data.yaml
-      --num-classes 4
+      --num-classes 6
       --local-epochs 2
       --batch-size 8
-      --dp-enabled
+      --privacy moderate
 
   fl-client-3:
     build:
@@ -82,20 +79,20 @@ services:
     environment:
       - CUDA_VISIBLE_DEVICES=""
     volumes:
-      - ./data/client_3:/app/data
+      - ./data/client_3:/app/data:ro
     networks:
-      - fl-network
+      - fed-network
     depends_on:
       - fl-server
     restart: unless-stopped
     command: >
+      --server fl-server:8080
       --client-id client_3
-      --server-url http://fl-server:8080
       --data-config /app/data/data.yaml
-      --num-classes 4
+      --num-classes 6
       --local-epochs 2
       --batch-size 8
-      --dp-enabled
+      --privacy moderate
 
   fl-client-4:
     build:
@@ -105,23 +102,23 @@ services:
     environment:
       - CUDA_VISIBLE_DEVICES=""
     volumes:
-      - ./data/client_4:/app/data
+      - ./data/client_4:/app/data:ro
     networks:
-      - fl-network
+      - fed-network
     depends_on:
       - fl-server
     restart: unless-stopped
     command: >
+      --server fl-server:8080
       --client-id client_4
-      --server-url http://fl-server:8080
       --data-config /app/data/data.yaml
-      --num-classes 4
+      --num-classes 6
       --local-epochs 2
       --batch-size 8
-      --dp-enabled
+      --privacy moderate
 
 networks:
-  fl-network:
+  fed-network:
     driver: bridge
 
 volumes:

@@ -1,480 +1,380 @@
 """
-Federated Learning Server for FedX-PALM.
+Federated Learning Server for FedX-PALM using Flower (flwr).
 
-Implements the FL server with:
-- FedAvg and FedProx aggregation strategies
-- Differential Privacy integration (central DP)
-- Client management and round orchestration
-- Model versioning and checkpointing
-- gRPC-based communication
+Implements the FL Server Aggregator as described in thesis Section 3.1.1:
+- Initializes global YOLOv11 model with pretrained weights (w₀)
+- Aggregates client updates using FedAvg (Eq. 3.4)
+- Distributes updated global model back to clients
+- Applies Central DP noise after aggregation (optional)
+
+Communication Round Protocol (thesis Section 3.1.3):
+1. Broadcast: Server sends global model wₜ to all client nodes
+2. Local Training: Each client fine-tunes on local Non-IID data
+3. Privacy Injection: Clients apply DP-SGD (clip + noise) on gradients
+4. Aggregation: Server computes wₜ₊₁ = Σ(nₖ/N)·wₖ via FedAvg
+
+Configuration (thesis Table 3.5):
+- Communication Rounds: 100
+- Clients: 4 (K=4)
+- Aggregation: FedAvg
+- Model: YOLOv11 Nano (640×640)
 """
+
+import flwr as fl
+from flwr.common import (
+    FitRes,
+    Parameters,
+    Scalar,
+    ndarrays_to_parameters,
+    parameters_to_ndarrays,
+)
+from flwr.server.strategy import FedAvg
+from flwr.server.client_proxy import ClientProxy
 
 import torch
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass, field
-from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Any, Union
+from collections import OrderedDict
+from pathlib import Path
 import logging
 import json
-import os
-import copy
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
-
-from utils.differential_privacy import DifferentialPrivacyEngine, MomentsAccountant
-from models.yolov11_wrapper import YOLOv11FederatedWrapper
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ClientInfo:
-    """Information about a registered FL client."""
-    client_id: str
-    data_size: int = 0
-    last_seen: Optional[datetime] = None
-    rounds_participated: int = 0
-    is_active: bool = True
-    metrics_history: List[Dict] = field(default_factory=list)
-
-
-@dataclass
-class RoundResult:
-    """Result of a single federated learning round."""
-    round_number: int
-    participating_clients: List[str]
-    aggregated_metrics: Dict[str, float]
-    privacy_cost: Dict[str, float]
-    timestamp: datetime = field(default_factory=datetime.now)
-    duration_seconds: float = 0.0
-
-
-class AggregationStrategy:
-    """Base class for aggregation strategies."""
-
-    def aggregate(
-        self,
-        updates: List[Dict[str, torch.Tensor]],
-        weights: List[float]
-    ) -> Dict[str, torch.Tensor]:
-        raise NotImplementedError
-
-
-class FedAvgAggregator(AggregationStrategy):
+class FedXPalmStrategy(FedAvg):
     """
-    Federated Averaging (FedAvg) aggregation.
-    
-    Computes weighted average of client model updates.
-    """
+    Custom FedAvg strategy for FedX-PALM.
 
-    def aggregate(
-        self,
-        updates: List[Dict[str, torch.Tensor]],
-        weights: List[float]
-    ) -> Dict[str, torch.Tensor]:
-        """
-        Aggregate client updates using weighted averaging.
-        
-        Args:
-            updates: List of model updates from clients
-            weights: Weights for each client (typically proportional to data size)
-            
-        Returns:
-            Aggregated model update
-        """
-        if not updates:
-            return {}
+    Extends Flower's FedAvg with:
+    - YOLOv11 model initialization
+    - Privacy budget tracking
+    - Round-level metrics logging
+    - Model checkpointing
+    - Central DP (optional server-side noise)
 
-        # Normalize weights
-        total_weight = sum(weights)
-        normalized_weights = [w / total_weight for w in weights]
-
-        # Compute weighted average
-        aggregated = {}
-        for name in updates[0].keys():
-            aggregated[name] = torch.zeros_like(updates[0][name])
-            for update, weight in zip(updates, normalized_weights):
-                if name in update:
-                    aggregated[name] += weight * update[name]
-
-        return aggregated
-
-
-class FedProxAggregator(AggregationStrategy):
-    """
-    FedProx aggregation with proximal term.
-    
-    Extends FedAvg with a proximal term to handle heterogeneous data.
-    """
-
-    def __init__(self, mu: float = 0.01):
-        """
-        Args:
-            mu: Proximal term coefficient
-        """
-        self.mu = mu
-
-    def aggregate(
-        self,
-        updates: List[Dict[str, torch.Tensor]],
-        weights: List[float]
-    ) -> Dict[str, torch.Tensor]:
-        """Aggregate with FedProx (same aggregation as FedAvg, proximal term is on client side)."""
-        if not updates:
-            return {}
-
-        total_weight = sum(weights)
-        normalized_weights = [w / total_weight for w in weights]
-
-        aggregated = {}
-        for name in updates[0].keys():
-            aggregated[name] = torch.zeros_like(updates[0][name])
-            for update, weight in zip(updates, normalized_weights):
-                if name in update:
-                    aggregated[name] += weight * update[name]
-
-        return aggregated
-
-
-class FederatedServer:
-    """
-    Main Federated Learning Server.
-    
-    Orchestrates the federated learning process including:
-    - Client registration and management
-    - Round execution with configurable aggregation
-    - Differential privacy enforcement
-    - Model checkpointing and versioning
+    FedAvg formula (thesis Eq. 3.4):
+    wₜ₊₁ = Σₖ₌₁ᴷ (nₖ/N) · wₖᵗ⁺¹
     """
 
     def __init__(
         self,
         model_variant: str = "yolo11n.pt",
-        num_classes: int = 80,
+        num_classes: int = 6,
+        min_fit_clients: int = 4,
+        min_available_clients: int = 4,
         num_rounds: int = 100,
-        min_clients: int = 2,
-        fraction_fit: float = 1.0,
-        aggregation_strategy: str = "fedavg",
-        # Differential Privacy settings
-        dp_enabled: bool = True,
-        dp_epsilon: float = 1.0,
-        dp_delta: float = 1e-5,
-        dp_max_grad_norm: float = 1.0,
-        dp_noise_multiplier: float = 1.0,
-        # Server settings
         checkpoint_dir: str = "./checkpoints",
-        device: Optional[str] = None,
-        fedprox_mu: float = 0.01,
+        save_every_n_rounds: int = 10,
+        central_dp_enabled: bool = False,
+        central_dp_noise_multiplier: float = 0.0,
+        central_dp_clip_norm: float = 1.0,
+        **kwargs
     ):
         """
         Args:
-            model_variant: YOLOv11 model variant
-            num_classes: Number of detection classes
-            num_rounds: Total number of FL rounds
-            min_clients: Minimum clients needed to start a round
-            fraction_fit: Fraction of clients to select per round
-            aggregation_strategy: 'fedavg' or 'fedprox'
-            dp_enabled: Whether to use differential privacy
-            dp_epsilon: Total privacy budget
-            dp_delta: Privacy failure probability
-            dp_max_grad_norm: Maximum gradient norm for clipping
-            dp_noise_multiplier: Noise multiplier for DP
-            checkpoint_dir: Directory for saving checkpoints
-            device: Computing device
-            fedprox_mu: FedProx proximal coefficient
+            model_variant: YOLOv11 variant (thesis: yolo11n.pt = Nano)
+            num_classes: Number of detection classes (thesis: 6)
+            min_fit_clients: Minimum clients for training (thesis: K=4)
+            min_available_clients: Minimum available clients
+            num_rounds: Total communication rounds (thesis: 100)
+            checkpoint_dir: Directory for model checkpoints
+            save_every_n_rounds: Checkpoint frequency
+            central_dp_enabled: Whether to apply server-side DP
+            central_dp_noise_multiplier: Server-side noise σ
+            central_dp_clip_norm: Server-side clipping threshold
         """
+        super().__init__(
+            fraction_fit=1.0,  # All clients participate every round
+            fraction_evaluate=1.0,
+            min_fit_clients=min_fit_clients,
+            min_available_clients=min_available_clients,
+            min_evaluate_clients=min_fit_clients,
+            **kwargs
+        )
+
+        self.model_variant = model_variant
+        self.num_classes = num_classes
         self.num_rounds = num_rounds
-        self.min_clients = min_clients
-        self.fraction_fit = fraction_fit
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        self.save_every_n_rounds = save_every_n_rounds
+
+        # Central DP (optional, applied after aggregation)
+        self.central_dp_enabled = central_dp_enabled
+        self.central_dp_noise_multiplier = central_dp_noise_multiplier
+        self.central_dp_clip_norm = central_dp_clip_norm
+
+        # Training state
+        self.current_round = 0
+        self.round_metrics: List[Dict] = []
+        self.best_map = 0.0
 
         # Initialize global model
-        self.global_model = YOLOv11FederatedWrapper(
-            model_variant=model_variant,
-            num_classes=num_classes,
-            device=device
-        )
-
-        # Aggregation strategy
-        if aggregation_strategy == "fedprox":
-            self.aggregator = FedProxAggregator(mu=fedprox_mu)
-        else:
-            self.aggregator = FedAvgAggregator()
-
-        self.aggregation_strategy = aggregation_strategy
-
-        # Differential Privacy
-        self.dp_enabled = dp_enabled
-        self.dp_engine: Optional[DifferentialPrivacyEngine] = None
-        self.moments_accountant: Optional[MomentsAccountant] = None
-
-        if dp_enabled:
-            self.dp_engine = DifferentialPrivacyEngine(
-                epsilon=dp_epsilon,
-                delta=dp_delta,
-                max_grad_norm=dp_max_grad_norm,
-                noise_multiplier=dp_noise_multiplier,
-                num_clients=min_clients,
-                num_rounds=num_rounds
-            )
-            self.moments_accountant = MomentsAccountant(
-                noise_multiplier=dp_noise_multiplier,
-                sample_rate=fraction_fit
-            )
-
-        # Client management
-        self.clients: Dict[str, ClientInfo] = {}
-        self.current_round: int = 0
-
-        # History
-        self.round_history: List[RoundResult] = []
-        self.global_metrics: List[Dict] = []
+        self.initial_parameters = self._initialize_global_model()
 
         logger.info(
-            f"Federated Server initialized: "
-            f"model={model_variant}, rounds={num_rounds}, "
-            f"aggregation={aggregation_strategy}, DP={dp_enabled}"
+            f"FedX-Palm Strategy initialized: "
+            f"model={model_variant}, classes={num_classes}, "
+            f"rounds={num_rounds}, min_clients={min_fit_clients}, "
+            f"central_dp={central_dp_enabled}"
         )
 
-    def register_client(self, client_id: str, data_size: int = 0) -> Dict[str, Any]:
+    def _initialize_global_model(self) -> Parameters:
         """
-        Register a new client with the server.
-        
-        Args:
-            client_id: Unique client identifier
-            data_size: Number of training samples on the client
-            
-        Returns:
-            Registration response with global model parameters
+        Initialize global YOLOv11 model (w₀).
+
+        As per thesis Section 3.1.1:
+        Server initializes pretrained YOLOv11 weights before distribution.
         """
-        self.clients[client_id] = ClientInfo(
-            client_id=client_id,
-            data_size=data_size,
-            last_seen=datetime.now()
-        )
+        try:
+            from ultralytics import YOLO
 
-        logger.info(f"Client registered: {client_id} (data_size={data_size})")
+            model = YOLO(self.model_variant)
+            pytorch_model = model.model
 
-        return {
-            "status": "registered",
-            "client_id": client_id,
-            "global_model_params": self.global_model.get_model_parameters(),
-            "current_round": self.current_round,
-            "config": {
-                "aggregation_strategy": self.aggregation_strategy,
-                "dp_enabled": self.dp_enabled,
-                "num_rounds": self.num_rounds
-            }
-        }
+            # Extract parameters as numpy arrays
+            ndarrays = [
+                val.cpu().numpy()
+                for _, val in pytorch_model.state_dict().items()
+            ]
 
-    def select_clients(self) -> List[str]:
-        """Select clients for the current round."""
-        active_clients = [
-            cid for cid, info in self.clients.items() if info.is_active
-        ]
-
-        if len(active_clients) < self.min_clients:
-            logger.warning(
-                f"Not enough active clients: {len(active_clients)} < {self.min_clients}"
+            logger.info(
+                f"Global model initialized: {self.model_variant}, "
+                f"{sum(arr.size for arr in ndarrays):,} parameters"
             )
-            return []
 
-        # Select fraction of clients
-        num_selected = max(self.min_clients, int(len(active_clients) * self.fraction_fit))
-        selected = np.random.choice(
-            active_clients, size=min(num_selected, len(active_clients)), replace=False
-        ).tolist()
+            return ndarrays_to_parameters(ndarrays)
 
-        logger.info(f"Round {self.current_round}: Selected {len(selected)} clients: {selected}")
-        return selected
+        except Exception as e:
+            logger.error(f"Failed to initialize model: {e}")
+            # Return empty parameters as fallback
+            return ndarrays_to_parameters([])
 
-    def receive_client_update(
+    def initialize_parameters(self, client_manager) -> Optional[Parameters]:
+        """Provide initial global model parameters."""
+        return self.initial_parameters
+
+    def aggregate_fit(
         self,
-        client_id: str,
-        model_update: Dict[str, torch.Tensor],
-        metrics: Dict[str, float],
-        data_size: int
-    ) -> Dict[str, str]:
+        server_round: int,
+        results: List[Tuple[ClientProxy, FitRes]],
+        failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
+    ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         """
-        Receive a model update from a client.
-        
-        Args:
-            client_id: Client identifier
-            model_update: Model parameter updates
-            metrics: Client training metrics
-            data_size: Number of samples used for training
-            
-        Returns:
-            Acknowledgment response
+        Aggregate client model updates using FedAvg.
+
+        Implements thesis Eq. 3.4:
+        wₜ₊₁ = Σₖ₌₁ᴷ (nₖ/N) · wₖᵗ⁺¹
+
+        Also applies Central DP (optional server-side noise) after aggregation.
         """
-        if client_id not in self.clients:
-            return {"status": "error", "message": "Client not registered"}
+        self.current_round = server_round
 
-        # Update client info
-        self.clients[client_id].last_seen = datetime.now()
-        self.clients[client_id].data_size = data_size
-        self.clients[client_id].metrics_history.append(metrics)
+        if not results:
+            logger.warning(f"Round {server_round}: No results to aggregate")
+            return None, {}
 
-        return {"status": "received", "round": self.current_round}
-
-    def aggregate_round(
-        self,
-        client_updates: List[Tuple[str, Dict[str, torch.Tensor], int]]
-    ) -> Dict[str, Any]:
-        """
-        Aggregate client updates for one round.
-        
-        Args:
-            client_updates: List of (client_id, model_update, data_size) tuples
-            
-        Returns:
-            Round result with metrics and privacy cost
-        """
-        start_time = datetime.now()
-
-        if not client_updates:
-            return {"status": "error", "message": "No client updates to aggregate"}
-
-        # Extract updates and weights
-        updates = [update for _, update, _ in client_updates]
-        weights = [float(data_size) for _, _, data_size in client_updates]
-        client_ids = [cid for cid, _, _ in client_updates]
-
-        # Perform aggregation
-        aggregated_update = self.aggregator.aggregate(updates, weights)
-
-        # Apply differential privacy (central DP)
-        privacy_cost = {"epsilon": 0.0, "delta": 0.0}
-        if self.dp_enabled and self.dp_engine:
-            aggregated_update = self.dp_engine.privatize_aggregated_update(aggregated_update)
-            self.moments_accountant.step()
-
-            privacy_cost = {
-                "epsilon": self.dp_engine.budget.spent_epsilon,
-                "delta": self.dp_engine.budget.spent_delta,
-                "remaining_epsilon": self.dp_engine.budget.remaining_epsilon
-            }
-
-        # Apply aggregated update to global model
-        self.global_model.apply_model_update(aggregated_update)
-
-        # Update round tracking
-        self.current_round += 1
-        duration = (datetime.now() - start_time).total_seconds()
-
-        # Record round result
-        round_result = RoundResult(
-            round_number=self.current_round,
-            participating_clients=client_ids,
-            aggregated_metrics=self._compute_aggregate_metrics(client_updates),
-            privacy_cost=privacy_cost,
-            duration_seconds=duration
-        )
-        self.round_history.append(round_result)
-
-        # Update client participation counts
-        for client_id in client_ids:
-            if client_id in self.clients:
-                self.clients[client_id].rounds_participated += 1
-
+        # Log round info
         logger.info(
-            f"Round {self.current_round} complete: "
-            f"{len(client_ids)} clients, "
-            f"privacy_cost={privacy_cost}"
+            f"Round {server_round}/{self.num_rounds}: "
+            f"Aggregating {len(results)} client updates, "
+            f"{len(failures)} failures"
         )
 
-        return {
-            "status": "success",
-            "round": self.current_round,
-            "participating_clients": len(client_ids),
-            "privacy_cost": privacy_cost,
-            "duration_seconds": duration,
-            "global_model_params": self.global_model.get_model_parameters()
-        }
+        # Standard FedAvg aggregation
+        aggregated_parameters, metrics = super().aggregate_fit(
+            server_round, results, failures
+        )
 
-    def _compute_aggregate_metrics(
-        self, client_updates: List[Tuple[str, Dict[str, torch.Tensor], int]]
-    ) -> Dict[str, float]:
-        """Compute aggregate metrics from client updates."""
+        if aggregated_parameters is None:
+            return None, metrics
+
+        # Apply Central DP (optional server-side noise after aggregation)
+        if self.central_dp_enabled and self.central_dp_noise_multiplier > 0:
+            aggregated_parameters = self._apply_central_dp(aggregated_parameters)
+
+        # Collect client metrics
+        round_metrics = self._collect_round_metrics(server_round, results)
+        self.round_metrics.append(round_metrics)
+
+        # Checkpoint
+        if server_round % self.save_every_n_rounds == 0:
+            self._save_checkpoint(aggregated_parameters, server_round)
+
+        # Add metrics to response
+        metrics["round"] = server_round
+        metrics["num_clients"] = len(results)
+        if round_metrics.get("avg_map50"):
+            metrics["avg_map50"] = round_metrics["avg_map50"]
+
+        return aggregated_parameters, metrics
+
+    def _apply_central_dp(self, parameters: Parameters) -> Parameters:
+        """
+        Apply Central DP: add Gaussian noise to aggregated parameters.
+
+        This provides an additional layer of privacy on top of local DP-SGD.
+        """
+        ndarrays = parameters_to_ndarrays(parameters)
+
+        noisy_arrays = []
+        for arr in ndarrays:
+            noise_std = self.central_dp_noise_multiplier * self.central_dp_clip_norm
+            noise = np.random.normal(0, noise_std, size=arr.shape).astype(arr.dtype)
+            noisy_arrays.append(arr + noise)
+
+        logger.debug(
+            f"Central DP applied: σ={self.central_dp_noise_multiplier}, "
+            f"C={self.central_dp_clip_norm}"
+        )
+
+        return ndarrays_to_parameters(noisy_arrays)
+
+    def _collect_round_metrics(
+        self, server_round: int, results: List[Tuple[ClientProxy, FitRes]]
+    ) -> Dict:
+        """Collect and aggregate metrics from client results."""
         metrics = {
-            "num_clients": len(client_updates),
-            "total_samples": sum(ds for _, _, ds in client_updates),
-            "avg_update_norm": np.mean([
-                torch.norm(
-                    torch.cat([v.flatten() for v in update.values()])
-                ).item()
-                for _, update, _ in client_updates
-            ])
+            "round": server_round,
+            "timestamp": datetime.now().isoformat(),
+            "num_clients": len(results),
+            "total_samples": 0,
+            "client_metrics": []
         }
+
+        map50_values = []
+        for client_proxy, fit_res in results:
+            client_metrics = fit_res.metrics if fit_res.metrics else {}
+            metrics["total_samples"] += fit_res.num_examples
+            metrics["client_metrics"].append({
+                "client_id": client_proxy.cid,
+                "num_examples": fit_res.num_examples,
+                "metrics": client_metrics
+            })
+
+            if "map50" in client_metrics:
+                map50_values.append(client_metrics["map50"])
+
+        if map50_values:
+            metrics["avg_map50"] = float(np.mean(map50_values))
+            metrics["min_map50"] = float(np.min(map50_values))
+            metrics["max_map50"] = float(np.max(map50_values))
+
         return metrics
 
-    def get_global_model_params(self) -> Dict[str, torch.Tensor]:
-        """Get current global model parameters."""
-        return self.global_model.get_model_parameters()
-
-    def save_checkpoint(self, filename: Optional[str] = None):
-        """Save server state checkpoint."""
-        if filename is None:
-            filename = f"checkpoint_round_{self.current_round}.pt"
-
-        checkpoint = {
-            "round": self.current_round,
-            "global_model_state": self.global_model.get_model_parameters(),
-            "round_history": [
-                {
-                    "round": r.round_number,
-                    "clients": r.participating_clients,
-                    "metrics": r.aggregated_metrics,
-                    "privacy_cost": r.privacy_cost,
-                    "duration": r.duration_seconds
-                }
-                for r in self.round_history
-            ],
-            "dp_report": self.dp_engine.get_privacy_report() if self.dp_engine else None,
-        }
-
-        path = self.checkpoint_dir / filename
-        torch.save(checkpoint, path)
-        logger.info(f"Checkpoint saved: {path}")
-
-    def load_checkpoint(self, filepath: str):
-        """Load server state from checkpoint."""
-        checkpoint = torch.load(filepath, map_location="cpu")
-        self.current_round = checkpoint["round"]
-        self.global_model.set_model_parameters(checkpoint["global_model_state"])
-        logger.info(f"Checkpoint loaded from: {filepath}, round={self.current_round}")
-
-    def get_server_status(self) -> Dict[str, Any]:
-        """Get comprehensive server status."""
-        status = {
-            "current_round": self.current_round,
-            "total_rounds": self.num_rounds,
-            "registered_clients": len(self.clients),
-            "active_clients": sum(1 for c in self.clients.values() if c.is_active),
-            "aggregation_strategy": self.aggregation_strategy,
-            "model_info": self.global_model.get_model_size(),
-        }
-
-        if self.dp_enabled and self.dp_engine:
-            status["privacy"] = self.dp_engine.get_privacy_report()
-
-        if self.round_history:
-            last_round = self.round_history[-1]
-            status["last_round"] = {
-                "number": last_round.round_number,
-                "clients": len(last_round.participating_clients),
-                "duration": last_round.duration_seconds,
-                "privacy_cost": last_round.privacy_cost
+    def _save_checkpoint(self, parameters: Parameters, round_num: int):
+        """Save model checkpoint."""
+        try:
+            ndarrays = parameters_to_ndarrays(parameters)
+            checkpoint = {
+                "round": round_num,
+                "parameters": ndarrays,
+                "metrics": self.round_metrics[-1] if self.round_metrics else {},
+                "best_map": self.best_map
             }
 
-        return status
+            path = self.checkpoint_dir / f"global_model_round_{round_num}.pt"
+            torch.save(checkpoint, path)
+            logger.info(f"Checkpoint saved: {path}")
 
-    def is_training_complete(self) -> bool:
-        """Check if training is complete."""
-        if self.current_round >= self.num_rounds:
-            return True
-        if self.dp_enabled and self.dp_engine and self.dp_engine.budget.is_exhausted:
-            logger.warning("Training stopped: Privacy budget exhausted")
-            return True
-        return False
+        except Exception as e:
+            logger.warning(f"Failed to save checkpoint: {e}")
+
+    def get_training_history(self) -> List[Dict]:
+        """Get complete training history."""
+        return self.round_metrics
+
+
+def start_flower_server(
+    server_address: str = "0.0.0.0:8080",
+    num_rounds: int = 100,
+    model_variant: str = "yolo11n.pt",
+    num_classes: int = 6,
+    min_clients: int = 4,
+    checkpoint_dir: str = "./checkpoints",
+    central_dp_enabled: bool = False,
+    central_dp_noise_multiplier: float = 0.0,
+):
+    """
+    Start the Flower FL server for FedX-PALM.
+
+    This is the main entry point for the FL Server Aggregator
+    as described in thesis Section 3.1.1.
+
+    Args:
+        server_address: Server address (host:port)
+        num_rounds: Total communication rounds (thesis: 100)
+        model_variant: YOLOv11 variant (thesis: yolo11n.pt)
+        num_classes: Detection classes (thesis: 6)
+        min_clients: Minimum clients per round (thesis: K=4)
+        checkpoint_dir: Checkpoint directory
+        central_dp_enabled: Enable server-side DP
+        central_dp_noise_multiplier: Server-side noise level
+    """
+    # Create FedX-PALM strategy
+    strategy = FedXPalmStrategy(
+        model_variant=model_variant,
+        num_classes=num_classes,
+        min_fit_clients=min_clients,
+        min_available_clients=min_clients,
+        num_rounds=num_rounds,
+        checkpoint_dir=checkpoint_dir,
+        central_dp_enabled=central_dp_enabled,
+        central_dp_noise_multiplier=central_dp_noise_multiplier,
+    )
+
+    # Configure Flower server
+    config = fl.server.ServerConfig(num_rounds=num_rounds)
+
+    logger.info(f"Starting Flower FL Server on {server_address}")
+    logger.info(f"  Model: {model_variant} ({num_classes} classes)")
+    logger.info(f"  Rounds: {num_rounds}")
+    logger.info(f"  Min clients: {min_clients}")
+    logger.info(f"  Central DP: {central_dp_enabled}")
+
+    # Start server
+    fl.server.start_server(
+        server_address=server_address,
+        config=config,
+        strategy=strategy,
+    )
+
+    # Save final training history
+    history_path = Path(checkpoint_dir) / "training_history.json"
+    with open(history_path, "w") as f:
+        json.dump(strategy.get_training_history(), f, indent=2, default=str)
+    logger.info(f"Training history saved to: {history_path}")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="FedX-PALM FL Server (Flower)")
+    parser.add_argument("--address", default="0.0.0.0:8080", help="Server address")
+    parser.add_argument("--num-rounds", type=int, default=100, help="Communication rounds")
+    parser.add_argument("--model", default="yolo11n.pt", help="YOLOv11 variant")
+    parser.add_argument("--num-classes", type=int, default=6, help="Number of classes")
+    parser.add_argument("--min-clients", type=int, default=4, help="Minimum clients")
+    parser.add_argument("--checkpoint-dir", default="./checkpoints", help="Checkpoint dir")
+    parser.add_argument("--central-dp", action="store_true", help="Enable central DP")
+    parser.add_argument("--central-dp-sigma", type=float, default=0.0, help="Central DP noise")
+
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+
+    start_flower_server(
+        server_address=args.address,
+        num_rounds=args.num_rounds,
+        model_variant=args.model,
+        num_classes=args.num_classes,
+        min_clients=args.min_clients,
+        checkpoint_dir=args.checkpoint_dir,
+        central_dp_enabled=args.central_dp,
+        central_dp_noise_multiplier=args.central_dp_sigma,
+    )

@@ -1,12 +1,17 @@
 """
 Explainable AI (XAI) Module for FedX-PALM.
 
-Provides model interpretability for YOLOv11 predictions using:
-- Grad-CAM (Gradient-weighted Class Activation Mapping)
-- SHAP (SHapley Additive exPlanations)
-- Feature importance analysis
-- Attention visualization
+Implements Grad-CAM++ (NOT standard Grad-CAM) as specified in thesis Section 2.6.1.
+Provides model interpretability with quantitative validation metrics:
+- Grad-CAM++ (Gradient-weighted Class Activation Mapping Plus Plus)
+- Average Drop metric (Section 2.6.2)
+- Focus Retention Rate (FRR) metric (Section 2.6.3)
 - Privacy-aware explanations (compatible with DP)
+
+Reference formulas from thesis:
+- Grad-CAM++ weights: α_k^c = (1/Z) * Σ_i Σ_j (∂y^c / ∂A^k_ij)  [Eq. 2.6]
+- Average Drop: AD = (1/N) * Σ max(0, Y_i^c - O_i^c) / Y_i^c * 100%  [Eq. 2.7]
+- FRR: Σ_{p∈ROI} I(p) / Σ_{p∈Image} I(p)  [Eq. 2.8]
 """
 
 import torch
@@ -33,19 +38,25 @@ class Explanation:
     metadata: Optional[Dict[str, Any]] = None
 
 
-class GradCAM:
+class GradCAMPlusPlus:
     """
-    Grad-CAM (Gradient-weighted Class Activation Mapping) for YOLOv11.
-    
-    Generates visual explanations highlighting image regions
-    that are most important for the model's predictions.
+    Grad-CAM++ (Gradient-weighted Class Activation Mapping Plus Plus).
+
+    As defined in thesis Section 2.6.1:
+    - Uses higher-order gradients for improved localization
+    - Produces pixel-level importance weights α_k^c
+    - Generates heatmap L^c = ReLU(Σ_k α_k^c * A^k)
+
+    Grad-CAM++ improves upon standard Grad-CAM by using a weighted combination
+    of positive partial derivatives of the score with respect to feature maps,
+    providing better localization for multiple instances of the same class.
     """
 
     def __init__(self, model, target_layer: Optional[str] = None):
         """
         Args:
             model: YOLOv11 model (ultralytics YOLO instance or PyTorch model)
-            target_layer: Name of the target layer for Grad-CAM.
+            target_layer: Name of the target layer for Grad-CAM++.
                          If None, uses the last convolutional layer.
         """
         self.model = model
@@ -65,7 +76,7 @@ class GradCAM:
             target = self._find_last_conv_layer(pytorch_model)
 
         if target is None:
-            logger.warning("Could not find target layer for Grad-CAM")
+            logger.warning("Could not find target layer for Grad-CAM++")
             return
 
         # Forward hook to capture activations
@@ -109,13 +120,19 @@ class GradCAM:
         target_box_idx: int = 0
     ) -> Explanation:
         """
-        Generate Grad-CAM explanation for an image.
-        
+        Generate Grad-CAM++ explanation for an image.
+
+        Implements the Grad-CAM++ algorithm (thesis Eq. 2.6):
+        α_k^c = (1/Z) * Σ_i Σ_j (∂y^c / ∂A^k_ij)
+
+        With the Grad-CAM++ improvement using second and third order gradients
+        for better weighting of positive contributions.
+
         Args:
             image: Input image (HWC, BGR format from OpenCV)
-            target_class: Target class index. If None, uses top prediction.
+            target_class: Target class index (0-5). If None, uses top prediction.
             target_box_idx: Index of target detection box
-            
+
         Returns:
             Explanation object with heatmap and overlay
         """
@@ -134,19 +151,50 @@ class GradCAM:
         target_score = self._get_target_score(output, target_class, target_box_idx)
 
         if target_score is None:
-            logger.warning("Could not compute target score for Grad-CAM")
-            return Explanation(method="grad-cam", image=image)
+            logger.warning("Could not compute target score for Grad-CAM++")
+            return Explanation(method="grad-cam++", image=image)
 
         # Backward pass
         target_score.backward(retain_graph=True)
 
         if self.gradients is None or self.activations is None:
             logger.warning("Gradients or activations not captured")
-            return Explanation(method="grad-cam", image=image)
+            return Explanation(method="grad-cam++", image=image)
 
-        # Compute Grad-CAM
-        weights = torch.mean(self.gradients, dim=(2, 3), keepdim=True)
-        cam = torch.sum(weights * self.activations, dim=1, keepdim=True)
+        # === Grad-CAM++ specific computation ===
+        # Standard Grad-CAM uses: weights = global_avg_pool(gradients)
+        # Grad-CAM++ uses higher-order derivatives for better weighting
+
+        gradients = self.gradients  # [B, C, H, W]
+        activations = self.activations  # [B, C, H, W]
+
+        # Compute Grad-CAM++ weights using positive partial derivatives
+        # α_k^c = Σ_i Σ_j (α_ij^kc * relu(∂y^c/∂A^k_ij))
+        # where α_ij^kc accounts for second and third order gradients
+
+        # Second derivative (approximation)
+        grad_2 = gradients ** 2
+        # Third derivative (approximation)
+        grad_3 = gradients ** 3
+
+        # Compute spatial importance weights (Grad-CAM++ formula)
+        # Denominator: 2 * grad^2 + sum(A^k * grad^3)
+        sum_activations = torch.sum(activations, dim=(2, 3), keepdim=True)
+        denominator = 2.0 * grad_2 + sum_activations * grad_3 + 1e-8
+
+        # Alpha weights (per-pixel importance)
+        alpha = grad_2 / denominator
+        alpha = torch.where(
+            gradients != 0,
+            alpha,
+            torch.zeros_like(alpha)
+        )
+
+        # Weighted combination with ReLU of gradients
+        weights = torch.sum(alpha * F.relu(gradients), dim=(2, 3), keepdim=True)
+
+        # Generate CAM: L^c = ReLU(Σ_k w_k * A^k)
+        cam = torch.sum(weights * activations, dim=1, keepdim=True)
         cam = F.relu(cam)
 
         # Normalize
@@ -154,7 +202,7 @@ class GradCAM:
         if cam.max() > 0:
             cam = (cam - cam.min()) / (cam.max() - cam.min())
 
-        # Resize to input size
+        # Resize to input image size
         heatmap = cv2.resize(cam, (image.shape[1], image.shape[0]))
 
         # Create colored heatmap
@@ -166,7 +214,7 @@ class GradCAM:
         overlay = cv2.addWeighted(image, 0.6, heatmap_colored, 0.4, 0)
 
         return Explanation(
-            method="grad-cam",
+            method="grad-cam++",
             image=image,
             heatmap=heatmap,
             overlay=overlay,
@@ -174,12 +222,13 @@ class GradCAM:
             metadata={
                 "target_class": target_class,
                 "target_box_idx": target_box_idx,
-                "cam_shape": cam.shape
+                "cam_shape": cam.shape,
+                "algorithm": "Grad-CAM++ (higher-order gradients)"
             }
         )
 
     def _preprocess_image(self, image: np.ndarray) -> torch.Tensor:
-        """Preprocess image for model input."""
+        """Preprocess image for model input (640x640 as per thesis Table 3.5)."""
         img = cv2.resize(image, (640, 640))
         img = img.astype(np.float32) / 255.0
         img = np.transpose(img, (2, 0, 1))
@@ -196,20 +245,15 @@ class GradCAM:
         """Extract target score from model output for backpropagation."""
         try:
             if isinstance(output, (list, tuple)):
-                # YOLOv11 typically outputs multiple heads
-                # Use the first detection head
                 pred = output[0] if len(output) > 0 else output
             else:
                 pred = output
 
             if pred.dim() >= 3:
-                # Shape: [batch, num_predictions, num_attributes]
                 if target_class is not None:
-                    # Get class scores (typically after box coordinates)
                     class_scores = pred[0, :, 5 + target_class] if pred.shape[-1] > 5 else pred[0, :, target_class]
                     return class_scores.max()
                 else:
-                    # Use objectness/confidence score
                     if pred.shape[-1] > 4:
                         conf_scores = pred[0, :, 4]
                         return conf_scores.max()
@@ -230,278 +274,258 @@ class GradCAM:
         self._hooks.clear()
 
 
-class SHAPExplainer:
+class AverageDrop:
     """
-    SHAP-based explanations for YOLOv11 predictions.
-    
-    Uses a simplified kernel SHAP approach suitable for
-    object detection models.
+    Average Drop metric for quantitative XAI validation.
+
+    As defined in thesis Section 2.6.2 (Eq. 2.7):
+    AD = (1/N) * Σ_{i=1}^{N} max(0, Y_i^c - O_i^c) / Y_i^c * 100%
+
+    Where:
+    - N: number of test samples
+    - Y_i^c: confidence score on original image for class c
+    - O_i^c: confidence score after masking important regions
+
+    Higher Average Drop → XAI explanation is more accurate/reliable
+    (removing highlighted regions causes bigger confidence drop)
     """
 
-    def __init__(
-        self,
-        model,
-        num_samples: int = 100,
-        segment_size: int = 16
-    ):
+    def __init__(self, model):
         """
         Args:
-            model: YOLOv11 model wrapper
-            num_samples: Number of perturbation samples
-            segment_size: Size of image segments for perturbation
+            model: YOLOv11 model wrapper for inference
         """
         self.model = model
-        self.num_samples = num_samples
-        self.segment_size = segment_size
 
-    def generate(
+    def compute(
         self,
-        image: np.ndarray,
-        target_class: Optional[int] = None
-    ) -> Explanation:
+        images: List[np.ndarray],
+        heatmaps: List[np.ndarray],
+        target_class: Optional[int] = None,
+        mask_threshold: float = 0.5
+    ) -> Dict[str, float]:
         """
-        Generate SHAP explanation for an image.
-        
-        Uses image segmentation and occlusion-based perturbation
-        to approximate Shapley values.
-        
+        Compute Average Drop metric.
+
+        Steps:
+        1. Get confidence score Y_i^c on original image
+        2. Mask the important regions (where heatmap > threshold)
+        3. Get confidence score O_i^c on masked image
+        4. Compute AD = (1/N) * Σ max(0, Y-O)/Y * 100%
+
         Args:
-            image: Input image (HWC format)
-            target_class: Target class index
-            
+            images: List of input images
+            heatmaps: List of corresponding Grad-CAM++ heatmaps
+            target_class: Target class for confidence computation
+            mask_threshold: Threshold to determine "important" regions
+
         Returns:
-            Explanation with SHAP values visualization
+            Dict with average_drop (%), increase_in_entropy, prediction_flip_rate
         """
-        h, w = image.shape[:2]
-        seg_h = h // self.segment_size
-        seg_w = w // self.segment_size
-        num_segments = seg_h * seg_w
+        drops = []
+        entropy_increases = []
+        flips = 0
+        total = 0
 
-        # Generate segment masks
-        segments = self._create_segments(image)
+        for image, heatmap in zip(images, heatmaps):
+            if heatmap is None:
+                continue
 
-        # Get baseline prediction
-        baseline_score = self._get_prediction_score(image, target_class)
+            # Get original confidence Y_i^c
+            y_original = self._get_confidence(image, target_class)
+            if y_original <= 0:
+                continue
 
-        # Compute SHAP values through perturbation
-        shap_values = np.zeros(num_segments)
-        coalition_matrix = np.random.binomial(1, 0.5, size=(self.num_samples, num_segments))
+            # Create mask: important regions where heatmap > threshold
+            mask = (heatmap >= mask_threshold).astype(np.float32)
 
-        for i in range(self.num_samples):
-            # Create perturbed image
-            mask = coalition_matrix[i]
-            perturbed = self._apply_mask(image, segments, mask)
+            # Mask the important regions (set to mean pixel value)
+            masked_image = image.copy()
+            mean_pixel = image.mean(axis=(0, 1)).astype(np.uint8)
+            for c in range(3):
+                masked_image[:, :, c] = np.where(
+                    mask > 0,
+                    mean_pixel[c],
+                    image[:, :, c]
+                )
 
-            # Get prediction for perturbed image
-            score = self._get_prediction_score(perturbed, target_class)
+            # Get masked confidence O_i^c
+            o_masked = self._get_confidence(masked_image, target_class)
 
-            # Accumulate contributions
-            for j in range(num_segments):
-                if mask[j] == 1:
-                    shap_values[j] += score - baseline_score * (1 - mask.mean())
+            # Compute drop: max(0, Y - O) / Y
+            drop = max(0.0, y_original - o_masked) / y_original
+            drops.append(drop)
 
-        # Normalize
-        shap_values /= max(self.num_samples, 1)
+            # Check for prediction flip
+            orig_pred = self._get_prediction(image)
+            masked_pred = self._get_prediction(masked_image)
+            if orig_pred != masked_pred:
+                flips += 1
+            total += 1
 
-        # Create SHAP heatmap
-        heatmap = self._shap_to_heatmap(shap_values, segments, image.shape[:2])
+            # Entropy increase approximation
+            if o_masked > 0:
+                entropy_increase = -np.log2(o_masked + 1e-8) - (-np.log2(y_original + 1e-8))
+                entropy_increases.append(max(0, entropy_increase))
 
-        # Normalize heatmap
-        if np.abs(heatmap).max() > 0:
-            heatmap = heatmap / np.abs(heatmap).max()
+        # Compute final metrics
+        average_drop = np.mean(drops) * 100 if drops else 0.0
+        avg_entropy_increase = np.mean(entropy_increases) if entropy_increases else 0.0
+        flip_rate = (flips / max(total, 1)) * 100
 
-        # Create visualization
-        heatmap_viz = self._colorize_shap(heatmap)
-        overlay = cv2.addWeighted(image, 0.6, heatmap_viz, 0.4, 0)
+        return {
+            "average_drop_pct": float(average_drop),
+            "increase_in_entropy_bits": float(avg_entropy_increase),
+            "prediction_flip_rate_pct": float(flip_rate),
+            "num_samples": len(drops),
+            "reliability": self._assess_reliability(average_drop)
+        }
 
-        return Explanation(
-            method="shap",
-            image=image,
-            heatmap=heatmap,
-            overlay=overlay,
-            scores={
-                "baseline_score": float(baseline_score),
-                "mean_shap": float(np.mean(shap_values)),
-                "max_shap": float(np.max(shap_values)),
-                "min_shap": float(np.min(shap_values))
-            },
-            metadata={
-                "num_samples": self.num_samples,
-                "num_segments": num_segments,
-                "segment_size": self.segment_size
-            }
-        )
-
-    def _create_segments(self, image: np.ndarray) -> np.ndarray:
-        """Create grid-based segments for the image."""
-        h, w = image.shape[:2]
-        segments = np.zeros((h, w), dtype=np.int32)
-
-        seg_h = h // self.segment_size
-        seg_w = w // self.segment_size
-
-        for i in range(self.segment_size):
-            for j in range(self.segment_size):
-                y_start = i * seg_h
-                y_end = (i + 1) * seg_h if i < self.segment_size - 1 else h
-                x_start = j * seg_w
-                x_end = (j + 1) * seg_w if j < self.segment_size - 1 else w
-                segments[y_start:y_end, x_start:x_end] = i * self.segment_size + j
-
-        return segments
-
-    def _apply_mask(
-        self, image: np.ndarray, segments: np.ndarray, mask: np.ndarray
-    ) -> np.ndarray:
-        """Apply segment mask to image (occlude segments where mask=0)."""
-        perturbed = image.copy()
-        for seg_idx in range(len(mask)):
-            if mask[seg_idx] == 0:
-                perturbed[segments == seg_idx] = 128  # Gray occlusion
-        return perturbed
-
-    def _get_prediction_score(self, image: np.ndarray, target_class: Optional[int]) -> float:
-        """Get model prediction score for an image."""
+    def _get_confidence(self, image: np.ndarray, target_class: Optional[int]) -> float:
+        """Get model confidence score for an image."""
         try:
             results = self.model.predict(source=image, verbose=False)
             if results and len(results) > 0:
                 result = results[0]
                 if hasattr(result, 'boxes') and len(result.boxes) > 0:
                     if target_class is not None:
-                        # Filter by class
                         cls_mask = result.boxes.cls == target_class
                         if cls_mask.any():
                             return float(result.boxes.conf[cls_mask].max())
                     return float(result.boxes.conf.max())
         except Exception as e:
-            logger.debug(f"Prediction error in SHAP: {e}")
-
+            logger.debug(f"Confidence computation error: {e}")
         return 0.0
 
-    def _shap_to_heatmap(
-        self, shap_values: np.ndarray, segments: np.ndarray, shape: Tuple
-    ) -> np.ndarray:
-        """Convert SHAP values to a pixel-level heatmap."""
-        heatmap = np.zeros(shape, dtype=np.float32)
-        for seg_idx, shap_val in enumerate(shap_values):
-            heatmap[segments == seg_idx] = shap_val
-        return heatmap
+    def _get_prediction(self, image: np.ndarray) -> int:
+        """Get top predicted class for an image."""
+        try:
+            results = self.model.predict(source=image, verbose=False)
+            if results and len(results) > 0:
+                result = results[0]
+                if hasattr(result, 'boxes') and len(result.boxes) > 0:
+                    top_idx = result.boxes.conf.argmax()
+                    return int(result.boxes.cls[top_idx])
+        except Exception:
+            pass
+        return -1
 
-    def _colorize_shap(self, heatmap: np.ndarray) -> np.ndarray:
-        """Colorize SHAP heatmap (red=positive, blue=negative)."""
-        h, w = heatmap.shape
-        colored = np.zeros((h, w, 3), dtype=np.uint8)
-
-        # Positive values -> Red
-        pos_mask = heatmap > 0
-        colored[pos_mask, 2] = (heatmap[pos_mask] * 255).astype(np.uint8)
-
-        # Negative values -> Blue
-        neg_mask = heatmap < 0
-        colored[neg_mask, 0] = (np.abs(heatmap[neg_mask]) * 255).astype(np.uint8)
-
-        return colored
+    @staticmethod
+    def _assess_reliability(average_drop: float) -> str:
+        """Assess XAI reliability based on Average Drop value (thesis Table 4.11)."""
+        if average_drop >= 30:
+            return "Excellent"
+        elif average_drop >= 25:
+            return "Good"
+        elif average_drop >= 20:
+            return "Acceptable"
+        else:
+            return "Questionable"
 
 
-class FeatureImportanceAnalyzer:
+class FocusRetentionRate:
     """
-    Analyze feature importance across federated learning rounds.
-    
-    Tracks which features/layers contribute most to model predictions
-    and how they change during federated training.
+    Focus Retention Rate (FRR) metric.
+
+    As defined in thesis Section 2.6.3 (Eq. 2.8):
+    FRR = Σ_{p∈ROI} I(p) / Σ_{p∈Image} I(p)
+
+    Where:
+    - I(p): heatmap intensity at pixel p
+    - ROI: ground truth bounding box region of the palm fruit
+
+    FRR close to 1.0 → model focuses on object (good)
+    FRR close to 0.0 → model focuses on background (bad)
+
+    Thesis results (Table 4.10):
+    - Baseline (ε=∞): FRR = 0.847
+    - Weak DP (ε=8.0): FRR = 0.839
+    - Moderate DP (ε=4.0): FRR = 0.812
+    - Strong DP (ε=1.0): FRR = 0.756
     """
 
-    def __init__(self, model):
+    def compute(
+        self,
+        heatmap: np.ndarray,
+        bounding_boxes: List[List[int]],
+        image_shape: Tuple[int, int] = None
+    ) -> float:
         """
+        Compute Focus Retention Rate for a single image.
+
         Args:
-            model: YOLOv11FederatedWrapper instance
-        """
-        self.model = model
-        self.importance_history: List[Dict] = []
+            heatmap: Grad-CAM++ heatmap (H x W, values 0-1)
+            bounding_boxes: List of [x1, y1, x2, y2] bounding boxes (ROI)
+            image_shape: (height, width) of the original image
 
-    def compute_layer_importance(self) -> Dict[str, float]:
-        """
-        Compute importance score for each layer based on gradient magnitude.
-        
         Returns:
-            Dictionary mapping layer names to importance scores
+            FRR value between 0 and 1
         """
-        pytorch_model = self.model.model.model if hasattr(self.model.model, 'model') else self.model.model
-        importance = {}
+        if heatmap is None or len(bounding_boxes) == 0:
+            return 0.0
 
-        for name, param in pytorch_model.named_parameters():
-            if param.grad is not None:
-                importance[name] = float(torch.norm(param.grad).item())
-            elif param.requires_grad:
-                importance[name] = float(torch.norm(param.data).item())
+        h, w = heatmap.shape[:2]
 
-        # Normalize
-        total = sum(importance.values()) + 1e-8
-        importance = {k: v / total for k, v in importance.items()}
+        # Create ROI mask from bounding boxes
+        roi_mask = np.zeros((h, w), dtype=bool)
+        for box in bounding_boxes:
+            x1, y1, x2, y2 = [int(coord) for coord in box]
+            # Clamp coordinates
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            roi_mask[y1:y2, x1:x2] = True
 
-        return importance
+        # Compute FRR = Σ_{p∈ROI} I(p) / Σ_{p∈Image} I(p)
+        total_intensity = heatmap.sum()
+        if total_intensity <= 0:
+            return 0.0
 
-    def compute_update_importance(
-        self, model_update: Dict[str, torch.Tensor]
+        roi_intensity = heatmap[roi_mask].sum()
+        frr = float(roi_intensity / total_intensity)
+
+        return frr
+
+    def compute_batch(
+        self,
+        heatmaps: List[np.ndarray],
+        bounding_boxes_list: List[List[List[int]]]
     ) -> Dict[str, float]:
         """
-        Compute importance based on model update magnitudes.
-        
-        Useful for understanding which parameters changed most during
-        federated learning.
-        
+        Compute FRR for a batch of images.
+
         Args:
-            model_update: Dictionary of parameter updates
-            
+            heatmaps: List of heatmaps
+            bounding_boxes_list: List of bounding box lists per image
+
         Returns:
-            Layer importance scores
+            Dict with mean FRR and per-sample FRR values
         """
-        importance = {}
-        for name, update in model_update.items():
-            importance[name] = float(torch.norm(update).item())
+        frr_values = []
+        for heatmap, boxes in zip(heatmaps, bounding_boxes_list):
+            if heatmap is not None and boxes:
+                frr = self.compute(heatmap, boxes)
+                frr_values.append(frr)
 
-        # Normalize
-        total = sum(importance.values()) + 1e-8
-        importance = {k: v / total for k, v in importance.items()}
+        if not frr_values:
+            return {"mean_frr": 0.0, "frr_values": [], "num_samples": 0}
 
-        return importance
-
-    def track_round(self, round_num: int, importance: Dict[str, float]):
-        """Track feature importance for a training round."""
-        self.importance_history.append({
-            "round": round_num,
-            "importance": importance,
-            "top_5": dict(sorted(importance.items(), key=lambda x: x[1], reverse=True)[:5])
-        })
-
-    def get_importance_trends(self) -> Dict[str, List[float]]:
-        """Get importance trends across rounds for each layer."""
-        if not self.importance_history:
-            return {}
-
-        # Collect all layer names
-        all_layers = set()
-        for record in self.importance_history:
-            all_layers.update(record["importance"].keys())
-
-        # Build trends
-        trends = {}
-        for layer in all_layers:
-            trends[layer] = [
-                record["importance"].get(layer, 0.0)
-                for record in self.importance_history
-            ]
-
-        return trends
+        return {
+            "mean_frr": float(np.mean(frr_values)),
+            "std_frr": float(np.std(frr_values)),
+            "min_frr": float(np.min(frr_values)),
+            "max_frr": float(np.max(frr_values)),
+            "frr_values": frr_values,
+            "num_samples": len(frr_values)
+        }
 
 
 class PrivacyAwareExplainer:
     """
-    Privacy-Aware Explainer that provides explanations
+    Privacy-Aware Explainer that provides Grad-CAM++ explanations
     compatible with Differential Privacy constraints.
-    
+
     Ensures that explanations don't leak private information
-    by adding noise to explanation outputs.
+    by adding Laplacian noise to explanation outputs.
     """
 
     def __init__(
@@ -519,36 +543,28 @@ class PrivacyAwareExplainer:
         self.model = model
         self.epsilon = epsilon
         self.sensitivity = explanation_sensitivity
-        self.grad_cam = GradCAM(model)
-        self.shap_explainer = SHAPExplainer(model)
+        self.grad_cam_pp = GradCAMPlusPlus(model)
 
     def explain_with_privacy(
         self,
         image: np.ndarray,
-        method: str = "grad-cam",
         target_class: Optional[int] = None
     ) -> Explanation:
         """
-        Generate privacy-preserving explanation.
-        
-        Adds calibrated noise to the explanation heatmap to prevent
+        Generate privacy-preserving Grad-CAM++ explanation.
+
+        Adds calibrated Laplacian noise to the heatmap to prevent
         inference attacks on the training data.
-        
+
         Args:
             image: Input image
-            method: Explanation method ('grad-cam' or 'shap')
-            target_class: Target class for explanation
-            
+            target_class: Target class for explanation (0-5)
+
         Returns:
             Privacy-preserving explanation
         """
-        # Generate base explanation
-        if method == "grad-cam":
-            explanation = self.grad_cam.generate(image, target_class)
-        elif method == "shap":
-            explanation = self.shap_explainer.generate(image, target_class)
-        else:
-            raise ValueError(f"Unknown method: {method}")
+        # Generate Grad-CAM++ explanation
+        explanation = self.grad_cam_pp.generate(image, target_class)
 
         # Add noise to heatmap for privacy
         if explanation.heatmap is not None:
@@ -568,6 +584,7 @@ class PrivacyAwareExplainer:
             explanation.metadata = {}
         explanation.metadata["privacy_epsilon"] = self.epsilon
         explanation.metadata["privacy_noise_added"] = True
+        explanation.metadata["method"] = "Grad-CAM++ (privacy-aware)"
 
         return explanation
 
@@ -583,15 +600,16 @@ class PrivacyAwareExplainer:
 
     def cleanup(self):
         """Clean up resources."""
-        self.grad_cam.cleanup()
+        self.grad_cam_pp.cleanup()
 
 
 class XAIReportGenerator:
     """
     Generate comprehensive XAI reports for federated learning models.
-    
-    Combines multiple explanation methods to provide a complete
-    picture of model behavior.
+
+    Combines Grad-CAM++, Average Drop, and Focus Retention Rate
+    to provide a complete picture of model interpretability as
+    defined in thesis Sections 3.7.3 and 4.5-4.6.
     """
 
     def __init__(self, model, privacy_epsilon: float = 1.0):
@@ -602,93 +620,125 @@ class XAIReportGenerator:
         """
         self.model = model
         self.explainer = PrivacyAwareExplainer(model, epsilon=privacy_epsilon)
-        self.feature_analyzer = FeatureImportanceAnalyzer(model)
+        self.average_drop = AverageDrop(model)
+        self.frr = FocusRetentionRate()
 
     def generate_report(
         self,
-        image: np.ndarray,
+        images: List[np.ndarray],
+        bounding_boxes_list: Optional[List[List[List[int]]]] = None,
         target_class: Optional[int] = None,
         output_dir: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Generate a comprehensive XAI report.
-        
+        Generate a comprehensive XAI report with Grad-CAM++, Average Drop, and FRR.
+
         Args:
-            image: Input image for explanation
-            target_class: Target class for explanations
+            images: List of input images for explanation
+            bounding_boxes_list: Ground truth bounding boxes per image (for FRR)
+            target_class: Target class for explanations (0-5)
             output_dir: Directory to save report artifacts
-            
+
         Returns:
-            Report dictionary with explanations and analysis
+            Report dictionary with all XAI metrics
         """
         report = {
             "timestamp": str(np.datetime64('now')),
+            "method": "Grad-CAM++",
+            "num_images": len(images),
+            "target_class": target_class,
             "model_info": {},
-            "explanations": {},
-            "feature_importance": {},
+            "grad_cam_pp": {},
+            "average_drop": {},
+            "focus_retention_rate": {},
         }
 
         # Model info
         if hasattr(self.model, 'get_model_size'):
             report["model_info"] = self.model.get_model_size()
 
-        # Grad-CAM explanation
+        # Generate Grad-CAM++ heatmaps for all images
+        heatmaps = []
+        explanations = []
+        for i, image in enumerate(images):
+            try:
+                exp = self.explainer.explain_with_privacy(image, target_class)
+                explanations.append(exp)
+                heatmaps.append(exp.heatmap)
+
+                # Save overlays
+                if output_dir and exp.overlay is not None:
+                    out_path = Path(output_dir)
+                    out_path.mkdir(parents=True, exist_ok=True)
+                    cv2.imwrite(
+                        str(out_path / f"grad_cam_pp_overlay_{i}.jpg"),
+                        exp.overlay
+                    )
+            except Exception as e:
+                logger.warning(f"Grad-CAM++ generation failed for image {i}: {e}")
+                heatmaps.append(None)
+
+        report["grad_cam_pp"]["num_generated"] = sum(1 for h in heatmaps if h is not None)
+
+        # Compute Average Drop (thesis Eq. 2.7)
         try:
-            grad_cam_exp = self.explainer.explain_with_privacy(
-                image, method="grad-cam", target_class=target_class
-            )
-            report["explanations"]["grad_cam"] = {
-                "scores": grad_cam_exp.scores,
-                "metadata": grad_cam_exp.metadata
-            }
-
-            if output_dir and grad_cam_exp.overlay is not None:
-                out_path = Path(output_dir)
-                out_path.mkdir(parents=True, exist_ok=True)
-                cv2.imwrite(str(out_path / "grad_cam_overlay.jpg"), grad_cam_exp.overlay)
-
+            valid_pairs = [
+                (img, hm) for img, hm in zip(images, heatmaps) if hm is not None
+            ]
+            if valid_pairs:
+                valid_images, valid_heatmaps = zip(*valid_pairs)
+                ad_result = self.average_drop.compute(
+                    list(valid_images), list(valid_heatmaps), target_class
+                )
+                report["average_drop"] = ad_result
+                logger.info(
+                    f"Average Drop: {ad_result['average_drop_pct']:.1f}% "
+                    f"({ad_result['reliability']})"
+                )
         except Exception as e:
-            report["explanations"]["grad_cam"] = {"error": str(e)}
-            logger.warning(f"Grad-CAM generation failed: {e}")
+            report["average_drop"] = {"error": str(e)}
+            logger.warning(f"Average Drop computation failed: {e}")
 
-        # SHAP explanation
-        try:
-            shap_exp = self.explainer.explain_with_privacy(
-                image, method="shap", target_class=target_class
-            )
-            report["explanations"]["shap"] = {
-                "scores": shap_exp.scores,
-                "metadata": shap_exp.metadata
+        # Compute Focus Retention Rate (thesis Eq. 2.8)
+        if bounding_boxes_list is not None:
+            try:
+                frr_result = self.frr.compute_batch(heatmaps, bounding_boxes_list)
+                report["focus_retention_rate"] = frr_result
+                logger.info(f"Focus Retention Rate: {frr_result['mean_frr']:.3f}")
+            except Exception as e:
+                report["focus_retention_rate"] = {"error": str(e)}
+                logger.warning(f"FRR computation failed: {e}")
+        else:
+            report["focus_retention_rate"] = {
+                "message": "No bounding boxes provided for FRR computation"
             }
-
-            if output_dir and shap_exp.overlay is not None:
-                cv2.imwrite(str(Path(output_dir) / "shap_overlay.jpg"), shap_exp.overlay)
-
-        except Exception as e:
-            report["explanations"]["shap"] = {"error": str(e)}
-            logger.warning(f"SHAP generation failed: {e}")
-
-        # Feature importance
-        try:
-            importance = self.feature_analyzer.compute_layer_importance()
-            top_features = dict(sorted(importance.items(), key=lambda x: x[1], reverse=True)[:10])
-            report["feature_importance"] = {
-                "top_10_layers": top_features,
-                "total_layers_analyzed": len(importance)
-            }
-        except Exception as e:
-            report["feature_importance"] = {"error": str(e)}
 
         # Save report as JSON
         if output_dir:
             import json
             report_path = Path(output_dir) / "xai_report.json"
-            # Convert non-serializable values
             serializable_report = json.loads(json.dumps(report, default=str))
             with open(report_path, "w") as f:
                 json.dump(serializable_report, f, indent=2)
+            logger.info(f"XAI report saved to: {report_path}")
 
         return report
+
+    def generate_single_explanation(
+        self,
+        image: np.ndarray,
+        target_class: Optional[int] = None,
+        output_dir: Optional[str] = None
+    ) -> Explanation:
+        """Generate Grad-CAM++ explanation for a single image."""
+        explanation = self.explainer.explain_with_privacy(image, target_class)
+
+        if output_dir and explanation.overlay is not None:
+            out_path = Path(output_dir)
+            out_path.mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(out_path / "grad_cam_pp_overlay.jpg"), explanation.overlay)
+
+        return explanation
 
     def cleanup(self):
         """Clean up resources."""

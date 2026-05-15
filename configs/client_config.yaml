@@ -28,7 +28,7 @@ data:
 # Model Settings
 model:
   variant: "yolo11n.pt"
-  num_classes: 4  # Palm fruit ripeness: unripe, underripe, ripe, overripe
+  num_classes: 6  # Palm fruit ripeness: Unripe, Underripe, Ripe, Overripe, Abnormal, Empty Bunch
   freeze_backbone: false
 
 # Local Differential Privacy

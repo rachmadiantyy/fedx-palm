@@ -1,15 +1,15 @@
 # FedX-PALM Server Dockerfile
-# Federated Learning Server with YOLOv11, Differential Privacy, and XAI
+# FL Aggregator Server with Flower (flwr) framework
+# Thesis Section 3.1.1: Server Aggregator
 
 FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1
 
-# Install system dependencies
+# System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-glx \
     libglib2.0-0 \
@@ -21,10 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
@@ -32,16 +31,16 @@ RUN pip install --upgrade pip && \
 # Copy application code
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p /app/checkpoints /app/logs /app/data
+# Create directories
+RUN mkdir -p /app/checkpoints /app/logs
 
-# Expose server port
+# Expose Flower gRPC port
 EXPOSE 8080
 
-# Health check
+# Health check (Flower uses gRPC, basic TCP check)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD python -c "import socket; s=socket.socket(); s.connect(('localhost',8080)); s.close()" || exit 1
 
-# Run the FL server
-ENTRYPOINT ["python", "-m", "server.grpc_server"]
-CMD ["--host", "0.0.0.0", "--port", "8080", "--num-classes", "4", "--dp-enabled"]
+# Run FL Server (Flower)
+ENTRYPOINT ["python", "-m", "server.fed_server"]
+CMD ["--address", "0.0.0.0:8080", "--num-rounds", "100", "--num-classes", "6", "--min-clients", "4"]

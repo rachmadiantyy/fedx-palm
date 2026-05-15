@@ -1,11 +1,20 @@
-# FedX-PALM: Federated Learning with Explainable AI & Differential Privacy
-# Docker Compose orchestration for FL server and multiple clients
+# FedX-PALM: Federated Explainable Framework for Palm Fruit Ripeness
+# Docker Compose - Full GPU Deployment
+#
+# Thesis Architecture (Section 3.2.2):
+# - 1 Server Aggregator (FedAvg via Flower)
+# - 4 Client Nodes (Dockerized, Non-IID data, DP-SGD)
+# - Bridge network (fed-network) for FL communication
+# - Read-only data mounts for Zero-Trust isolation
+#
+# Communication: Flower gRPC on port 8080
+# Privacy: Opacus DP-SGD (configurable ε per client)
 
 version: "3.8"
 
 services:
   # ============================================
-  # Federated Learning Server
+  # FL Server Aggregator (thesis Section 3.1.1)
   # ============================================
   fl-server:
     build:
@@ -14,24 +23,19 @@ services:
     container_name: fedx-palm-server
     ports:
       - "8080:8080"
+      - "6006:6006"  # TensorBoard monitoring
     environment:
       - FL_NUM_ROUNDS=100
       - FL_MIN_CLIENTS=4
-      - FL_AGGREGATION=fedavg
       - FL_MODEL_VARIANT=yolo11n.pt
-      - FL_NUM_CLASSES=4
-      - DP_ENABLED=true
-      - DP_EPSILON=1.0
-      - DP_DELTA=1e-5
-      - DP_MAX_GRAD_NORM=1.0
-      - DP_NOISE_MULTIPLIER=1.0
+      - FL_NUM_CLASSES=6
       - CUDA_VISIBLE_DEVICES=0
     volumes:
       - server_checkpoints:/app/checkpoints
       - server_logs:/app/logs
       - ./configs:/app/configs:ro
     networks:
-      - fl-network
+      - fed-network
     deploy:
       resources:
         reservations:
@@ -40,15 +44,17 @@ services:
               count: 1
               capabilities: [gpu]
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+    command: >
+      --address 0.0.0.0:8080
+      --num-rounds 100
+      --model yolo11n.pt
+      --num-classes 6
+      --min-clients 4
+      --checkpoint-dir /app/checkpoints
 
   # ============================================
-  # Federated Learning Client 1
+  # Client A (α=0.1) - Dominated by Unripe/Underripe
+  # Thesis Table 3.3: highly skewed Non-IID
   # ============================================
   fl-client-1:
     build:
@@ -57,23 +63,15 @@ services:
     container_name: fedx-palm-client-1
     environment:
       - CLIENT_ID=client_1
-      - SERVER_URL=http://fl-server:8080
-      - DATA_CONFIG=/app/data/data.yaml
-      - FL_LOCAL_EPOCHS=5
-      - FL_BATCH_SIZE=16
-      - FL_LEARNING_RATE=0.01
-      - DP_ENABLED=true
-      - DP_EPSILON=1.0
-      - DP_MAX_GRAD_NORM=1.0
+      - DIRICHLET_ALPHA=0.1
       - CUDA_VISIBLE_DEVICES=0
     volumes:
-      - ./data/client_1:/app/data
-      - client1_results:/app/client_results
+      - ./data/client_1:/app/data:ro  # Read-only (thesis Section 3.2.3.2)
+      - client1_results:/app/results
     networks:
-      - fl-network
+      - fed-network
     depends_on:
-      fl-server:
-        condition: service_healthy
+      - fl-server
     deploy:
       resources:
         reservations:
@@ -83,17 +81,18 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     command: >
+      --server fl-server:8080
       --client-id client_1
-      --server-url http://fl-server:8080
       --data-config /app/data/data.yaml
-      --num-classes 4
+      --num-classes 6
       --local-epochs 5
       --batch-size 16
-      --dp-enabled
-      --dp-epsilon 1.0
+      --lr 0.01
+      --privacy moderate
 
   # ============================================
-  # Federated Learning Client 2
+  # Client B (α=0.3) - Dominated by Underripe/Ripe
+  # Thesis Table 3.3: moderately skewed Non-IID
   # ============================================
   fl-client-2:
     build:
@@ -102,23 +101,15 @@ services:
     container_name: fedx-palm-client-2
     environment:
       - CLIENT_ID=client_2
-      - SERVER_URL=http://fl-server:8080
-      - DATA_CONFIG=/app/data/data.yaml
-      - FL_LOCAL_EPOCHS=5
-      - FL_BATCH_SIZE=16
-      - FL_LEARNING_RATE=0.01
-      - DP_ENABLED=true
-      - DP_EPSILON=1.0
-      - DP_MAX_GRAD_NORM=1.0
+      - DIRICHLET_ALPHA=0.3
       - CUDA_VISIBLE_DEVICES=0
     volumes:
-      - ./data/client_2:/app/data
-      - client2_results:/app/client_results
+      - ./data/client_2:/app/data:ro
+      - client2_results:/app/results
     networks:
-      - fl-network
+      - fed-network
     depends_on:
-      fl-server:
-        condition: service_healthy
+      - fl-server
     deploy:
       resources:
         reservations:
@@ -128,17 +119,18 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     command: >
+      --server fl-server:8080
       --client-id client_2
-      --server-url http://fl-server:8080
       --data-config /app/data/data.yaml
-      --num-classes 4
+      --num-classes 6
       --local-epochs 5
       --batch-size 16
-      --dp-enabled
-      --dp-epsilon 1.0
+      --lr 0.01
+      --privacy moderate
 
   # ============================================
-  # Federated Learning Client 3
+  # Client C (α=0.5) - Fairly balanced
+  # Thesis Table 3.3: fairly balanced distribution
   # ============================================
   fl-client-3:
     build:
@@ -147,23 +139,15 @@ services:
     container_name: fedx-palm-client-3
     environment:
       - CLIENT_ID=client_3
-      - SERVER_URL=http://fl-server:8080
-      - DATA_CONFIG=/app/data/data.yaml
-      - FL_LOCAL_EPOCHS=5
-      - FL_BATCH_SIZE=16
-      - FL_LEARNING_RATE=0.01
-      - DP_ENABLED=true
-      - DP_EPSILON=1.0
-      - DP_MAX_GRAD_NORM=1.0
+      - DIRICHLET_ALPHA=0.5
       - CUDA_VISIBLE_DEVICES=0
     volumes:
-      - ./data/client_3:/app/data
-      - client3_results:/app/client_results
+      - ./data/client_3:/app/data:ro
+      - client3_results:/app/results
     networks:
-      - fl-network
+      - fed-network
     depends_on:
-      fl-server:
-        condition: service_healthy
+      - fl-server
     deploy:
       resources:
         reservations:
@@ -173,17 +157,18 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     command: >
+      --server fl-server:8080
       --client-id client_3
-      --server-url http://fl-server:8080
       --data-config /app/data/data.yaml
-      --num-classes 4
+      --num-classes 6
       --local-epochs 5
       --batch-size 16
-      --dp-enabled
-      --dp-epsilon 1.0
+      --lr 0.01
+      --privacy moderate
 
   # ============================================
-  # Federated Learning Client 4
+  # Client D (α=0.7) - Abnormal/Empty Bunch emphasis
+  # Thesis Table 3.3: near-balanced, minority class focus
   # ============================================
   fl-client-4:
     build:
@@ -192,23 +177,15 @@ services:
     container_name: fedx-palm-client-4
     environment:
       - CLIENT_ID=client_4
-      - SERVER_URL=http://fl-server:8080
-      - DATA_CONFIG=/app/data/data.yaml
-      - FL_LOCAL_EPOCHS=5
-      - FL_BATCH_SIZE=16
-      - FL_LEARNING_RATE=0.01
-      - DP_ENABLED=true
-      - DP_EPSILON=1.0
-      - DP_MAX_GRAD_NORM=1.0
+      - DIRICHLET_ALPHA=0.7
       - CUDA_VISIBLE_DEVICES=0
     volumes:
-      - ./data/client_4:/app/data
-      - client4_results:/app/client_results
+      - ./data/client_4:/app/data:ro
+      - client4_results:/app/results
     networks:
-      - fl-network
+      - fed-network
     depends_on:
-      fl-server:
-        condition: service_healthy
+      - fl-server
     deploy:
       resources:
         reservations:
@@ -218,20 +195,20 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     command: >
+      --server fl-server:8080
       --client-id client_4
-      --server-url http://fl-server:8080
       --data-config /app/data/data.yaml
-      --num-classes 4
+      --num-classes 6
       --local-epochs 5
       --batch-size 16
-      --dp-enabled
-      --dp-epsilon 1.0
+      --lr 0.01
+      --privacy moderate
 
 # ============================================
-# Networks
+# Network (thesis Section 3.2.3.1: fed-network)
 # ============================================
 networks:
-  fl-network:
+  fed-network:
     driver: bridge
     ipam:
       config:

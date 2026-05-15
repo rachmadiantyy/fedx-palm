@@ -1,35 +1,38 @@
 # FedX-PALM: Federated Learning with XAI & Differential Privacy
-# Core dependencies
+# Thesis: "FedX-Palm: A Federated Explainable Framework for
+#          Privacy Preserving Palm Fruit Ripeness"
+# ============================================================
 
 # Deep Learning & YOLOv11
 torch>=2.1.0
 torchvision>=0.16.0
 ultralytics>=8.3.0
 
-# Federated Learning Server
-flask>=3.0.0
-requests>=2.31.0
-gunicorn>=21.2.0
+# Federated Learning (Flower framework - thesis Section 1.5.1)
+flwr>=1.5.0
 
-# Differential Privacy
+# Differential Privacy (Opacus - thesis Section 3.4.3)
+opacus>=1.4.0
+
+# Dataset Management (Roboflow)
+roboflow>=1.1.0
+
+# Numerical & Scientific
 numpy>=1.24.0
 scipy>=1.11.0
 
-# Explainable AI (XAI)
+# Explainable AI (XAI - Grad-CAM++)
 opencv-python>=4.8.0
+grad-cam>=1.4.0
 matplotlib>=3.7.0
 seaborn>=0.12.0
 
 # Configuration & Serialization
 pyyaml>=6.0.1
-pydantic>=2.5.0
 
 # Logging & Monitoring
-loguru>=0.7.0
 tqdm>=4.66.0
-
-# Dataset Management
-roboflow>=1.1.0
+tensorboard>=2.14.0
 
 # Utilities
 Pillow>=10.0.0

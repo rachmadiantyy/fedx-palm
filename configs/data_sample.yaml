@@ -4,7 +4,7 @@
 # Format: YOLOv11
 #
 # To download the dataset, run:
-#   python scripts/download_dataset.py --api-key YOUR_ROBOFLOW_API_KEY --split-clients 3
+#   python scripts/download_dataset.py --api-key YOUR_ROBOFLOW_API_KEY --split-clients 4
 
 # Dataset root directory
 path: /app/data
@@ -14,11 +14,13 @@ train: images/train
 val: images/val
 
 # Number of classes
-nc: 4
+nc: 6
 
-# Class names for Palm Fruit Ripeness levels
+# Class names for Palm Fruit Ripeness levels (6 classes)
 names:
-  0: unripe
-  1: underripe
-  2: ripe
-  3: overripe
+  0: Unripe
+  1: Underripe
+  2: Ripe
+  3: Overripe
+  4: Abnormal
+  5: Empty Bunch
