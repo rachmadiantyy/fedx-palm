@@ -16,7 +16,7 @@ services:
       - FL_MIN_CLIENTS=2
       - FL_AGGREGATION=fedavg
       - FL_MODEL_VARIANT=yolo11n.pt
-      - FL_NUM_CLASSES=80
+      - FL_NUM_CLASSES=4
       - DP_ENABLED=true
       - DP_EPSILON=1.0
       - DP_DELTA=1e-5
@@ -46,6 +46,7 @@ services:
       --client-id client_1
       --server-url http://fl-server:8080
       --data-config /app/data/data.yaml
+      --num-classes 4
       --local-epochs 2
       --batch-size 8
       --dp-enabled
@@ -68,6 +69,7 @@ services:
       --client-id client_2
       --server-url http://fl-server:8080
       --data-config /app/data/data.yaml
+      --num-classes 4
       --local-epochs 2
       --batch-size 8
       --dp-enabled

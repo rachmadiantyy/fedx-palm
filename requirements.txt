@@ -28,6 +28,9 @@ pydantic>=2.5.0
 loguru>=0.7.0
 tqdm>=4.66.0
 
+# Dataset Management
+roboflow>=1.1.0
+
 # Utilities
 Pillow>=10.0.0
 pandas>=2.0.0

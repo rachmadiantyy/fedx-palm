@@ -1,5 +1,6 @@
 # FedX-PALM Server Configuration
 # ================================
+# Palm Fruit Ripeness Detection - Federated Learning Server
 
 server:
   host: "0.0.0.0"
@@ -17,7 +18,7 @@ federated_learning:
 # Model Configuration
 model:
   variant: "yolo11n.pt"  # Options: yolo11n, yolo11s, yolo11m, yolo11l, yolo11x
-  num_classes: 80
+  num_classes: 4  # Palm fruit ripeness: unripe, underripe, ripe, overripe
   imgsz: 640
   pretrained: true
   freeze_backbone: false

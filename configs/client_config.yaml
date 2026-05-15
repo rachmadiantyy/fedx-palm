@@ -1,5 +1,6 @@
 # FedX-PALM Client Configuration
 # ================================
+# Palm Fruit Ripeness Detection - Federated Learning Client
 
 client:
   id: "client_1"  # Override with --client-id or CLIENT_ID env var
@@ -27,7 +28,7 @@ data:
 # Model Settings
 model:
   variant: "yolo11n.pt"
-  num_classes: 80
+  num_classes: 4  # Palm fruit ripeness: unripe, underripe, ripe, overripe
   freeze_backbone: false
 
 # Local Differential Privacy
