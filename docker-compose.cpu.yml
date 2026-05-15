@@ -1,0 +1,126 @@
+# FedX-PALM: CPU-only Docker Compose (development/testing)
+# Same architecture as GPU version but without NVIDIA runtime
+
+version: "3.8"
+
+services:
+  fl-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    container_name: fedx-palm-server
+    ports:
+      - "8080:8080"
+    environment:
+      - CUDA_VISIBLE_DEVICES=""
+    volumes:
+      - server_checkpoints:/app/checkpoints
+      - ./configs:/app/configs:ro
+    networks:
+      - fed-network
+    restart: unless-stopped
+    command: >
+      --address 0.0.0.0:8080
+      --num-rounds 10
+      --num-classes 6
+      --min-clients 4
+
+  fl-client-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: fedx-palm-client-1
+    environment:
+      - CUDA_VISIBLE_DEVICES=""
+    volumes:
+      - ./data/client_1:/app/data:ro
+    networks:
+      - fed-network
+    depends_on:
+      - fl-server
+    restart: unless-stopped
+    command: >
+      --server fl-server:8080
+      --client-id client_1
+      --data-config /app/data/data.yaml
+      --num-classes 6
+      --local-epochs 2
+      --batch-size 8
+      --privacy moderate
+
+  fl-client-2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: fedx-palm-client-2
+    environment:
+      - CUDA_VISIBLE_DEVICES=""
+    volumes:
+      - ./data/client_2:/app/data:ro
+    networks:
+      - fed-network
+    depends_on:
+      - fl-server
+    restart: unless-stopped
+    command: >
+      --server fl-server:8080
+      --client-id client_2
+      --data-config /app/data/data.yaml
+      --num-classes 6
+      --local-epochs 2
+      --batch-size 8
+      --privacy moderate
+
+  fl-client-3:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: fedx-palm-client-3
+    environment:
+      - CUDA_VISIBLE_DEVICES=""
+    volumes:
+      - ./data/client_3:/app/data:ro
+    networks:
+      - fed-network
+    depends_on:
+      - fl-server
+    restart: unless-stopped
+    command: >
+      --server fl-server:8080
+      --client-id client_3
+      --data-config /app/data/data.yaml
+      --num-classes 6
+      --local-epochs 2
+      --batch-size 8
+      --privacy moderate
+
+  fl-client-4:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: fedx-palm-client-4
+    environment:
+      - CUDA_VISIBLE_DEVICES=""
+    volumes:
+      - ./data/client_4:/app/data:ro
+    networks:
+      - fed-network
+    depends_on:
+      - fl-server
+    restart: unless-stopped
+    command: >
+      --server fl-server:8080
+      --client-id client_4
+      --data-config /app/data/data.yaml
+      --num-classes 6
+      --local-epochs 2
+      --batch-size 8
+      --privacy moderate
+
+networks:
+  fed-network:
+    driver: bridge
+
+volumes:
+  server_checkpoints:
+    driver: local

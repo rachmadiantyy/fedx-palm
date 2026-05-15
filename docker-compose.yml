@@ -1,0 +1,232 @@
+# FedX-PALM: Federated Explainable Framework for Palm Fruit Ripeness
+# Docker Compose - Full GPU Deployment
+#
+# Thesis Architecture (Section 3.2.2):
+# - 1 Server Aggregator (FedAvg via Flower)
+# - 4 Client Nodes (Dockerized, Non-IID data, DP-SGD)
+# - Bridge network (fed-network) for FL communication
+# - Read-only data mounts for Zero-Trust isolation
+#
+# Communication: Flower gRPC on port 8080
+# Privacy: Opacus DP-SGD (configurable ε per client)
+
+version: "3.8"
+
+services:
+  # ============================================
+  # FL Server Aggregator (thesis Section 3.1.1)
+  # ============================================
+  fl-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    container_name: fedx-palm-server
+    ports:
+      - "8080:8080"
+      - "6006:6006"  # TensorBoard monitoring
+    environment:
+      - FL_NUM_ROUNDS=100
+      - FL_MIN_CLIENTS=4
+      - FL_MODEL_VARIANT=yolo11n.pt
+      - FL_NUM_CLASSES=6
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - server_checkpoints:/app/checkpoints
+      - server_logs:/app/logs
+      - ./configs:/app/configs:ro
+    networks:
+      - fed-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    command: >
+      --address 0.0.0.0:8080
+      --num-rounds 100
+      --model yolo11n.pt
+      --num-classes 6
+      --min-clients 4
+      --checkpoint-dir /app/checkpoints
+
+  # ============================================
+  # Client A (α=0.1) - Dominated by Unripe/Underripe
+  # Thesis Table 3.3: highly skewed Non-IID
+  # ============================================
+  fl-client-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: fedx-palm-client-1
+    environment:
+      - CLIENT_ID=client_1
+      - DIRICHLET_ALPHA=0.1
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./data/client_1:/app/data:ro  # Read-only (thesis Section 3.2.3.2)
+      - client1_results:/app/results
+    networks:
+      - fed-network
+    depends_on:
+      - fl-server
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    command: >
+      --server fl-server:8080
+      --client-id client_1
+      --data-config /app/data/data.yaml
+      --num-classes 6
+      --local-epochs 5
+      --batch-size 16
+      --lr 0.01
+      --privacy moderate
+
+  # ============================================
+  # Client B (α=0.3) - Dominated by Underripe/Ripe
+  # Thesis Table 3.3: moderately skewed Non-IID
+  # ============================================
+  fl-client-2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: fedx-palm-client-2
+    environment:
+      - CLIENT_ID=client_2
+      - DIRICHLET_ALPHA=0.3
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./data/client_2:/app/data:ro
+      - client2_results:/app/results
+    networks:
+      - fed-network
+    depends_on:
+      - fl-server
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    command: >
+      --server fl-server:8080
+      --client-id client_2
+      --data-config /app/data/data.yaml
+      --num-classes 6
+      --local-epochs 5
+      --batch-size 16
+      --lr 0.01
+      --privacy moderate
+
+  # ============================================
+  # Client C (α=0.5) - Fairly balanced
+  # Thesis Table 3.3: fairly balanced distribution
+  # ============================================
+  fl-client-3:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: fedx-palm-client-3
+    environment:
+      - CLIENT_ID=client_3
+      - DIRICHLET_ALPHA=0.5
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./data/client_3:/app/data:ro
+      - client3_results:/app/results
+    networks:
+      - fed-network
+    depends_on:
+      - fl-server
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    command: >
+      --server fl-server:8080
+      --client-id client_3
+      --data-config /app/data/data.yaml
+      --num-classes 6
+      --local-epochs 5
+      --batch-size 16
+      --lr 0.01
+      --privacy moderate
+
+  # ============================================
+  # Client D (α=0.7) - Abnormal/Empty Bunch emphasis
+  # Thesis Table 3.3: near-balanced, minority class focus
+  # ============================================
+  fl-client-4:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: fedx-palm-client-4
+    environment:
+      - CLIENT_ID=client_4
+      - DIRICHLET_ALPHA=0.7
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./data/client_4:/app/data:ro
+      - client4_results:/app/results
+    networks:
+      - fed-network
+    depends_on:
+      - fl-server
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    command: >
+      --server fl-server:8080
+      --client-id client_4
+      --data-config /app/data/data.yaml
+      --num-classes 6
+      --local-epochs 5
+      --batch-size 16
+      --lr 0.01
+      --privacy moderate
+
+# ============================================
+# Network (thesis Section 3.2.3.1: fed-network)
+# ============================================
+networks:
+  fed-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  server_checkpoints:
+    driver: local
+  server_logs:
+    driver: local
+  client1_results:
+    driver: local
+  client2_results:
+    driver: local
+  client3_results:
+    driver: local
+  client4_results:
+    driver: local

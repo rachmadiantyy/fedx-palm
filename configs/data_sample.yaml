@@ -1,0 +1,26 @@
+# Palm Fruit Ripeness Detection - Data Configuration
+# ===================================================
+# Dataset: Roboflow "palm-fruit-ripeness-detection-f6sac-ccb2z" (version 2)
+# Format: YOLOv11
+#
+# To download the dataset, run:
+#   python scripts/download_dataset.py --api-key YOUR_ROBOFLOW_API_KEY --split-clients 4
+
+# Dataset root directory
+path: /app/data
+
+# Train/Val splits (relative to path)
+train: images/train
+val: images/val
+
+# Number of classes
+nc: 6
+
+# Class names for Palm Fruit Ripeness levels (6 classes)
+names:
+  0: Unripe
+  1: Underripe
+  2: Ripe
+  3: Overripe
+  4: Abnormal
+  5: Empty Bunch

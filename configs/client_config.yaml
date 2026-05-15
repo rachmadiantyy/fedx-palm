@@ -1,0 +1,64 @@
+# FedX-PALM Client Configuration
+# ================================
+# Palm Fruit Ripeness Detection - Federated Learning Client
+
+client:
+  id: "client_1"  # Override with --client-id or CLIENT_ID env var
+  server_url: "http://localhost:8080"
+
+# Local Training Settings
+training:
+  local_epochs: 5
+  batch_size: 16
+  learning_rate: 0.01
+  imgsz: 640
+  optimizer: "SGD"
+  momentum: 0.937
+  weight_decay: 0.0005
+  patience: 10
+
+# Data Configuration
+data:
+  config_path: "./data/data.yaml"
+  augmentation: true
+  mosaic: 1.0
+  mixup: 0.0
+  copy_paste: 0.0
+
+# Model Settings
+model:
+  variant: "yolo11n.pt"
+  num_classes: 6  # Palm fruit ripeness: Unripe, Underripe, Ripe, Overripe, Abnormal, Empty Bunch
+  freeze_backbone: false
+
+# Local Differential Privacy
+differential_privacy:
+  enabled: true
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+  noise_multiplier: 1.0
+
+# FedProx Settings
+fedprox:
+  enabled: false
+  mu: 0.01  # Proximal term coefficient
+
+# XAI Settings
+explainability:
+  enabled: true
+  method: "grad-cam"  # Options: grad-cam, shap, both
+  generate_every_n_rounds: 5
+  privacy_epsilon: 1.0  # Privacy budget for explanations
+  output_dir: "./xai_reports"
+
+# Communication
+communication:
+  max_retries: 3
+  retry_delay: 5.0
+  timeout: 120
+
+# Logging
+logging:
+  level: "INFO"
+  file: "./logs/client.log"
