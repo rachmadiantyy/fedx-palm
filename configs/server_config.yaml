@@ -10,7 +10,7 @@ server:
 # Federated Learning Settings
 federated_learning:
   num_rounds: 100
-  min_clients: 2
+  min_clients: 4
   fraction_fit: 1.0  # Fraction of clients to select per round
   aggregation_strategy: "fedavg"  # Options: fedavg, fedprox
   fedprox_mu: 0.01  # Proximal term (only used with fedprox)

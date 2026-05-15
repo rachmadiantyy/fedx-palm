@@ -16,7 +16,7 @@ services:
       - "8080:8080"
     environment:
       - FL_NUM_ROUNDS=100
-      - FL_MIN_CLIENTS=2
+      - FL_MIN_CLIENTS=4
       - FL_AGGREGATION=fedavg
       - FL_MODEL_VARIANT=yolo11n.pt
       - FL_NUM_CLASSES=4
@@ -182,6 +182,51 @@ services:
       --dp-enabled
       --dp-epsilon 1.0
 
+  # ============================================
+  # Federated Learning Client 4
+  # ============================================
+  fl-client-4:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: fedx-palm-client-4
+    environment:
+      - CLIENT_ID=client_4
+      - SERVER_URL=http://fl-server:8080
+      - DATA_CONFIG=/app/data/data.yaml
+      - FL_LOCAL_EPOCHS=5
+      - FL_BATCH_SIZE=16
+      - FL_LEARNING_RATE=0.01
+      - DP_ENABLED=true
+      - DP_EPSILON=1.0
+      - DP_MAX_GRAD_NORM=1.0
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./data/client_4:/app/data
+      - client4_results:/app/client_results
+    networks:
+      - fl-network
+    depends_on:
+      fl-server:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    command: >
+      --client-id client_4
+      --server-url http://fl-server:8080
+      --data-config /app/data/data.yaml
+      --num-classes 4
+      --local-epochs 5
+      --batch-size 16
+      --dp-enabled
+      --dp-epsilon 1.0
+
 # ============================================
 # Networks
 # ============================================
@@ -205,4 +250,6 @@ volumes:
   client2_results:
     driver: local
   client3_results:
+    driver: local
+  client4_results:
     driver: local

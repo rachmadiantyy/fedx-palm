@@ -19,24 +19,21 @@ A privacy-preserving federated learning system for object detection using **YOLO
 │  │  └─────────────┘  └──────────────┘  └────────────────┘  │   │
 │  └──────────────────────────┬───────────────────────────────┘   │
 │                             │ REST API                           │
-│           ┌─────────────────┼─────────────────┐                 │
-│           │                 │                 │                  │
-│  ┌────────▼───────┐ ┌──────▼────────┐ ┌──────▼────────┐       │
-│  │   FL Client 1  │ │  FL Client 2  │ │  FL Client 3  │       │
-│  │ ┌────────────┐ │ │ ┌───────────┐ │ │ ┌───────────┐ │       │
-│  │ │  YOLOv11   │ │ │ │  YOLOv11  │ │ │ │  YOLOv11  │ │       │
-│  │ │  (Local)   │ │ │ │  (Local)  │ │ │ │  (Local)  │ │       │
-│  │ ├────────────┤ │ │ ├───────────┤ │ │ ├───────────┤ │       │
-│  │ │  Local DP  │ │ │ │ Local DP  │ │ │ │ Local DP  │ │       │
-│  │ │  (Clip+    │ │ │ │ (Clip+   │ │ │ │ (Clip+   │ │       │
-│  │ │   Noise)   │ │ │ │  Noise)  │ │ │ │  Noise)  │ │       │
-│  │ ├────────────┤ │ │ ├───────────┤ │ │ ├───────────┤ │       │
-│  │ │    XAI     │ │ │ │   XAI    │ │ │ │   XAI    │ │       │
-│  │ │ (Grad-CAM  │ │ │ │(Grad-CAM │ │ │ │(Grad-CAM │ │       │
-│  │ │  + SHAP)   │ │ │ │ + SHAP)  │ │ │ │ + SHAP)  │ │       │
-│  │ └────────────┘ │ │ └───────────┘ │ │ └───────────┘ │       │
-│  │  Private Data  │ │ Private Data  │ │ Private Data  │       │
-│  └────────────────┘ └───────────────┘ └───────────────┘       │
+│        ┌────────────────────┼────────────────────┐              │
+│        │          ┌─────────┼─────────┐          │              │
+│  ┌─────▼─────┐ ┌──▼──────┐ ┌▼────────┐ ┌───────▼───────┐     │
+│  │ Client 1  │ │Client 2 │ │Client 3 │ │   Client 4    │     │
+│  │ YOLOv11   │ │YOLOv11  │ │YOLOv11  │ │   YOLOv11     │     │
+│  │ Local DP  │ │Local DP │ │Local DP │ │   Local DP    │     │
+│  │ XAI       │ │XAI      │ │XAI      │ │   XAI         │     │
+│  │(Grad-CAM) │ │(Grad-CAM│ │(Grad-CAM│ │  (Grad-CAM)   │     │
+│  │ + SHAP)   │ │ + SHAP) │ │ + SHAP) │ │   + SHAP)     │     │
+│  │Private    │ │Private  │ │Private  │ │  Private      │     │
+│  │  Data     │ │ Data    │ │ Data    │ │   Data        │     │
+│  └───────────┘ └─────────┘ └─────────┘ └───────────────┘     │
+│                                                                  │
+│  * Clients run on Google Colab Pro (GPU: T4/A100)               │
+│  * Server runs on VPS (CPU only - aggregation)                  │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -150,7 +147,9 @@ data/
 │   └── data.yaml
 ├── client_2/
 │   └── ...
-└── client_3/
+├── client_3/
+│   └── ...
+└── client_4/
     └── ...
 ```
 
@@ -194,7 +193,7 @@ curl http://localhost:8080/round_history
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `num_rounds` | 100 | Total federated learning rounds |
-| `min_clients` | 2 | Minimum clients per round |
+| `min_clients` | 4 | Minimum clients per round |
 | `fraction_fit` | 1.0 | Client selection fraction |
 | `aggregation_strategy` | fedavg | Aggregation method (fedavg/fedprox) |
 | `dp_epsilon` | 1.0 | Total privacy budget |

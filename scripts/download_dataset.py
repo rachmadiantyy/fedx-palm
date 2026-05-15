@@ -259,7 +259,7 @@ def main():
     parser.add_argument(
         "--split-clients",
         type=int,
-        default=3,
+        default=4,
         help="Number of FL clients to split data for"
     )
     parser.add_argument(
