@@ -28,7 +28,7 @@ data:
 # Model Settings
 model:
   variant: "yolo11n.pt"
-  num_classes: 6  # Palm fruit ripeness: Unripe, Underripe, Ripe, Overripe, Abnormal, Empty Bunch
+  num_classes: 6  # Palm ripeness (Roboflow order): Abnormal, Empty Bunch, Overripe, Ripe, Underripe, Unripe
   freeze_backbone: false
 
 # Local Differential Privacy

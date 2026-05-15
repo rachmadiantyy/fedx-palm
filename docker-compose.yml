@@ -53,8 +53,8 @@ services:
       --checkpoint-dir /app/checkpoints
 
   # ============================================
-  # Client A (α=0.1) - Dominated by Unripe/Underripe
-  # Thesis Table 3.3: highly skewed Non-IID
+  # Client A (α=0.1) - Highly skewed Non-IID
+  # Thesis Table 3.3: 1-2 classes dominate (~70-90%)
   # ============================================
   fl-client-1:
     build:
@@ -91,8 +91,8 @@ services:
       --privacy moderate
 
   # ============================================
-  # Client B (α=0.3) - Dominated by Underripe/Ripe
-  # Thesis Table 3.3: moderately skewed Non-IID
+  # Client B (α=0.3) - Moderately skewed Non-IID
+  # Thesis Table 3.3: 2-3 classes dominate
   # ============================================
   fl-client-2:
     build:
@@ -167,8 +167,8 @@ services:
       --privacy moderate
 
   # ============================================
-  # Client D (α=0.7) - Abnormal/Empty Bunch emphasis
-  # Thesis Table 3.3: near-balanced, minority class focus
+  # Client D (α=0.7) - Near-uniform (IID-like)
+  # Thesis Table 3.3: high α → distribution close to uniform
   # ============================================
   fl-client-4:
     build:

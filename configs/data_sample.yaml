@@ -17,10 +17,11 @@ val: images/val
 nc: 6
 
 # Class names for Palm Fruit Ripeness levels (6 classes)
+# Order follows Roboflow source dataset (alphabetical)
 names:
-  0: Unripe
-  1: Underripe
-  2: Ripe
-  3: Overripe
-  4: Abnormal
-  5: Empty Bunch
+  0: Abnormal
+  1: Empty Bunch
+  2: Overripe
+  3: Ripe
+  4: Underripe
+  5: Unripe
