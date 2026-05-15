@@ -1,0 +1,47 @@
+# FedX-PALM Server Configuration
+# ================================
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  workers: 4
+
+# Federated Learning Settings
+federated_learning:
+  num_rounds: 100
+  min_clients: 2
+  fraction_fit: 1.0  # Fraction of clients to select per round
+  aggregation_strategy: "fedavg"  # Options: fedavg, fedprox
+  fedprox_mu: 0.01  # Proximal term (only used with fedprox)
+
+# Model Configuration
+model:
+  variant: "yolo11n.pt"  # Options: yolo11n, yolo11s, yolo11m, yolo11l, yolo11x
+  num_classes: 80
+  imgsz: 640
+  pretrained: true
+  freeze_backbone: false
+  freeze_until: 10  # Freeze layers up to this index
+
+# Differential Privacy Configuration
+differential_privacy:
+  enabled: true
+  epsilon: 1.0        # Total privacy budget
+  delta: 1.0e-5       # Privacy failure probability
+  max_grad_norm: 1.0  # Maximum gradient norm for clipping
+  noise_multiplier: 1.0  # Noise scale multiplier
+  mechanism: "gaussian"  # Options: gaussian, laplacian
+  accountant: "moments"  # Options: moments, simple_composition
+
+# Checkpointing
+checkpointing:
+  enabled: true
+  directory: "./checkpoints"
+  save_every_n_rounds: 10
+  keep_last_n: 5
+
+# Logging
+logging:
+  level: "INFO"
+  file: "./logs/server.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

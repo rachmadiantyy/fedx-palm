@@ -1,0 +1,205 @@
+# FedX-PALM: Federated Learning with Explainable AI & Differential Privacy
+# Docker Compose orchestration for FL server and multiple clients
+
+version: "3.8"
+
+services:
+  # ============================================
+  # Federated Learning Server
+  # ============================================
+  fl-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    container_name: fedx-palm-server
+    ports:
+      - "8080:8080"
+    environment:
+      - FL_NUM_ROUNDS=100
+      - FL_MIN_CLIENTS=2
+      - FL_AGGREGATION=fedavg
+      - FL_MODEL_VARIANT=yolo11n.pt
+      - FL_NUM_CLASSES=80
+      - DP_ENABLED=true
+      - DP_EPSILON=1.0
+      - DP_DELTA=1e-5
+      - DP_MAX_GRAD_NORM=1.0
+      - DP_NOISE_MULTIPLIER=1.0
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - server_checkpoints:/app/checkpoints
+      - server_logs:/app/logs
+      - ./configs:/app/configs:ro
+    networks:
+      - fl-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # Federated Learning Client 1
+  # ============================================
+  fl-client-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: fedx-palm-client-1
+    environment:
+      - CLIENT_ID=client_1
+      - SERVER_URL=http://fl-server:8080
+      - DATA_CONFIG=/app/data/data.yaml
+      - FL_LOCAL_EPOCHS=5
+      - FL_BATCH_SIZE=16
+      - FL_LEARNING_RATE=0.01
+      - DP_ENABLED=true
+      - DP_EPSILON=1.0
+      - DP_MAX_GRAD_NORM=1.0
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./data/client_1:/app/data
+      - client1_results:/app/client_results
+    networks:
+      - fl-network
+    depends_on:
+      fl-server:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    command: >
+      --client-id client_1
+      --server-url http://fl-server:8080
+      --data-config /app/data/data.yaml
+      --local-epochs 5
+      --batch-size 16
+      --dp-enabled
+      --dp-epsilon 1.0
+
+  # ============================================
+  # Federated Learning Client 2
+  # ============================================
+  fl-client-2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: fedx-palm-client-2
+    environment:
+      - CLIENT_ID=client_2
+      - SERVER_URL=http://fl-server:8080
+      - DATA_CONFIG=/app/data/data.yaml
+      - FL_LOCAL_EPOCHS=5
+      - FL_BATCH_SIZE=16
+      - FL_LEARNING_RATE=0.01
+      - DP_ENABLED=true
+      - DP_EPSILON=1.0
+      - DP_MAX_GRAD_NORM=1.0
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./data/client_2:/app/data
+      - client2_results:/app/client_results
+    networks:
+      - fl-network
+    depends_on:
+      fl-server:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    command: >
+      --client-id client_2
+      --server-url http://fl-server:8080
+      --data-config /app/data/data.yaml
+      --local-epochs 5
+      --batch-size 16
+      --dp-enabled
+      --dp-epsilon 1.0
+
+  # ============================================
+  # Federated Learning Client 3
+  # ============================================
+  fl-client-3:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: fedx-palm-client-3
+    environment:
+      - CLIENT_ID=client_3
+      - SERVER_URL=http://fl-server:8080
+      - DATA_CONFIG=/app/data/data.yaml
+      - FL_LOCAL_EPOCHS=5
+      - FL_BATCH_SIZE=16
+      - FL_LEARNING_RATE=0.01
+      - DP_ENABLED=true
+      - DP_EPSILON=1.0
+      - DP_MAX_GRAD_NORM=1.0
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./data/client_3:/app/data
+      - client3_results:/app/client_results
+    networks:
+      - fl-network
+    depends_on:
+      fl-server:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    command: >
+      --client-id client_3
+      --server-url http://fl-server:8080
+      --data-config /app/data/data.yaml
+      --local-epochs 5
+      --batch-size 16
+      --dp-enabled
+      --dp-epsilon 1.0
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  fl-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  server_checkpoints:
+    driver: local
+  server_logs:
+    driver: local
+  client1_results:
+    driver: local
+  client2_results:
+    driver: local
+  client3_results:
+    driver: local

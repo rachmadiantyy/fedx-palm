@@ -1,0 +1,27 @@
+# Docker ignore file
+.git
+.gitignore
+.dockerignore
+__pycache__
+*.pyc
+*.pyo
+.env
+.venv
+venv/
+env/
+*.egg-info
+dist/
+build/
+.pytest_cache
+.mypy_cache
+*.log
+checkpoints/
+runs/
+wandb/
+data/
+*.pt
+*.pth
+!yolo11n.pt
+README.md
+LICENSE
+docker-compose*.yml
