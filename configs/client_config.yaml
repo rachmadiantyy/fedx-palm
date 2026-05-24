@@ -4,23 +4,33 @@
 
 client:
   id: "client_1"  # Override with --client-id or CLIENT_ID env var
-  server_url: "http://localhost:8080"
+  server_url: "http://localhost:5000"  # Flower gRPC (thesis Section 3.2.3.1)
 
-# Local Training Settings
+# Local Training Settings (thesis Table 3.5)
 training:
   local_epochs: 5
   batch_size: 16
   learning_rate: 0.01
   imgsz: 640
-  optimizer: "SGD"
+  optimizer: "AdamW"  # thesis Table 3.5
   momentum: 0.937
   weight_decay: 0.0005
   patience: 10
 
-# Data Configuration
+# Data Configuration & Augmentation (thesis Section 3.3.2)
 data:
   config_path: "./data/data.yaml"
   augmentation: true
+  # Geometric augmentation
+  degrees: 15.0      # Rotation ±15° (thesis Section 3.3.2 item 3)
+  fliplr: 0.5        # Horizontal flip probability
+  scale: 0.2         # Random scaling 0.8–1.2 (1.0 ± scale)
+  translate: 0.1     # Translation fraction
+  # Photometric augmentation (HSV jitter)
+  hsv_h: 0.015       # Hue jitter
+  hsv_s: 0.7         # Saturation jitter
+  hsv_v: 0.4         # Value jitter
+  # Mosaic augmentation (YOLO-specific)
   mosaic: 1.0
   mixup: 0.0
   copy_paste: 0.0

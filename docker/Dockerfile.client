@@ -2,7 +2,7 @@
 # FL Client Node with YOLOv11, Opacus DP-SGD, and Grad-CAM++ XAI
 # Thesis Section 3.1.2: Client Nodes (Dockerized)
 
-FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -39,4 +39,4 @@ VOLUME ["/app/data"]
 
 # Run FL Client (Flower)
 ENTRYPOINT ["python", "-m", "client.fed_client"]
-CMD ["--server", "fl-server:8080", "--client-id", "client_1", "--data-config", "/app/data/data.yaml", "--privacy", "moderate"]
+CMD ["--server", "fl-server:5000", "--client-id", "client_1", "--data-config", "/app/data/data.yaml", "--privacy", "moderate"]

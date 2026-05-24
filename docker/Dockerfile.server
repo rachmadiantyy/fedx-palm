@@ -2,7 +2,7 @@
 # FL Aggregator Server with Flower (flwr) framework
 # Thesis Section 3.1.1: Server Aggregator
 
-FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -34,13 +34,13 @@ COPY . .
 # Create directories
 RUN mkdir -p /app/checkpoints /app/logs
 
-# Expose Flower gRPC port
-EXPOSE 8080
+# Expose Flower gRPC port (thesis Section 3.2.3.1) and TensorBoard port
+EXPOSE 5000 6006
 
 # Health check (Flower uses gRPC, basic TCP check)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import socket; s=socket.socket(); s.connect(('localhost',8080)); s.close()" || exit 1
+    CMD python -c "import socket; s=socket.socket(); s.connect(('localhost',5000)); s.close()" || exit 1
 
 # Run FL Server (Flower)
 ENTRYPOINT ["python", "-m", "server.fed_server"]
-CMD ["--address", "0.0.0.0:8080", "--num-rounds", "100", "--num-classes", "6", "--min-clients", "4"]
+CMD ["--address", "0.0.0.0:5000", "--num-rounds", "100", "--num-classes", "6", "--min-clients", "4"]

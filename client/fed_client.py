@@ -311,7 +311,9 @@ class FedXPalmClient(fl.client.NumPyClient):
         - Optimizer: AdamW (thesis Table 3.5)
         - Loss: CIoU (thesis Section 2.2.1)
         - Epochs: 5 per round (thesis Table 3.5)
-        - Input: 640×640 (thesis Table 3.5)
+        - Input: 640×640 letterbox (thesis Table 3.5)
+        - Augmentation (thesis Section 3.3.2):
+          rotation ±15°, HSV jitter, horizontal flip, scaling 0.8–1.2, mosaic
         """
         try:
             results = self.model.train(
@@ -328,6 +330,15 @@ class FedXPalmClient(fl.client.NumPyClient):
                 exist_ok=True,
                 project=str(self.save_dir / "runs"),
                 name=f"round_{self.current_round}",
+                # Augmentation parameters (thesis Section 3.3.2)
+                degrees=15.0,    # Rotation ±15°
+                fliplr=0.5,      # Horizontal flip
+                scale=0.2,       # Random scaling 0.8–1.2 (1.0 ± 0.2)
+                translate=0.1,   # Translation
+                hsv_h=0.015,     # Hue jitter
+                hsv_s=0.7,       # Saturation jitter
+                hsv_v=0.4,       # Value jitter
+                mosaic=1.0,      # Mosaic augmentation (YOLO-specific)
             )
 
             # Extract training metrics
@@ -463,7 +474,7 @@ class FedXPalmClient(fl.client.NumPyClient):
 
 
 def start_flower_client(
-    server_address: str = "localhost:8080",
+    server_address: str = "localhost:5000",
     client_id: str = "client_1",
     data_config: str = "./data/client_1/data.yaml",
     model_variant: str = "yolo11n.pt",
@@ -521,7 +532,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="FedX-PALM FL Client (Flower)")
-    parser.add_argument("--server", default="localhost:8080", help="Server address")
+    parser.add_argument("--server", default="localhost:5000", help="Server address")
     parser.add_argument("--client-id", required=True, help="Client ID (client_1..client_4)")
     parser.add_argument("--data-config", required=True, help="Path to data.yaml")
     parser.add_argument("--model", default="yolo11n.pt", help="YOLOv11 variant")

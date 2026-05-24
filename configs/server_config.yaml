@@ -4,7 +4,7 @@
 
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 5000  # Flower gRPC FL endpoint (thesis Section 3.2.3.1)
   workers: 4
 
 # Federated Learning Settings
@@ -32,7 +32,7 @@ differential_privacy:
   max_grad_norm: 1.0  # Maximum gradient norm for clipping
   noise_multiplier: 1.0  # Noise scale multiplier
   mechanism: "gaussian"  # Options: gaussian, laplacian
-  accountant: "moments"  # Options: moments, simple_composition
+  accountant: "rdp"  # Rényi DP (thesis Section 3.4.3); options: rdp, moments, simple_composition
 
 # Checkpointing
 checkpointing:

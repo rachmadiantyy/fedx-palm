@@ -184,7 +184,7 @@ def create_fl_server_app(server: FederatedServer) -> Flask:
 
 def run_server(
     host: str = "0.0.0.0",
-    port: int = 8080,
+    port: int = 5000,
     model_variant: str = "yolo11n.pt",
     num_classes: int = 80,
     num_rounds: int = 100,
@@ -243,7 +243,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="FedX-PALM Federated Learning Server")
     parser.add_argument("--host", default="0.0.0.0", help="Server host")
-    parser.add_argument("--port", type=int, default=8080, help="Server port")
+    parser.add_argument("--port", type=int, default=5000, help="Server port")
     parser.add_argument("--model", default="yolo11n.pt", help="YOLOv11 variant")
     parser.add_argument("--num-classes", type=int, default=80, help="Number of classes")
     parser.add_argument("--num-rounds", type=int, default=100, help="Number of FL rounds")

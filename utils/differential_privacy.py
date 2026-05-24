@@ -8,11 +8,12 @@ as specified in thesis Sections 2.5 and 3.4:
 - Gaussian Mechanism (Eq. 3.3): g̃ = (1/B) * (Σ ḡᵢ + N(0, σ²C²I))
 - Privacy Accounting: Rényi Differential Privacy (RDP)
 
-Privacy Budget Scenarios (thesis Table 3.4):
-- Baseline: ε=∞, σ=0.0 (No Privacy)
-- Weak Privacy: ε=8.0, σ=0.8
-- Moderate Privacy: ε=4.0, σ=1.5
-- Strong Privacy: ε=1.0, σ=3.2
+Privacy Budget Scenarios (thesis Table 3.4 + σ range Table 3.5):
+- Baseline:        ε=∞,    σ=0.0  (No Privacy)
+- Very Weak:       ε=12.0, σ=0.5  (σ lower bound, Table 3.5)
+- Weak Privacy:    ε=8.0,  σ=0.8
+- Moderate:        ε=4.0,  σ=1.5
+- Strong Privacy:  ε=1.0,  σ=3.2
 
 DP Strategies (thesis Section 3.4.5):
 - Full DP: Noise on all layers (backbone + neck + detection head)
@@ -72,6 +73,15 @@ class PrivacyConfig:
             epsilon=float('inf'),
             noise_multiplier=0.0,
             strategy=DPStrategy.NONE
+        )
+
+    @classmethod
+    def very_weak_privacy(cls) -> "PrivacyConfig":
+        """Very weak privacy (ε≈12.0, σ=0.5) - thesis Table 3.5 σ range lower bound."""
+        return cls(
+            epsilon=12.0,
+            noise_multiplier=0.5,
+            strategy=DPStrategy.FULL_DP
         )
 
     @classmethod
@@ -485,21 +495,24 @@ def get_privacy_config(scenario: str) -> PrivacyConfig:
     """
     Get privacy configuration for a specific scenario.
 
-    Scenarios from thesis Table 3.4:
-    - "baseline": ε=∞, No DP
+    Scenarios from thesis Table 3.4 (+ σ range lower bound from Table 3.5):
+    - "baseline": ε=∞, σ=0.0, No DP
+    - "very_weak": ε=12.0, σ=0.5 (σ lower bound, thesis Table 3.5)
     - "weak": ε=8.0, σ=0.8
     - "moderate": ε=4.0, σ=1.5
     - "strong": ε=1.0, σ=3.2
-    - "partial_moderate": ε=4.0, σ=1.5, head-only
+    - "partial_moderate": ε=4.0, σ=1.5, head-only (Section 3.4.5)
 
     Args:
-        scenario: One of "baseline", "weak", "moderate", "strong", "partial_moderate"
+        scenario: One of "baseline", "very_weak", "weak", "moderate",
+                  "strong", "partial_moderate"
 
     Returns:
         PrivacyConfig for the specified scenario
     """
     scenarios = {
         "baseline": PrivacyConfig.baseline,
+        "very_weak": PrivacyConfig.very_weak_privacy,
         "weak": PrivacyConfig.weak_privacy,
         "moderate": PrivacyConfig.moderate_privacy,
         "strong": PrivacyConfig.strong_privacy,
@@ -519,6 +532,7 @@ def get_all_privacy_scenarios() -> Dict[str, PrivacyConfig]:
     """Get all privacy scenarios for comparative experiments."""
     return {
         "baseline": PrivacyConfig.baseline(),
+        "very_weak": PrivacyConfig.very_weak_privacy(),
         "weak": PrivacyConfig.weak_privacy(),
         "moderate": PrivacyConfig.moderate_privacy(),
         "strong": PrivacyConfig.strong_privacy(),

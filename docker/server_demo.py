@@ -12,7 +12,7 @@ from flask import Flask, request, jsonify
 
 NUM_ROUNDS = int(os.getenv("NUM_ROUNDS", "10"))
 MIN_CLIENTS = int(os.getenv("MIN_CLIENTS", "4"))
-PORT = int(os.getenv("PORT", "8080"))
+PORT = int(os.getenv("PORT", "5000"))
 
 app = Flask(__name__)
 state = {

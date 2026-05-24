@@ -11,7 +11,7 @@ import requests
 from datetime import datetime
 
 CLIENT_ID = os.getenv("CLIENT_ID", "client_unknown")
-SERVER = os.getenv("SERVER", "fl-server:8080")
+SERVER = os.getenv("SERVER", "fl-server:5000")
 DIRICHLET_ALPHA = float(os.getenv("DIRICHLET_ALPHA", "0.5"))
 DP_EPSILON = float(os.getenv("DP_EPSILON", "4.0"))
 DP_SIGMA = float(os.getenv("DP_SIGMA", "1.5"))

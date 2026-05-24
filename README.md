@@ -171,17 +171,17 @@ docker-compose -f docker-compose.cpu.yml up --build
 
 Check server status:
 ```bash
-curl http://localhost:8080/status
+curl http://localhost:5000/status
 ```
 
 View privacy report:
 ```bash
-curl http://localhost:8080/privacy_report
+curl http://localhost:5000/privacy_report
 ```
 
 View round history:
 ```bash
-curl http://localhost:8080/round_history
+curl http://localhost:5000/round_history
 ```
 
 ---
@@ -282,7 +282,7 @@ fl-client-N:
       condition: service_healthy
   command: >
     --client-id client_N
-    --server-url http://fl-server:8080
+    --server-url http://fl-server:5000
     --data-config /app/data/data.yaml
     --local-epochs 5
     --dp-enabled
@@ -301,12 +301,12 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Run server locally
-python -m server.grpc_server --port 8080 --dp-enabled
+python -m server.grpc_server --port 5000 --dp-enabled
 
 # Run client locally (in another terminal)
 python -m client.fed_client \
   --client-id dev_client \
-  --server-url http://localhost:8080 \
+  --server-url http://localhost:5000 \
   --data-config ./data/data.yaml \
   --local-epochs 2 \
   --dp-enabled

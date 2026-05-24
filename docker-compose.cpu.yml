@@ -10,7 +10,7 @@ services:
       dockerfile: docker/Dockerfile.server
     container_name: fedx-palm-server
     ports:
-      - "8080:8080"
+      - "5000:5000"
     environment:
       - CUDA_VISIBLE_DEVICES=""
     volumes:
@@ -20,7 +20,7 @@ services:
       - fed-network
     restart: unless-stopped
     command: >
-      --address 0.0.0.0:8080
+      --address 0.0.0.0:5000
       --num-rounds 10
       --num-classes 6
       --min-clients 4
@@ -40,7 +40,7 @@ services:
       - fl-server
     restart: unless-stopped
     command: >
-      --server fl-server:8080
+      --server fl-server:5000
       --client-id client_1
       --data-config /app/data/data.yaml
       --num-classes 6
@@ -63,7 +63,7 @@ services:
       - fl-server
     restart: unless-stopped
     command: >
-      --server fl-server:8080
+      --server fl-server:5000
       --client-id client_2
       --data-config /app/data/data.yaml
       --num-classes 6
@@ -86,7 +86,7 @@ services:
       - fl-server
     restart: unless-stopped
     command: >
-      --server fl-server:8080
+      --server fl-server:5000
       --client-id client_3
       --data-config /app/data/data.yaml
       --num-classes 6
@@ -109,7 +109,7 @@ services:
       - fl-server
     restart: unless-stopped
     command: >
-      --server fl-server:8080
+      --server fl-server:5000
       --client-id client_4
       --data-config /app/data/data.yaml
       --num-classes 6

@@ -10,7 +10,7 @@ services:
       dockerfile: docker/Dockerfile.server.demo
     container_name: fedx-palm-server
     ports:
-      - "8080:8080"
+      - "5000:5000"
     environment:
       - NUM_ROUNDS=5
       - MIN_CLIENTS=4
@@ -25,7 +25,7 @@ services:
     container_name: fedx-palm-client-1
     environment:
       - CLIENT_ID=client_1
-      - SERVER=fl-server:8080
+      - SERVER=fl-server:5000
       - DIRICHLET_ALPHA=0.1
       - DP_EPSILON=4.0
       - DP_SIGMA=1.5
@@ -44,7 +44,7 @@ services:
     container_name: fedx-palm-client-2
     environment:
       - CLIENT_ID=client_2
-      - SERVER=fl-server:8080
+      - SERVER=fl-server:5000
       - DIRICHLET_ALPHA=0.3
       - DP_EPSILON=4.0
       - DP_SIGMA=1.5
@@ -63,7 +63,7 @@ services:
     container_name: fedx-palm-client-3
     environment:
       - CLIENT_ID=client_3
-      - SERVER=fl-server:8080
+      - SERVER=fl-server:5000
       - DIRICHLET_ALPHA=0.5
       - DP_EPSILON=4.0
       - DP_SIGMA=1.5
@@ -82,7 +82,7 @@ services:
     container_name: fedx-palm-client-4
     environment:
       - CLIENT_ID=client_4
-      - SERVER=fl-server:8080
+      - SERVER=fl-server:5000
       - DIRICHLET_ALPHA=0.7
       - DP_EPSILON=4.0
       - DP_SIGMA=1.5

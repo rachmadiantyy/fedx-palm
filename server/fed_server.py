@@ -40,6 +40,13 @@ import logging
 import json
 from datetime import datetime
 
+try:
+    from torch.utils.tensorboard import SummaryWriter
+    TENSORBOARD_AVAILABLE = True
+except ImportError:
+    SummaryWriter = None
+    TENSORBOARD_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,6 +77,7 @@ class FedXPalmStrategy(FedAvg):
         central_dp_enabled: bool = False,
         central_dp_noise_multiplier: float = 0.0,
         central_dp_clip_norm: float = 1.0,
+        tensorboard_log_dir: str = "./logs/tensorboard",
         **kwargs
     ):
         """
@@ -110,6 +118,16 @@ class FedXPalmStrategy(FedAvg):
         self.current_round = 0
         self.round_metrics: List[Dict] = []
         self.best_map = 0.0
+
+        # TensorBoard writer (thesis Table 3.1: TensorBoard 2.14, port 6006)
+        self.tb_writer = None
+        if TENSORBOARD_AVAILABLE:
+            tb_path = Path(tensorboard_log_dir)
+            tb_path.mkdir(parents=True, exist_ok=True)
+            self.tb_writer = SummaryWriter(log_dir=str(tb_path))
+            logger.info(f"TensorBoard logging enabled: {tb_path}")
+        else:
+            logger.warning("TensorBoard not available (install tensorboard>=2.14)")
 
         # Initialize global model
         self.initial_parameters = self._initialize_global_model()
@@ -209,6 +227,18 @@ class FedXPalmStrategy(FedAvg):
         if round_metrics.get("avg_map50"):
             metrics["avg_map50"] = round_metrics["avg_map50"]
 
+        # TensorBoard scalar logging (port 6006)
+        if self.tb_writer is not None:
+            if round_metrics.get("avg_map50") is not None:
+                self.tb_writer.add_scalar("federated/avg_map50", round_metrics["avg_map50"], server_round)
+            if round_metrics.get("min_map50") is not None:
+                self.tb_writer.add_scalar("federated/min_map50", round_metrics["min_map50"], server_round)
+            if round_metrics.get("max_map50") is not None:
+                self.tb_writer.add_scalar("federated/max_map50", round_metrics["max_map50"], server_round)
+            self.tb_writer.add_scalar("federated/num_clients", len(results), server_round)
+            self.tb_writer.add_scalar("federated/total_samples", round_metrics.get("total_samples", 0), server_round)
+            self.tb_writer.flush()
+
         return aggregated_parameters, metrics
 
     def _apply_central_dp(self, parameters: Parameters) -> Parameters:
@@ -288,7 +318,7 @@ class FedXPalmStrategy(FedAvg):
 
 
 def start_flower_server(
-    server_address: str = "0.0.0.0:8080",
+    server_address: str = "0.0.0.0:5000",
     num_rounds: int = 100,
     model_variant: str = "yolo11n.pt",
     num_classes: int = 6,
@@ -352,7 +382,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="FedX-PALM FL Server (Flower)")
-    parser.add_argument("--address", default="0.0.0.0:8080", help="Server address")
+    parser.add_argument("--address", default="0.0.0.0:5000", help="Server address")
     parser.add_argument("--num-rounds", type=int, default=100, help="Communication rounds")
     parser.add_argument("--model", default="yolo11n.pt", help="YOLOv11 variant")
     parser.add_argument("--num-classes", type=int, default=6, help="Number of classes")

@@ -7,7 +7,7 @@
 # - Bridge network (fed-network) for FL communication
 # - Read-only data mounts for Zero-Trust isolation
 #
-# Communication: Flower gRPC on port 8080
+# Communication: Flower gRPC on port 5000 (thesis Section 3.2.3.1)
 # Privacy: Opacus DP-SGD (configurable ε per client)
 
 version: "3.8"
@@ -22,7 +22,7 @@ services:
       dockerfile: docker/Dockerfile.server
     container_name: fedx-palm-server
     ports:
-      - "8080:8080"
+      - "5000:5000"
       - "6006:6006"  # TensorBoard monitoring
     environment:
       - FL_NUM_ROUNDS=100
@@ -45,7 +45,7 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     command: >
-      --address 0.0.0.0:8080
+      --address 0.0.0.0:5000
       --num-rounds 100
       --model yolo11n.pt
       --num-classes 6
@@ -81,7 +81,7 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     command: >
-      --server fl-server:8080
+      --server fl-server:5000
       --client-id client_1
       --data-config /app/data/data.yaml
       --num-classes 6
@@ -119,7 +119,7 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     command: >
-      --server fl-server:8080
+      --server fl-server:5000
       --client-id client_2
       --data-config /app/data/data.yaml
       --num-classes 6
@@ -157,7 +157,7 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     command: >
-      --server fl-server:8080
+      --server fl-server:5000
       --client-id client_3
       --data-config /app/data/data.yaml
       --num-classes 6
@@ -195,7 +195,7 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     command: >
-      --server fl-server:8080
+      --server fl-server:5000
       --client-id client_4
       --data-config /app/data/data.yaml
       --num-classes 6

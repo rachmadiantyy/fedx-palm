@@ -9,5 +9,5 @@ RUN pip install --no-cache-dir flask==3.0.0
 
 COPY docker/server_demo.py /app/server_demo.py
 
-EXPOSE 8080
+EXPOSE 5000
 CMD ["python", "server_demo.py"]
