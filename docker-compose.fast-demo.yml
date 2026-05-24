@@ -1,0 +1,80 @@
+# FedX-Palm FAST DEMO (VPS CPU-only)
+# 2 client, 1 ronde, batch=2, local_epochs=1
+# Tujuan: bukti arsitektur Bab 3.1 jalan end-to-end di Docker.
+# Hasil real (full 4-client + DP scenarios) dari Colab — lihat Bab 4.
+
+services:
+  fl-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server.cpu
+    image: fedx-palm-server-cpu:demo
+    container_name: fedx-palm-server
+    ports:
+      - "8080:8080"
+    environment:
+      - CUDA_VISIBLE_DEVICES=""
+    volumes:
+      - ./checkpoints_demo:/app/checkpoints
+    networks:
+      - fed-network
+    restart: "no"
+    command: >
+      --address 0.0.0.0:8080
+      --num-rounds 1
+      --num-classes 6
+      --min-clients 2
+
+  fl-client-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client.cpu
+    image: fedx-palm-client-cpu:demo
+    container_name: fedx-palm-client-1
+    environment:
+      - CUDA_VISIBLE_DEVICES=""
+    volumes:
+      - ./data/client_1:/app/data:ro
+      - ./results_demo/client_1:/app/results
+    depends_on:
+      - fl-server
+    networks:
+      - fed-network
+    restart: "no"
+    command: >
+      --server fl-server:8080
+      --client-id client_1
+      --data-config /app/data/data.yaml
+      --num-classes 6
+      --local-epochs 1
+      --batch-size 2
+      --no-xai
+
+  fl-client-2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client.cpu
+    image: fedx-palm-client-cpu:demo
+    container_name: fedx-palm-client-2
+    environment:
+      - CUDA_VISIBLE_DEVICES=""
+    volumes:
+      - ./data/client_2:/app/data:ro
+      - ./results_demo/client_2:/app/results
+    depends_on:
+      - fl-server
+    networks:
+      - fed-network
+    restart: "no"
+    command: >
+      --server fl-server:8080
+      --client-id client_2
+      --data-config /app/data/data.yaml
+      --num-classes 6
+      --local-epochs 1
+      --batch-size 2
+      --no-xai
+
+networks:
+  fed-network:
+    driver: bridge

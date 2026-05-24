@@ -1,0 +1,38 @@
+# FedX-Palm FL Client - CPU-only (VPS demo)
+# ~2 GB image vs ~7 GB CUDA variant. Same fed_client.py code.
+FROM python:3.10-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender1 \
+    gcc python3-dev curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN pip install --upgrade pip && \
+    pip install --index-url https://download.pytorch.org/whl/cpu \
+        torch==2.1.0 torchvision==0.16.0 && \
+    pip install \
+        ultralytics==8.3.40 \
+        flwr==1.9.0 \
+        opacus==1.5.2 \
+        numpy==1.26.4 \
+        pyyaml==6.0.1 \
+        opencv-python-headless==4.10.0.84
+
+COPY client/ /app/client/
+COPY utils/ /app/utils/
+COPY models/ /app/models/
+COPY xai/ /app/xai/
+
+RUN mkdir -p /app/results /app/logs
+
+VOLUME ["/app/data"]
+
+ENTRYPOINT ["python", "-m", "client.fed_client"]
+CMD ["--server", "fl-server:8080", "--client-id", "client_1", "--data-config", "/app/data/data.yaml"]
