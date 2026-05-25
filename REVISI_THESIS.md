@@ -370,3 +370,109 @@ Baseline" + "4.4.2 Kegagalan Total Klasifikasi pada Skenario DP (semua kelas = 0
 > - Eksplorasi DP-FedAvg level server (central DP) alih-alih per-client DP-SGD,
 >   atau Secure Aggregation/Homomorphic Encryption sebagai alternatif proteksi.
 > - Schedule noise bertahap (warm-up) dan clipping norm adaptif.
+
+---
+
+# G. DEPLOYMENT & DEMO VPS (bagian baru)
+
+> Bagian ini mendokumentasikan arsitektur ter-Dockerisasi dan deployment model
+> ke VPS untuk demonstrasi inference langsung. Narasi di bawah siap tempel.
+> **Framing jujur yang harus dipegang:** sistem *dirancang* sebagai arsitektur
+> federated ter-Dockerisasi (4 client + server); *eksperimen pelatihan*
+> dijalankan sebagai simulasi ekuivalen di Google Colab karena keterbatasan
+> sumber daya multi-node GPU; *model hasil* (best.pt) kemudian di-deploy ke VPS
+> sebagai layanan inference untuk membuktikan kelayakan implementasi.
+
+## G.1 Untuk BAB 3 — Subbab "Implementasi Sistem & Deployment" (siap tempel)
+
+> **Arsitektur Ter-Dockerisasi.** Sistem FedX-Palm dirancang sebagai arsitektur
+> Horizontal Federated Learning yang terisolasi menggunakan Docker (berkas
+> `docker-compose.yml`). Arsitektur terdiri atas satu *FL Server (Aggregator)*
+> dan empat *Client Node*, masing-masing berjalan dalam container terpisah dan
+> berkomunikasi melalui jaringan bridge khusus (`fed-network`). Setiap client
+> melakukan pelatihan lokal pada data privatnya (dimount *read-only* untuk
+> menerapkan prinsip Zero-Trust), kemudian hanya mengirimkan pembaruan bobot ke
+> server untuk diagregasi dengan algoritma FedAvg. Konfigurasi pelatihan
+> mengikuti Tabel 3.5: optimizer SGD (lr=0,01), 5 ronde komunikasi, 2 epoch
+> lokal per ronde, batch size 16, citra 640×640, dengan mekanisme Differential
+> Privacy (Opacus DP-SGD) yang dapat dikonfigurasi per skenario ε.
+>
+> **Strategi Eksekusi Eksperimen.** Karena keterbatasan sumber daya untuk
+> menjalankan empat node GPU secara simultan, eksperimen pelatihan dijalankan
+> sebagai *simulasi federated ekuivalen* pada lingkungan Google Colab (GPU
+> tunggal), yang secara matematis setara dengan agregasi FedAvg pada arsitektur
+> terdistribusi. Arsitektur Docker pada `docker-compose.yml` merepresentasikan
+> rancangan deployment penuh sistem.
+>
+> **Pipeline Deployment Model.** Model global hasil pelatihan (`best.pt`)
+> di-deploy ke sebuah Virtual Private Server (VPS) sebagai layanan inference
+> (berkas `docker-compose.serve.yml` dan `docker/Dockerfile.serve`). Layanan ini
+> dibangun di atas image Python berbasis CPU (Torch CPU + Ultralytics + Flask),
+> sehingga ringan dan tidak memerlukan GPU pada tahap inference. Aplikasi
+> (`serve_app.py`) menyajikan antarmuka web pada port 8080 dengan tiga endpoint:
+> `/` (halaman unggah citra), `/predict` (deteksi + Grad-CAM++), dan `/health`
+> (status layanan). Bobot model dimount *read-only* (`MODEL_PATH=
+> /app/weights/best.pt`), dan ambang kepercayaan deteksi diatur 0,25
+> (`CONF_THRES`). Saat pengguna mengunggah citra buah sawit, sistem menjalankan
+> deteksi YOLOv11 lalu menghasilkan peta panas Grad-CAM++ pada kelas dengan
+> kepercayaan tertinggi secara *real-time*.
+
+### Tabel G.1 — Konfigurasi Deployment Serving (untuk Bab 3)
+
+| Komponen | Nilai |
+|----------|-------|
+| Base image | `python:3.10-slim` |
+| Backend | PyTorch (CPU) + Ultralytics YOLOv11 + Flask |
+| Endpoint | `/` (UI), `/predict` (inference), `/health` (status) |
+| Port | 8080 |
+| Bobot model | `/app/weights/best.pt` (mount read-only) |
+| Confidence threshold | 0,25 |
+| Komputasi | CPU-only (tanpa GPU) |
+| Orkestrasi | Docker Compose (`docker-compose.serve.yml`) |
+
+## G.2 Untuk BAB 4 — Subbab "Demonstrasi Inference Live" (siap tempel)
+
+> Untuk membuktikan bahwa model hasil pelatihan benar-benar dapat diterapkan
+> (bukan sekadar hasil simulasi), model baseline (`best.pt`) di-deploy pada VPS
+> dan diuji terhadap citra buah kelapa sawit yang berasal dari *test split*
+> (citra yang tidak pernah dilihat model selama pelatihan). Gambar 4.x
+> menunjukkan antarmuka sistem yang berhasil mendeteksi buah beserta kelas
+> kematangannya (bounding box + label kepercayaan) dan secara simultan
+> menghasilkan peta panas Grad-CAM++ yang menyorot area buah sebagai dasar
+> keputusan model. Hasil ini mengonfirmasi dua hal: (1) model terdeploy
+> berfungsi penuh pada citra baru di lingkungan produksi nyata (CPU-only), dan
+> (2) interpretasi visual Grad-CAM++ konsisten dengan validasi kuantitatif pada
+> Subbab 4.5 (Average Drop 95,1%; FRR 0,962) — perhatian model terfokus pada
+> morfologi buah, bukan latar. Metrik agregat (mAP, Average Drop, FRR) yang
+> ditampilkan pada antarmuka berasal dari hasil eksperimen Bab 4, sedangkan
+> deteksi yang dijalankan bersifat live pada citra yang diunggah penguji.
+
+## G.3 Daftar screenshot / lampiran yang perlu diambil
+
+Ambil dari browser saat demo berjalan (`http://<IP-VPS>:8080`):
+
+1. **Halaman utama** — antarmuka unggah + kartu metrik (mAP 0,9945; AD 95,1%; FRR 0,962).
+2. **Hasil deteksi** — citra sawit dengan bounding box + label kelas + confidence.
+3. **Peta panas Grad-CAM++** — overlay heatmap menyorot area buah (sandingkan dgn deteksi).
+4. **Tabel deteksi** — daftar kelas + confidence di bawah gambar.
+5. **(Opsional) Output `/health`** — `{"status":"ok","model":"best.pt",...}` sebagai bukti layanan aktif.
+6. **(Opsional) Terminal VPS** — `docker compose ps` menampilkan container `fedx-palm-serve` Up.
+
+Saran: siapkan 3–5 citra test mewakili kelas kematangan berbeda (Abnormal,
+Empty Bunch, Overripe, Ripe, Underripe, Unripe) agar demonstrasi menunjukkan
+model membedakan keenam kelas.
+
+## G.4 Catatan untuk antisipasi penguji
+
+> - **"Apakah ini benar-benar terdistribusi/federated?"** → Arsitektur dirancang
+>   terdistribusi (lihat `docker-compose.yml`: 4 client container terpisah +
+>   server, jaringan terisolasi, data mount read-only). Eksperimen pelatihan
+>   dijalankan sebagai simulasi ekuivalen di Colab karena keterbatasan multi-node
+>   GPU; agregasi FedAvg yang disimulasikan setara secara matematis dengan
+>   arsitektur penuh.
+> - **"Kenapa demo pakai CPU, bukan GPU?"** → Tahap *inference* satu citra tidak
+>   memerlukan GPU; image CPU dipilih agar deployment ringan, murah, dan
+>   reprodusibel di VPS standar.
+> - **"Metrik di layar live dihitung ulang per request?"** → Tidak. Metrik
+>   agregat (mAP/AD/FRR) berasal dari eksperimen Bab 4 dan ditampilkan sebagai
+>   konteks; yang live hanyalah deteksi + heatmap pada citra yang diunggah.
