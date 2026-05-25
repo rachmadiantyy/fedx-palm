@@ -87,17 +87,18 @@ belum terverifikasi dari output — cek terhadap kode split dataset sebelum
 mengklaim mapping kelas dominan. Yang pasti & aman: total 9.982 citra dengan
 quantity skew nyata (Client 1 terkecil 1.342, Client 4 terbesar 3.634).
 
-## Tabel 3.2 — Inkonsistensi urutan kelas (FIX)
+## Tabel 3.2 — KUNCI urutan kelas ke ALFABET (sesuai data real)
 
-Keterangan Tabel 3.2 bilang "C1–C6 dari Sangat Matang (Overripe) hingga
-Janjang Kosong", TAPI confusion matrix Bab 4 pakai C1=Unripe ... C6=Abnormal.
-Pilih SATU penomoran konsisten di seluruh thesis. Rekomendasi (sesuai Bab 4):
-- C1=Unripe, C2=Underripe, C3=Ripe, C4=Overripe, C5=Abnormal, C6=Empty Bunch
-- ATAU pakai urutan alfabet dataset: Abnormal, Empty Bunch, Overripe, Ripe,
-  Underripe, Unripe. (Cek urutan `names` di data.yaml Roboflow — itu yang benar.)
+Data real (metrics_per_class.csv) memakai urutan alfabet sesuai `class_id`:
+**0=Abnormal, 1=Empty Bunch, 2=Overripe, 3=Ripe, 4=Underripe, 5=Unripe.**
+Ini urutan resmi dataset Roboflow → GUNAKAN INI DI SELURUH THESIS.
 
-Catatan: istilah "Ripening" (C3) muncul di Tabel 4.7/4.9 — ini kelas ke-7
-yang tidak ada di definisi 6 kelas. HAPUS, ganti sesuai 6 kelas resmi.
+- Hapus penomoran "C1=Unripe..." dan keterangan "C1–C6 dari Overripe hingga
+  Empty Bunch" yang lama (tidak sesuai data).
+- Hapus istilah "Ripening" (kelas ke-7 yang tidak ada).
+- Jika tetap ingin pakai label C1–C6, definisikan: C1=Abnormal, C2=Empty Bunch,
+  C3=Overripe, C4=Ripe, C5=Underripe, C6=Unripe — TAPI lebih aman pakai nama
+  kelas langsung (Abnormal, Empty Bunch, ...) agar tidak ada ambiguitas.
 
 ---
 
@@ -105,7 +106,7 @@ yang tidak ada di definisi 6 kelas. HAPUS, ganti sesuai 6 kelas resmi.
 
 > Eksperimen menunjukkan bahwa pelatihan model dalam kerangka Horizontal
 > Federated Learning (4 client node, distribusi Non-IID Dirichlet) mencapai
-> mAP@0.5 sebesar **0.9945** dan mAP@0.5:0.95 sebesar **0.8973** tanpa data
+> mAP@0.5 sebesar **0,9945** dan mAP@0.5:0.95 sebesar **0,8973** tanpa data
 > mentah meninggalkan node, membuktikan bahwa agregasi FedAvg mampu
 > menghasilkan model deteksi berakurasi tinggi pada kondisi data heterogen.
 > Validasi transparansi menggunakan Grad-CAM++ pada model baseline menghasilkan
@@ -235,12 +236,13 @@ slope. Ganti gambar lama.)
 | background      | – | – | – | 0.01 | – | – | – |
 
 > **Temuan penting (mengubah narasi lama):** Diagonal bernilai 0,99–1,00 dan
-> **TIDAK ADA confusion antar-kelas kematangan**. Klaim draf lama tentang
-> "adjacent class confusion (Underripe vs Ripe)" TIDAK terjadi pada hasil real.
-> Satu-satunya kesalahan adalah pada kolom/baris **background** — yaitu false
-> positive (mendeteksi objek di area latar) dan false negative (melewatkan
-> objek), yang merupakan kesalahan LOKALISASI, bukan KLASIFIKASI. Keenam kelas
-> kematangan terpisah secara sempurna secara visual.
+> confusion antar-kelas kematangan **nyaris nol** (maksimal 0,01, yaitu sebagian
+> kecil Ripe terprediksi Abnormal). Klaim draf lama tentang "adjacent class
+> confusion (Underripe vs Ripe)" TIDAK terjadi pada hasil real. Sumber kesalahan
+> dominan justru pada kolom/baris **background** — yaitu false positive
+> (mendeteksi objek di area latar) dan false negative (melewatkan objek), yang
+> merupakan kesalahan LOKALISASI, bukan KLASIFIKASI. Keenam kelas kematangan
+> praktis terpisah sempurna secara visual.
 
 ### Tabel 4.9 — Performa per kelas (centralized benchmark)
 
@@ -309,19 +311,36 @@ Baseline" + "4.4.2 Kegagalan Total Klasifikasi pada Skenario DP (semua kelas = 0
 > Interpretasi XAI pada model DP tidak dapat dievaluasi karena model kehilangan
 > fungsi prediktif.
 
+> ⚠️ ANTISIPASI PERTANYAAN PENGUJI (konvensi Average Drop): Definisi Average
+> Drop di thesis ini (Pers. 2.7) adalah penurunan confidence ketika area PENTING
+> DIHILANGKAN, sehingga **nilai tinggi = penjelasan makin baik/faithful**.
+> Ini BERBEDA dari konvensi paper Grad-CAM++ asli (Chattopadhyay dkk.) yang
+> mengukur drop saat hanya MEMPERTAHANKAN area penting (nilai rendah = lebih
+> baik). Pastikan Bab 2.6.2 konsisten dengan definisi yang dipakai, dan siap
+> menjelaskan bahwa AD=95,1% bermakna BAIK dalam konvensi penelitian ini
+> (menghapus area kunci menghancurkan 95,1% confidence → heatmap memang kausal).
+
 ## 4.7 Validasi Hipotesis (TULIS ULANG)
 
 **H1 — TERBUKTI (kuat):**
 > Baseline HFL mencapai mAP@0.5 = 0,9945, jauh melampaui ambang 80%,
 > mengonfirmasi FedAvg sangat efektif pada data Non-IID.
 
-**H2 — TERBUKTI DENGAN KOREKSI:**
-> Hipotesis memprediksi penurunan akurasi berbanding lurus dengan penguatan
-> privasi. Hasil menunjukkan bahwa pada model pretrained konvergen, DP tidak
-> menghasilkan degradasi gradual melainkan collapse total bahkan pada noise
-> minimal (σ=0,005). Trade-off privasi-utilitas TERBUKTI ADA, namun bersifat
-> non-linier dan katastrofik — mengoreksi asumsi awal dan mengungkap batas
-> fundamental DP-SGD pada fine-tuning detektor objek.
+**H2 — TERBUKTI SEBAGIAN (bentuk proporsional DITOLAK):**
+> Hipotesis memprediksi penurunan akurasi *berbanding lurus* dengan penguatan
+> privasi (semakin kecil ε, semakin rendah akurasi secara gradual). Hasil
+> menunjukkan: (a) trade-off privasi-utilitas memang ADA — penerapan DP
+> menurunkan utilitas → bagian ini terbukti; NAMUN (b) hubungan proporsional/
+> monotonik yang dihipotesiskan TIDAK terjadi — ketiga tingkat privasi
+> (ε=8,0; 4,0; 1,0) sama-sama collapse ke mAP=0 tanpa perbedaan gradual. Dengan
+> demikian H2 terbukti secara kualitatif (DP merusak utilitas) tetapi DITOLAK
+> dalam bentuk proporsional yang spesifik. Temuan ini mengungkap batas
+> fundamental DP-SGD pada fine-tuning detektor objek yang sudah konvergen.
+
+> CATATAN untuk diskusi dengan pembimbing: pilih satu label final — "terbukti
+> sebagian" (paling jujur) ATAU "ditolak" (jika pembimbing menilai inti H2
+> adalah proporsionalitas). Hindari klaim "terbukti penuh" karena pola
+> proporsional tidak teramati.
 
 **H3 — TERBUKTI (pada model fungsional):**
 > Grad-CAM++ pada model baseline menghasilkan AD=95,1% dan FRR=0,962,
