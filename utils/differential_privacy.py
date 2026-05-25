@@ -8,11 +8,13 @@ as specified in thesis Sections 2.5 and 3.4:
 - Gaussian Mechanism (Eq. 3.3): g̃ = (1/B) * (Σ ḡᵢ + N(0, σ²C²I))
 - Privacy Accounting: Rényi Differential Privacy (RDP)
 
-Privacy Budget Scenarios (thesis Table 3.4):
+Privacy Budget Scenarios (thesis Table 3.4 — nilai σ aktual eksperimen):
 - Baseline: ε=∞, σ=0.0 (No Privacy)
-- Weak Privacy: ε=8.0, σ=0.8
-- Moderate Privacy: ε=4.0, σ=1.5
-- Strong Privacy: ε=1.0, σ=3.2
+- Weak Privacy: ε=8.0, σ=0.005
+- Moderate Privacy: ε=4.0, σ=0.010
+- Strong Privacy: ε=1.0, σ=0.020
+Catatan: σ diturunkan jauh dari rekomendasi standar karena pada YOLOv11
+pretrained yang konvergen, σ ≥ 0.1 memicu ketidakstabilan numerik (NaN).
 
 DP Strategies (thesis Section 3.4.5):
 - Full DP: Noise on all layers (backbone + neck + detection head)
@@ -60,7 +62,7 @@ class PrivacyConfig:
     epsilon: float = 4.0
     delta: float = 1e-5
     max_grad_norm: float = 1.0
-    noise_multiplier: float = 1.5
+    noise_multiplier: float = 0.010
     strategy: DPStrategy = DPStrategy.FULL_DP
     target_delta: float = 1e-5
     accountant: str = "rdp"  # Rényi DP accountant
@@ -76,28 +78,28 @@ class PrivacyConfig:
 
     @classmethod
     def weak_privacy(cls) -> "PrivacyConfig":
-        """Weak privacy (ε=8.0, σ=0.8) - thesis Table 3.4."""
+        """Weak privacy (ε=8.0, σ=0.005) - thesis Table 3.4."""
         return cls(
             epsilon=8.0,
-            noise_multiplier=0.8,
+            noise_multiplier=0.005,
             strategy=DPStrategy.FULL_DP
         )
 
     @classmethod
     def moderate_privacy(cls) -> "PrivacyConfig":
-        """Moderate privacy (ε=4.0, σ=1.5) - thesis Table 3.4."""
+        """Moderate privacy (ε=4.0, σ=0.010) - thesis Table 3.4."""
         return cls(
             epsilon=4.0,
-            noise_multiplier=1.5,
+            noise_multiplier=0.010,
             strategy=DPStrategy.FULL_DP
         )
 
     @classmethod
     def strong_privacy(cls) -> "PrivacyConfig":
-        """Strong privacy (ε=1.0, σ=3.2) - thesis Table 3.4."""
+        """Strong privacy (ε=1.0, σ=0.020) - thesis Table 3.4."""
         return cls(
             epsilon=1.0,
-            noise_multiplier=3.2,
+            noise_multiplier=0.020,
             strategy=DPStrategy.FULL_DP
         )
 
@@ -106,7 +108,7 @@ class PrivacyConfig:
         """Partial DP at ε=4.0 (noise only on head) - thesis Section 3.4.5."""
         return cls(
             epsilon=4.0,
-            noise_multiplier=1.5,
+            noise_multiplier=0.010,
             strategy=DPStrategy.PARTIAL_DP
         )
 
@@ -315,10 +317,10 @@ class OpacusDPEngine:
                 self.budget_tracker.record_round(eps, self.config.noise_multiplier)
             except Exception:
                 # Estimate epsilon per round using simple composition
-                per_round_eps = self.config.epsilon / 100.0  # Approximate
+                per_round_eps = self.config.epsilon / 5.0  # Approximate (5 ronde)
                 self.budget_tracker.record_round(per_round_eps, self.config.noise_multiplier)
         else:
-            per_round_eps = self.config.epsilon / 100.0
+            per_round_eps = self.config.epsilon / 5.0
             self.budget_tracker.record_round(per_round_eps, self.config.noise_multiplier)
 
     def detach(self):

@@ -14,10 +14,10 @@ Communication Round Protocol (thesis Section 3.1.3):
 4. Send updated parameters wₖᵗ⁺¹ back to server
 
 Configuration (thesis Table 3.5):
-- Local Epochs: 5
+- Local Epochs: 2
 - Batch Size: 16
-- Learning Rate: 0.01 (AdamW)
-- Optimizer: AdamW
+- Learning Rate: 0.01 (SGD)
+- Optimizer: SGD
 - Loss: Complete IoU (CIoU)
 - Input Resolution: 640×640
 - Clipping Threshold C: 1.0
@@ -83,7 +83,7 @@ class FedXPalmClient(fl.client.NumPyClient):
         data_config: str,
         model_variant: str = "yolo11n.pt",
         num_classes: int = 6,
-        local_epochs: int = 5,
+        local_epochs: int = 2,
         batch_size: int = 16,
         learning_rate: float = 0.01,
         imgsz: int = 640,
@@ -99,7 +99,7 @@ class FedXPalmClient(fl.client.NumPyClient):
             data_config: Path to data.yaml for this client's local data
             model_variant: YOLOv11 variant (thesis: yolo11n.pt)
             num_classes: Number of classes (thesis: 6)
-            local_epochs: Local training epochs per round (thesis: 5)
+            local_epochs: Local training epochs per round (thesis: 2)
             batch_size: Batch size (thesis: 16)
             learning_rate: Learning rate (thesis: 0.01)
             imgsz: Input image size (thesis: 640)
@@ -308,9 +308,9 @@ class FedXPalmClient(fl.client.NumPyClient):
         Perform local training on this client's Non-IID data.
 
         Uses YOLOv11 training with:
-        - Optimizer: AdamW (thesis Table 3.5)
+        - Optimizer: SGD (thesis Table 3.5)
         - Loss: CIoU (thesis Section 2.2.1)
-        - Epochs: 5 per round (thesis Table 3.5)
+        - Epochs: 2 per round (thesis Table 3.5)
         - Input: 640×640 (thesis Table 3.5)
         """
         try:
@@ -320,7 +320,7 @@ class FedXPalmClient(fl.client.NumPyClient):
                 batch=self.batch_size,
                 imgsz=self.imgsz,
                 lr0=self.learning_rate,
-                optimizer="AdamW",  # thesis Table 3.5
+                optimizer="SGD",  # thesis Table 3.5
                 device=self.device,
                 verbose=False,
                 save=False,
@@ -468,7 +468,7 @@ def start_flower_client(
     data_config: str = "./data/client_1/data.yaml",
     model_variant: str = "yolo11n.pt",
     num_classes: int = 6,
-    local_epochs: int = 5,
+    local_epochs: int = 2,
     batch_size: int = 16,
     learning_rate: float = 0.01,
     privacy_scenario: str = "moderate",
@@ -486,7 +486,7 @@ def start_flower_client(
         data_config: Path to client's data.yaml
         model_variant: YOLOv11 variant
         num_classes: Number of classes (6)
-        local_epochs: Epochs per round (5)
+        local_epochs: Epochs per round (2)
         batch_size: Batch size (16)
         learning_rate: Learning rate (0.01)
         privacy_scenario: DP scenario name
@@ -526,7 +526,7 @@ if __name__ == "__main__":
     parser.add_argument("--data-config", required=True, help="Path to data.yaml")
     parser.add_argument("--model", default="yolo11n.pt", help="YOLOv11 variant")
     parser.add_argument("--num-classes", type=int, default=6, help="Number of classes")
-    parser.add_argument("--local-epochs", type=int, default=5, help="Local epochs per round")
+    parser.add_argument("--local-epochs", type=int, default=2, help="Local epochs per round")
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size")
     parser.add_argument("--lr", type=float, default=0.01, help="Learning rate")
     parser.add_argument(

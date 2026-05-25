@@ -25,7 +25,7 @@ services:
       - "8080:8080"
       - "6006:6006"  # TensorBoard monitoring
     environment:
-      - FL_NUM_ROUNDS=100
+      - FL_NUM_ROUNDS=5
       - FL_MIN_CLIENTS=4
       - FL_MODEL_VARIANT=yolo11n.pt
       - FL_NUM_CLASSES=6
@@ -46,7 +46,7 @@ services:
     restart: unless-stopped
     command: >
       --address 0.0.0.0:8080
-      --num-rounds 100
+      --num-rounds 5
       --model yolo11n.pt
       --num-classes 6
       --min-clients 4
@@ -85,7 +85,7 @@ services:
       --client-id client_1
       --data-config /app/data/data.yaml
       --num-classes 6
-      --local-epochs 5
+      --local-epochs 2
       --batch-size 16
       --lr 0.01
       --privacy moderate
@@ -123,7 +123,7 @@ services:
       --client-id client_2
       --data-config /app/data/data.yaml
       --num-classes 6
-      --local-epochs 5
+      --local-epochs 2
       --batch-size 16
       --lr 0.01
       --privacy moderate
@@ -161,7 +161,7 @@ services:
       --client-id client_3
       --data-config /app/data/data.yaml
       --num-classes 6
-      --local-epochs 5
+      --local-epochs 2
       --batch-size 16
       --lr 0.01
       --privacy moderate
@@ -199,7 +199,7 @@ services:
       --client-id client_4
       --data-config /app/data/data.yaml
       --num-classes 6
-      --local-epochs 5
+      --local-epochs 2
       --batch-size 16
       --lr 0.01
       --privacy moderate
