@@ -279,6 +279,17 @@ Baseline" + "4.4.2 Kegagalan Total Klasifikasi pada Skenario DP (semua kelas = 0
 
 ## 4.5 & 4.6 Analisis XAI (Grad-CAM++)
 
+> **Strategi Gambar 4.4 (heatmap):** Bila gambar heatmap belum berhasil
+> di-generate, H3 TETAP KUAT karena bertumpu pada validasi KUANTITATIF yang
+> sudah real (Average Drop 95,1%, FRR 0,962). Susun Subbab 4.5 sebagai berikut:
+> - Pimpin dengan metrik kuantitatif (Tabel 4.11) — ini bukti utama.
+> - Untuk visual: gunakan `val_batch0_pred.jpg` (hasil deteksi) sebagai bukti
+>   model melokalisasi buah dengan benar, ATAU regenerate heatmap bila sempat.
+> - Narasikan: "Validasi kuantitatif Average Drop 95,1% membuktikan area yang
+>   disorot Grad-CAM++ memang kausal terhadap keputusan model; ketika area
+>   tersebut dimasking, kepercayaan model turun 95,1%."
+> Jangan klaim ada gambar heatmap kalau belum ada di dokumen.
+
 > Validasi XAI hanya dapat dilakukan pada model baseline karena model dengan
 > DP tidak menghasilkan prediksi valid (Average Drop dan FRR = NaN).
 
