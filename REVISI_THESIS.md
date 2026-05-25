@@ -66,8 +66,26 @@ Tambahkan catatan kaki:
 | Learning Rate | 0.01 | 0.01 (OK) |
 | Communication Rounds | 100 | **5** |
 | Noise Multiplier (σ) | 0.5–3.2 | **0.005–0.020** |
-| Batch Size | 16 | [BUTUH KONFIRMASI] |
-| Local Epochs | 5 | [BUTUH KONFIRMASI] |
+| Batch Size | 16 | 16 (centralized; OK) |
+| Local Epochs | 5 | **2** |
+
+## Tabel 3.3 — Total sampel & distribusi per client (KOREKSI)
+
+Ukuran data per client REAL (dari history.json), GANTI angka lama
+(2289/2638/2555/3000, total 10.482):
+
+| Client | Total Sampel (REAL) |
+|--------|:-------------------:|
+| Client 1 | 1.342 |
+| Client 2 | 2.815 |
+| Client 3 | 2.191 |
+| Client 4 | 3.634 |
+| **Total** | **9.982** |
+
+Catatan: nilai α Dirichlet (0.1/0.3/0.5/0.7) dan "kelas dominan" per client
+belum terverifikasi dari output — cek terhadap kode split dataset sebelum
+mengklaim mapping kelas dominan. Yang pasti & aman: total 9.982 citra dengan
+quantity skew nyata (Client 1 terkecil 1.342, Client 4 terbesar 3.634).
 
 ## Tabel 3.2 — Inkonsistensi urutan kelas (FIX)
 
@@ -123,22 +141,26 @@ yang tidak ada di definisi 6 kelas. HAPUS, ganti sesuai 6 kelas resmi.
 > ringan. Hal ini sekaligus menjelaskan sensitivitas tinggi model terhadap
 > perturbasi DP yang dibahas pada Subbab 4.3.
 
-### Tabel 4.3 — Konvergensi per ronde (baseline)
-Folder federated `baseline/` tidak menyimpan rincian per-ronde. Berdasarkan
-grafik konvergensi (`privacy_utility_tradeoff.png` & plot konvergensi), baseline
-sudah mencapai ~0,994 sejak ronde 1 dan stabil hingga ronde 5. GANTI tabel
-per-ronde dengan deskripsi kualitatif + gambar plot konvergensi real:
+### Tabel 4.3 — Konvergensi per ronde (federated baseline, REAL)
 
-> "Model global baseline mencapai konvergensi instan: mAP@0.5 telah ~0,99 sejak
-> ronde pertama dan stabil (fluktuasi < 0,1%) hingga ronde kelima, sebagaimana
-> ditunjukkan pada plot konvergensi. Konvergensi cepat ini wajar karena
-> inisialisasi dari bobot YOLOv11 pretrained (transfer learning)."
+| Ronde | mAP@0.5 | mAP@0.5:0.95 | Precision | Recall | Waktu (detik) |
+|:-----:|:-------:|:------------:|:---------:|:------:|:-------------:|
+| 1 | 0,9946 | 0,9011 | 0,9941 | 0,9955 | 492,9 |
+| 2 | 0,9944 | 0,8999 | 0,9943 | 0,9946 | 433,3 |
+| 3 | 0,9944 | 0,8992 | 0,9936 | 0,9957 | 438,5 |
+| 4 | 0,9943 | 0,8990 | 0,9941 | 0,9945 | 436,7 |
+| 5 | 0,9945 | 0,8973 | 0,9934 | 0,9945 | 441,1 |
 
-(Kalau mau angka per-ronde eksak, re-run federated dengan menyimpan
-`results.csv` per ronde. Tidak wajib — deskripsi kualitatif + plot sudah cukup.)
+> "Model global mencapai konvergensi instan: mAP@0.5 telah 0,9946 sejak ronde
+> pertama dan stabil (0,9943–0,9946) hingga ronde kelima, dengan fluktuasi
+> < 0,03%. Hal ini wajar karena inisialisasi dari bobot YOLOv11 pretrained.
+> Nilai mAP@0.5:0.95 menurun tipis (0,9011 → 0,8973) seiring ronde, dalam
+> rentang noise statistik. Rata-rata waktu komputasi ~440 detik/ronde (total
+> ~37 menit untuk 5 ronde)."
 
 ### Tabel 4.4 — Performa per client
-Simulasi tidak menyimpan rincian per-client. HAPUS tabel ini, ganti dengan:
+Simulasi tidak menyimpan rincian mAP per-client (hanya ukuran data per-client,
+lihat Tabel 3.3 terkoreksi). HAPUS tabel mAP per-client, ganti dengan:
 > "Evaluasi dilakukan pada model global hasil agregasi FedAvg. Karena seluruh
 > client berkonvergensi ke performa setara (baseline global mAP@0.5 = 0,9945),
 > tidak terdapat divergensi performa antar-client yang signifikan."
