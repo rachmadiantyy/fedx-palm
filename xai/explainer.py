@@ -437,11 +437,9 @@ class FocusRetentionRate:
     FRR close to 1.0 → model focuses on object (good)
     FRR close to 0.0 → model focuses on background (bad)
 
-    Thesis results (Table 4.10):
-    - Baseline (ε=∞): FRR = 0.847
-    - Weak DP (ε=8.0): FRR = 0.839
-    - Moderate DP (ε=4.0): FRR = 0.812
-    - Strong DP (ε=1.0): FRR = 0.756
+    Thesis results (real, Bab 4 — Tabel 4.11):
+    - Baseline (ε=∞): FRR = 0.962
+    - DP (ε=8.0 / 4.0 / 1.0): NaN — model collapse, no valid prediction
     """
 
     def compute(
