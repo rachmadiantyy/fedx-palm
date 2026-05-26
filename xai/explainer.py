@@ -91,10 +91,15 @@ class GradCAMPlusPlus:
         self._hooks.append(target.register_full_backward_hook(backward_hook))
 
     def _get_pytorch_model(self):
-        """Extract PyTorch model from YOLO wrapper."""
+        """Ambil DetectionModel dari wrapper YOLO.
+
+        Catatan: jangan menggali sampai ``self.model.model.model`` (nn.Sequential
+        mentah). Memanggil Sequential itu langsung memutus routing skip-connection
+        YOLO sehingga lapisan Concat menerima satu Tensor (bukan list) dan crash
+        di ``torch.cat``. DetectionModel (``self.model.model``) punya forward yang
+        menangani routing tersebut dengan benar.
+        """
         if hasattr(self.model, 'model'):
-            if hasattr(self.model.model, 'model'):
-                return self.model.model.model
             return self.model.model
         return self.model
 
@@ -242,24 +247,36 @@ class GradCAMPlusPlus:
     def _get_target_score(
         self, output, target_class: Optional[int], target_box_idx: int
     ) -> Optional[torch.Tensor]:
-        """Extract target score from model output for backpropagation."""
+        """Ambil skor target dari keluaran model untuk backpropagation.
+
+        Keluaran eval DetectionModel YOLOv11 berbentuk tuple ``(y, x)`` dengan
+        ``y`` berukuran ``[B, 4+nc, num_anchors]`` (4 koordinat bbox + nc skor
+        kelas; YOLOv8/v11 tidak punya skor objectness terpisah). Kanal kelas-c
+        berada di indeks ``4 + c``.
+        """
         try:
             if isinstance(output, (list, tuple)):
-                pred = output[0] if len(output) > 0 else output
+                pred = output[0] if len(output) > 0 else None
             else:
                 pred = output
 
-            if pred.dim() >= 3:
-                if target_class is not None:
-                    class_scores = pred[0, :, 5 + target_class] if pred.shape[-1] > 5 else pred[0, :, target_class]
-                    return class_scores.max()
-                else:
-                    if pred.shape[-1] > 4:
-                        conf_scores = pred[0, :, 4]
-                        return conf_scores.max()
-                    return pred[0].sum()
-            else:
-                return pred.sum()
+            if not isinstance(pred, torch.Tensor):
+                return None
+
+            if pred.dim() == 3:
+                _, ch, anc = pred.shape
+                # Kanal kelas berada di dimensi yang lebih kecil (4+nc), anchor besar.
+                if ch <= anc:  # [B, 4+nc, A]
+                    if target_class is not None and ch > 4 + target_class:
+                        return pred[0, 4 + target_class, :].max()
+                    return pred[0, 4:, :].max() if ch > 4 else pred[0].max()
+                else:          # [B, A, 4+nc]
+                    last = pred.shape[-1]
+                    if target_class is not None and last > 4 + target_class:
+                        return pred[0, :, 4 + target_class].max()
+                    return pred[0, :, 4:].max() if last > 4 else pred[0].max()
+
+            return pred.sum()
 
         except Exception as e:
             logger.warning(f"Error extracting target score: {e}")
