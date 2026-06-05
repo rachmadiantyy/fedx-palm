@@ -6,15 +6,25 @@
 
 ## DATA REAL (otoritatif — sumber kebenaran)
 
-| Skenario | ε | σ | mAP@0.5 | mAP@0.5:0.95 | Precision | Recall | Avg Drop | FRR |
-|----------|-----|------|---------|--------------|-----------|--------|----------|-----|
-| baseline | ∞ | 0 | 0.9945 | 0.8973 | 0.9934 | 0.9945 | 95.1% | 0.962 |
-| weak | 8.0 | 0.005 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | NaN | NaN |
-| moderate | 4.0 | 0.010 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | NaN | NaN |
-| strong | 1.0 | 0.020 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | NaN | NaN |
+> **ε pada tabel ini sudah DIKOREKSI (R1).** Label lama (8.0/4.0/1.0) keliru
+> ~5 ordo besaran; ε di bawah dihitung dari RDP accountant (σ, q=1, T=5, δ=1e-5).
+> Lihat Tabel 3.4 & Subbab F+. R1.
 
-Temuan inti: DP-SGD pada YOLOv11 pretrained yang sudah konvergen menyebabkan
-**collapse total** bahkan pada noise minimal (σ=0.005). Bukan degradasi gradual.
+| Skenario | σ | ε (RDP, terkoreksi) | mAP@0.5 | mAP@0.5:0.95 | Precision | Recall | Avg Drop | FRR |
+|----------|------|---------------------|---------|--------------|-----------|--------|----------|-----|
+| baseline | 0 | ∞ | 0.9945 | 0.8973 | 0.9934 | 0.9945 | 95.1% | 0.962 |
+| weak | 0.005 | ≈ 1.0×10⁵ | 0.0000 | 0.0000 | 0.0000 | 0.0000 | NaN | NaN |
+| moderate | 0.010 | ≈ 2.6×10⁴ | 0.0000 | 0.0000 | 0.0000 | 0.0000 | NaN | NaN |
+| strong | 0.020 | ≈ 6.8×10³ | 0.0000 | 0.0000 | 0.0000 | 0.0000 | NaN | NaN |
+
+Temuan inti (reframe R3): **pada konfigurasi pipeline ini** (YOLOv11 pretrained
+yang sudah konvergen + DP-FedAvg level-klien, clip C=10, fine-tuning), penambahan
+noise Gaussian menyebabkan **collapse total** (mAP=0) bahkan pada σ minimal.
+Catatan penting: pada semua σ yang diuji ε ≫ 10³ (**tanpa privasi bermakna**),
+sehingga collapse terjadi *sebelum* rezim privasi tercapai — indikasi kuat ini
+adalah **artefak konfigurasi/pipeline**, bukan trade-off privasi-utilitas sejati
+maupun "batas mendasar" DP-SGD. Klaim batas-mendasar ditangguhkan sampai ablation
+(R2) membuktikan generalisasinya.
 
 ---
 
@@ -139,10 +149,14 @@ Ini urutan resmi dataset Roboflow → GUNAKAN INI DI SELURUH THESIS.
 > integrasi Differential Privacy (DP-FedAvg) menghasilkan temuan tak terduga:
 > bahkan dengan noise multiplier minimal (σ=0,005), model mengalami **collapse
 > total** (mAP turun ke 0), bukan degradasi gradual sebagaimana lazim
-> diasumsikan. Temuan ini mengungkap batas fundamental penerapan DP-SGD pada
-> fine-tuning detektor objek yang telah konvergen, dan menjadi kontribusi
-> penting bagi perancangan privacy-preserving FL di domain deteksi objek
-> industri. **Kata Kunci:** Federated Learning, Differential Privacy, YOLOv11,
+> diasumsikan. **Pada konfigurasi pipeline yang diuji** (fine-tuning detektor
+> objek yang telah konvergen dengan DP-FedAvg level-klien), collapse ini terjadi
+> bahkan sebelum tercapai rezim privasi yang bermakna (ε terhitung ≫ 10³),
+> sehingga lebih menunjuk pada artefak konfigurasi DP dibanding trade-off
+> privasi-utilitas sejati. Temuan ini menjadi kontribusi penting bagi
+> perancangan privacy-preserving FL di domain deteksi objek industri dan menandai
+> arah investigasi (analisis ablation) untuk menguji apakah fenomena ini berlaku
+> umum. **Kata Kunci:** Federated Learning, Differential Privacy, YOLOv11,
 > Grad-CAM++, Kelapa Sawit.
 
 ---
@@ -203,36 +217,47 @@ lihat Tabel 3.3 terkoreksi). HAPUS tabel mAP per-client, ganti dengan:
 ## 4.3 Analisis Dampak Differential Privacy (TEMUAN UTAMA)
 
 > Berbeda dengan hipotesis awal yang memprediksi trade-off gradual, hasil
-> eksperimen menunjukkan **collapse katastrofik**. Tabel 4.5 menyajikan hasil
-> ketiga skenario DP dibandingkan baseline.
+> eksperimen **pada konfigurasi pipeline ini** menunjukkan collapse total
+> (mAP=0) di seluruh setelan σ. Tabel 4.5 menyajikan hasil ketiga skenario DP
+> dibandingkan baseline. **Catatan (R1):** ε pada tabel adalah hasil
+> perhitungan RDP accountant (σ, q=1, T=5, δ=1e-5), bukan label manual; nilainya
+> ≫ 10³ pada semua setelan, menandakan **belum tercapainya rezim privasi
+> bermakna**.
 
-### Tabel 4.5 — Perbandingan performa antar tingkat privasi
+### Tabel 4.5 — Perbandingan performa antar tingkat noise (ε terkoreksi)
 
-| Metrik | ε=∞ | ε=8.0 (σ=0.005) | ε=4.0 (σ=0.010) | ε=1.0 (σ=0.020) |
+| Metrik | σ=0 (ε=∞) | σ=0.005 (ε≈1.0e5) | σ=0.010 (ε≈2.6e4) | σ=0.020 (ε≈6.8e3) |
 |--------|------|------|------|------|
 | mAP@0.5 | 0,9945 | 0,0000 | 0,0000 | 0,0000 |
 | mAP@0.5:0.95 | 0,8973 | 0,0000 | 0,0000 | 0,0000 |
 | Precision | 0,9934 | 0,0000 | 0,0000 | 0,0000 |
 | Recall | 0,9945 | 0,0000 | 0,0000 | 0,0000 |
 
-> **Interpretasi:** Seluruh skenario DP menyebabkan model kehilangan total
-> kemampuan deteksi (mAP=0), bahkan pada noise paling lemah (σ=0,005; ε=8,0).
-> Pola ini menolak asumsi degradasi linier dan menunjukkan adanya **ambang
-> kritis (cliff)** di mana sedikit saja perturbasi DP pada model yang sudah
-> konvergen langsung menghancurkan struktur bobot hasil fine-tuning.
+> **Interpretasi (reframe R3):** Seluruh setelan DP menyebabkan model kehilangan
+> total kemampuan deteksi (mAP=0), bahkan pada noise paling lemah (σ=0,005).
+> Karena ε pada setelan ini ≫ 10³ (tanpa privasi bermakna), collapse terjadi
+> **sebelum** wilayah privasi tercapai — sehingga lebih tepat dibaca sebagai
+> **ketidakstabilan konfigurasi pipeline DP** daripada trade-off
+> privasi-utilitas. Terdapat indikasi **ambang kritis (cliff)** di mana
+> perturbasi kecil pada model yang sudah konvergen langsung merusak struktur
+> bobot fine-tuning. Apakah pola ini merupakan "batas mendasar" DP-SGD secara
+> umum **belum dapat disimpulkan** dan menjadi sasaran analisis ablation (R2).
 >
-> **Analisis penyebab (untuk pembahasan sidang):**
-> 1. **Sharp minimum:** Model pretrained berada pada minimum loss yang tajam;
->    gradient clipping (C=1,0) + Gaussian noise mengganggu bobot halus ini.
-> 2. **Ketidakcocokan BatchNorm–DP:** Opacus mensyaratkan penggantian
->    BatchNorm dengan GroupNorm (BatchNorm membaurkan informasi antar-sampel,
->    melanggar jaminan per-sample DP). YOLOv11 sangat bergantung pada BatchNorm;
->    modifikasi ini berpotensi merusak statistik fitur yang sudah terlatih.
-> 3. **Kompleksitas loss deteksi:** Loss YOLO (CIoU + klasifikasi + DFL) jauh
->    lebih sensitif terhadap noise gradien dibanding cross-entropy klasifikasi
->    sederhana yang umum dipakai pada studi DP.
-> 4. **DP pada fine-tuning vs from-scratch:** DP-SGD lebih cocok diterapkan saat
->    training from scratch, bukan pada fine-tuning model yang sudah konvergen.
+> **Hipotesis penyebab (akan diuji via ablation R2, belum disimpulkan):**
+> 1. **Rasio noise/sinyal berlebih:** dengan clip-norm C=10, noise/elemen
+>    (σ·C) jauh melampaui sinyal/elemen (~C/√d); diagnostik tercetak di loop
+>    simulasi. Diuji via: noise-only, variasi C, dan clipping-only.
+> 2. **Sharp minimum:** Model pretrained berada pada minimum loss tajam; clipping
+>    + Gaussian noise mengganggu bobot halus. Diuji via: LR lebih kecil, frozen
+>    backbone.
+> 3. **Interaksi BatchNorm–perturbasi:** YOLOv11 bergantung pada BatchNorm; diuji
+>    via penggantian BatchNorm → GroupNorm. (Catatan: trainer Opacus tidak
+>    dipakai; collapse di sini berasal dari noise pada delta, bukan auto-fix
+>    Opacus.)
+> 4. **Kompleksitas loss deteksi:** Loss YOLO (CIoU + klasifikasi + DFL) lebih
+>    sensitif terhadap noise gradien dibanding cross-entropy sederhana.
+> 5. **DP fine-tuning vs from-scratch:** DP mungkin lebih cocok saat training
+>    from-scratch. Diuji via ≥3 seed untuk memastikan bukan kebetulan inisialisasi.
 
 (Gambar 4.2: pakai `privacy_utility_tradeoff.png` real — grafik cliff, bukan
 slope. Ganti gambar lama.)
@@ -353,13 +378,17 @@ Baseline" + "4.4.2 Kegagalan Total Klasifikasi pada Skenario DP (semua kelas = 0
 **H2 — TERBUKTI SEBAGIAN (bentuk proporsional DITOLAK):**
 > Hipotesis memprediksi penurunan akurasi *berbanding lurus* dengan penguatan
 > privasi (semakin kecil ε, semakin rendah akurasi secara gradual). Hasil
-> menunjukkan: (a) trade-off privasi-utilitas memang ADA — penerapan DP
-> menurunkan utilitas → bagian ini terbukti; NAMUN (b) hubungan proporsional/
-> monotonik yang dihipotesiskan TIDAK terjadi — ketiga tingkat privasi
-> (ε=8,0; 4,0; 1,0) sama-sama collapse ke mAP=0 tanpa perbedaan gradual. Dengan
-> demikian H2 terbukti secara kualitatif (DP merusak utilitas) tetapi DITOLAK
-> dalam bentuk proporsional yang spesifik. Temuan ini mengungkap batas
-> fundamental DP-SGD pada fine-tuning detektor objek yang sudah konvergen.
+> menunjukkan: (a) penambahan noise DP memang menurunkan utilitas; NAMUN (b)
+> hubungan proporsional/monotonik yang dihipotesiskan TIDAK terjadi — ketiga
+> setelan σ (0,005; 0,010; 0,020) sama-sama collapse ke mAP=0 tanpa perbedaan
+> gradual. Penting dicatat (R1): ε terhitung untuk ketiga setelan ini ≫ 10³
+> (tanpa privasi bermakna), sehingga collapse terjadi *sebelum* rezim privasi
+> tercapai — ini melemahkan interpretasi "trade-off privasi-utilitas" dan lebih
+> menunjuk pada artefak konfigurasi pipeline. Dengan demikian H2 DITOLAK dalam
+> bentuk proporsional yang spesifik. **Pada konfigurasi pipeline yang diuji**,
+> hasil mengindikasikan ketidakcocokan DP-FedAvg dengan fine-tuning detektor
+> objek yang sudah konvergen; klaim apakah ini "batas mendasar" DP-SGD secara
+> umum **ditangguhkan sampai dibuktikan analisis ablation (R2)**.
 
 > CATATAN untuk diskusi dengan pembimbing: pilih satu label final — "terbukti
 > sebagian" (paling jujur) ATAU "ditolak" (jika pembimbing menilai inti H2
@@ -377,16 +406,24 @@ Baseline" + "4.4.2 Kegagalan Total Klasifikasi pada Skenario DP (semua kelas = 0
 
 ## 5.1 Kesimpulan (koreksi poin)
 1. HFL+FedAvg berhasil: mAP@0.5=0,9945 pada 5 ronde, data tidak meninggalkan node.
-2. **DP-FedAvg menyebabkan collapse**, bukan trade-off gradual — temuan utama
-   penelitian. Bahkan σ=0,005 menghancurkan model konvergen.
+2. **Pada konfigurasi pipeline yang diuji, DP-FedAvg menyebabkan collapse**,
+   bukan trade-off gradual. Bahkan σ=0,005 menghancurkan model konvergen —
+   namun pada σ tersebut ε terhitung ≫ 10³ (tanpa privasi bermakna), sehingga
+   collapse terjadi sebelum rezim privasi tercapai. Apakah ini "batas mendasar"
+   DP-SGD secara umum masih perlu dibuktikan via ablation (lihat Saran 5.3).
 3. XAI Grad-CAM++ tervalidasi pada baseline (AD=95,1%, FRR=0,962).
 
 ## 5.2 Keterbatasan (tambahkan)
-> Penerapan DP-SGD via Opacus pada YOLOv11 pretrained tidak berhasil
-> mempertahankan utilitas model. Hal ini kemungkinan disebabkan ketidakcocokan
-> BatchNorm dengan DP, sensitivitas loss deteksi, serta penerapan DP pada tahap
-> fine-tuning alih-alih from-scratch. Penelitian ini belum berhasil menemukan
-> konfigurasi DP yang mempertahankan akurasi.
+> Penerapan Differential Privacy via **DP-FedAvg level-klien** (clipping +
+> Gaussian noise pada delta bobot; *bukan* per-sample DP-SGD Opacus, yang tidak
+> dipakai karena inkompatibilitas BatchNorm YOLOv11) pada model YOLOv11 pretrained
+> tidak berhasil mempertahankan utilitas **pada konfigurasi yang diuji**. Hal ini
+> diduga disebabkan kombinasi: rasio noise/sinyal yang besar akibat clip-norm
+> C=10 (lihat diagnostik R2), interaksi BatchNorm dengan perturbasi, sensitivitas
+> loss deteksi, serta penerapan DP pada tahap fine-tuning alih-alih from-scratch.
+> Penelitian ini belum berhasil menemukan konfigurasi DP yang mempertahankan
+> akurasi; analisis ablation (Saran 5.3) diperlukan untuk mengisolasi penyebab
+> dan menguji generalisasi temuan.
 
 ## 5.3 Saran Penelitian Lanjutan (tambahkan)
 > - Mengganti BatchNorm dengan GroupNorm/LayerNorm sebelum DP-SGD.
@@ -468,6 +505,46 @@ zCDP analitik (Bun & Steinke, 2016), ρ = T/(2σ²) lalu
 - [ ] Tempel derivasi ke Bab 3 tesis + lampiran
 - [ ] Sitasi: Mironov (2017) RDP, Bun & Steinke (2016) zCDP, Abadi dkk. (2016)
       — lihat juga R9
+
+---
+
+# F+. R3 — Reframe Klaim DP (Pembimbing II)
+
+> Menjawab **R3**: "Ubah klaim dari 'batas mendasar' menjadi 'pada konfigurasi
+> ini' hingga ablation membuktikan generalisasinya." Reframe sudah diterapkan
+> menyeluruh; bagian ini meringkas perubahan untuk traceability penguji.
+
+## F+.3.1 Prinsip reframe
+
+Setiap klaim yang sebelumnya menyatakan collapse sebagai **"batas mendasar /
+fundamental DP-SGD"** diturunkan menjadi klaim **terbatas-konteks**:
+
+> "Pada konfigurasi pipeline yang diuji (YOLOv11 pretrained konvergen +
+> DP-FedAvg level-klien, clip C=10, fine-tuning), penambahan noise menyebabkan
+> collapse. Apakah ini berlaku umum sebagai batas mendasar DP-SGD ditangguhkan
+> sampai dibuktikan analisis ablation (R2)."
+
+Diperkuat temuan R1: karena ε ≫ 10³ pada semua setelan, collapse terjadi
+**sebelum** rezim privasi bermakna → indikasi artefak konfigurasi, bukan
+trade-off privasi-utilitas sejati.
+
+## F+.3.2 Lokasi yang sudah diubah
+
+| Bagian | Sebelum | Sesudah |
+|--------|---------|---------|
+| DATA REAL (ringkasan) | "Temuan inti: DP-SGD ... collapse total" | "+ pada konfigurasi ini + catatan ε≫10³ + artefak pipeline" |
+| Abstrak | "mengungkap batas fundamental penerapan DP-SGD" | "pada konfigurasi yang diuji ... menandai arah investigasi (ablation)" |
+| 4.3 Temuan Utama | "collapse katastrofik" + ε label manual | ε terkoreksi + "ketidakstabilan konfigurasi pipeline" + hipotesis (bukan kesimpulan) |
+| 4.7 H2 | "mengungkap batas fundamental DP-SGD" | "pada konfigurasi yang diuji ... klaim batas mendasar ditangguhkan sampai ablation" |
+| 5.1 / 5.2 | "DP-SGD via Opacus ... tidak berhasil" | "DP-FedAvg level-klien (bukan Opacus) ... pada konfigurasi yang diuji ... perlu ablation" |
+
+## F+.3.3 Tindak lanjut R3
+
+- [x] Reframe semua klaim "batas mendasar/fundamental" → "pada konfigurasi ini"
+- [x] Bahasa penyebab diturunkan ke "hipotesis yang akan diuji" (bukan kesimpulan)
+- [x] Koreksi mischaracterization "DP-SGD via Opacus" → "DP-FedAvg level-klien"
+- [ ] Setelah ablation R2 selesai: bila collapse terbukti generalis, klaim boleh
+      dinaikkan kembali; bila tidak, pertahankan framing terbatas-konteks.
 
 ---
 
