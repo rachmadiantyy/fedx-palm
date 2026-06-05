@@ -373,6 +373,88 @@ Baseline" + "4.4.2 Kegagalan Total Klasifikasi pada Skenario DP (semua kelas = 0
 
 ---
 
+# F+. R4 — Audit Data Leakage & Strategi Re-Split (Pembimbing II)
+
+> Bagian ini menjawab catatan revisi **R4** dari Pembimbing II terkait kecurigaan
+> *data leakage* yang menjelaskan mAP@0.5 baseline 0.9945 yang tampak terlalu
+> tinggi. Penjelasan di bawah siap tempel sebagai Subbab 3.X (Validitas Data)
+> atau dimasukkan ke 5.2 Keterbatasan, sesuai arahan akhir Pembimbing.
+
+## F+.1 Temuan audit (output sel 4b notebook federated)
+
+Dataset `palm-fruit-ripeness-detection v2` (Roboflow) membagi train/valid/test
+**secara acak per-frame**. Karena sumbernya adalah **video tandan sawit**,
+satu tandan diwakili oleh banyak frame berurutan dengan nama
+`framesawit<id>-<frame_no>-_png.rf.<hash>.jpg`.
+
+Hasil audit (sel 4b sebelum perbaikan):
+
+| Pemeriksaan | Definisi | Hasil |
+|-------------|----------|------:|
+| **HARD leakage** | Citra original identik di antara split | **0** |
+| **SOFT leakage** | `bunch_id` sama muncul di lebih dari satu split | **100% tandan valid juga ada di train** |
+
+Implikasinya: model tidak benar-benar diuji pada tandan baru — frame berbeda
+dari tandan yang sama membuat valid/test menjadi *in-distribution* terhadap
+train. Angka mAP centralized baseline 0.9945 karenanya **optimis** dan tidak
+mengukur generalisasi sebenarnya.
+
+## F+.2 Strategi anti-leakage yang diterapkan
+
+Diimplementasikan sebagai **sel 3b** di notebook federated_simulation
+(berjalan tepat sebelum Dirichlet split). Pendekatan: **Stratified Group
+Split** dengan empat invariant:
+
+1. **Group key** = `bunch_id` (regex `frame[a-z]*\d+` dari nama file,
+   suffix Roboflow `.rf.<hash>` dibuang lebih dulu).
+2. **Stratifikasi** per **kelas dominan** tandan (mayoritas kelas dari
+   seluruh frame tandan tersebut). Tujuan: menjaga representasi kelas
+   minoritas (mis. *Empty Bunch*) di valid/test.
+3. **Rasio target** 80/10/10 (sama dengan rasio Roboflow asli, agar ukuran
+   train tetap memadai untuk DP-SGD yang sensitif noise).
+4. **Garansi disjoint**: satu `bunch_id` hanya muncul di **satu** split.
+
+Determinisme: `random.Random(seed=42)` — reproducible.
+
+Verifikasi (sel 4b setelah perbaikan) memeriksa **tiga pasangan** split
+(train↔valid, train↔test, valid↔test) untuk HARD dan SOFT leakage, dan
+harus mencetak `>>> BERSIH` sebelum training dilanjutkan.
+
+## F+.3 Pernyataan validitas untuk tesis (siap tempel)
+
+> "Untuk menjamin validitas evaluasi, dataset di-split ulang berbasis
+> identitas tandan sawit (`bunch_id`). Strategi yang digunakan adalah
+> *stratified group split* dengan rasio 80/10/10, di mana setiap tandan
+> hanya muncul di satu split (train, valid, atau test). Stratifikasi
+> dilakukan terhadap kelas dominan setiap tandan agar kelas minoritas tetap
+> terwakili. Audit pasca-split mengonfirmasi tidak adanya tumpang tindih
+> citra maupun tandan antar-split."
+
+## F+.4 Dampak terhadap angka yang dilaporkan
+
+- Angka mAP/Precision/Recall di **DATA REAL** (Tabel atas dokumen ini)
+  berasal dari split Roboflow asli yang masih leaky. Setelah training
+  ulang di atas split baru, **angka diperkirakan turun** (besaran pasti
+  baru diketahui setelah training selesai).
+- **Tren privacy-utility** (Tabel 4.5 — perbandingan ε) tetap valid karena
+  bias data konstan di seluruh skenario; relativitas degradasi DP terhadap
+  baseline tidak berubah.
+- Kesimpulan utama tesis ("DP-SGD pada YOLOv11 pretrained menyebabkan
+  collapse") tidak terpengaruh re-split.
+
+## F+.5 Tindak lanjut
+
+- [x] Audit leakage pada split asli (sel 4b)
+- [x] Implementasi re-split per `bunch_id` (sel 3b)
+- [x] Verifikasi 0 leakage di split baru (sel 4b versi update)
+- [ ] Re-training centralized baseline di atas split baru — laporkan mAP baru
+- [ ] Re-simulasi federated (4 skenario ε) di atas split baru
+- [ ] Update tabel **DATA REAL**, Tabel 4.3, 4.5, 4.9 dengan angka pasca-resplit
+- [ ] Bandingkan delta mAP baseline (lama vs baru) sebagai validasi besarnya
+      bias akibat leakage
+
+---
+
 # G. DEPLOYMENT & DEMO VPS (bagian baru)
 
 > Bagian ini mendokumentasikan arsitektur ter-Dockerisasi dan deployment model
