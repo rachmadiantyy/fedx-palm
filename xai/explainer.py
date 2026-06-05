@@ -144,23 +144,32 @@ class GradCAMPlusPlus:
         pytorch_model = self._get_pytorch_model()
         pytorch_model.eval()
 
-        # Preprocess image
-        input_tensor = self._preprocess_image(image)
-        input_tensor.requires_grad_(True)
+        # Pastikan parameter model bisa di-backward. YOLO.predict() berjalan di
+        # bawah inference_mode sehingga tensor bisa ter-"taint"; aktifkan grad
+        # kembali dan pastikan parameter tidak beku.
+        for p in pytorch_model.parameters():
+            p.requires_grad_(True)
 
-        # Forward pass
-        pytorch_model.zero_grad()
-        output = pytorch_model(input_tensor)
+        # Seluruh forward + backward Grad-CAM++ harus di konteks enable_grad,
+        # kalau tidak akan muncul "Inference tensors cannot be saved for backward".
+        with torch.enable_grad():
+            # Preprocess image (clone agar jadi leaf tensor normal, bukan inference tensor)
+            input_tensor = self._preprocess_image(image).clone()
+            input_tensor.requires_grad_(True)
 
-        # Get target score for backpropagation
-        target_score = self._get_target_score(output, target_class, target_box_idx)
+            # Forward pass
+            pytorch_model.zero_grad()
+            output = pytorch_model(input_tensor)
 
-        if target_score is None:
-            logger.warning("Could not compute target score for Grad-CAM++")
-            return Explanation(method="grad-cam++", image=image)
+            # Get target score for backpropagation
+            target_score = self._get_target_score(output, target_class, target_box_idx)
 
-        # Backward pass
-        target_score.backward(retain_graph=True)
+            if target_score is None:
+                logger.warning("Could not compute target score for Grad-CAM++")
+                return Explanation(method="grad-cam++", image=image)
+
+            # Backward pass
+            target_score.backward(retain_graph=True)
 
         if self.gradients is None or self.activations is None:
             logger.warning("Gradients or activations not captured")

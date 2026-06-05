@@ -37,6 +37,7 @@ THESIS_METRICS = {
 
 app = Flask(__name__)
 _model = None
+_cam_model = None
 
 
 def get_model():
@@ -50,6 +51,20 @@ def get_model():
         logger.info(f"Loading model from {MODEL_PATH}")
         _model = YOLO(MODEL_PATH)
     return _model
+
+
+def get_cam_model():
+    """Instance YOLO terpisah khusus Grad-CAM++.
+
+    Model untuk predict() berjalan di bawah inference_mode sehingga tensornya
+    ter-"taint" dan tidak bisa di-backward. Grad-CAM butuh model yang belum
+    pernah lewat predict(), jadi dipakai instance sendiri.
+    """
+    global _cam_model
+    if _cam_model is None:
+        logger.info(f"Loading separate CAM model from {MODEL_PATH}")
+        _cam_model = YOLO(MODEL_PATH)
+    return _cam_model
 
 
 def encode_png(image_bgr):
@@ -186,7 +201,7 @@ def predict():
     # Grad-CAM++ pada kelas dengan confidence tertinggi.
     img_cam = None
     if top_class is not None:
-        cam = GradCAMPlusPlus(model)
+        cam = GradCAMPlusPlus(get_cam_model())
         try:
             exp = cam.generate(image, target_class=top_class)
             if exp.overlay is not None:
