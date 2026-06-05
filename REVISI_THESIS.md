@@ -39,24 +39,48 @@ Ganti `[?]` dengan sitasi yang ada di daftar pustaka / tambahkan baru:
 
 # C. BAB 3 — Penyelarasan dengan eksperimen real
 
-## Tabel 3.4 — Skenario Variasi Privacy Budget (GANTI σ)
+## Tabel 3.4 — Skenario Variasi Privacy Budget (KOREKSI ε — R1)
 
-σ lama (0.8/1.5/3.2) menyebabkan crash NaN langsung, sehingga eksperimen
-menggunakan σ jauh lebih kecil. Update tabel:
+> **PENTING (R1).** ε pada tabel lama (8.0 / 4.0 / 1.0) **ditetapkan manual** dan
+> **salah ~5 ordo besaran**. ε **wajib** dihitung dari privacy accountant (RDP),
+> bukan dilabel. ε dihitung dari (σ, q, T, δ) — lihat derivasi di Subbab R1 dan
+> sel "6b. Derivasi ε" di notebook. **ε yang benar (di bawah) justru sangat
+> besar**, artinya σ sekecil itu hampir **tidak memberi privasi** sama sekali.
 
-| Skenario | ε | δ | σ (aktual) | Tingkat Privasi |
-|----------|-----|----------|-----|-----------------|
-| Baseline | ∞ | N/A | 0.000 | No Privacy |
-| Weak Privacy | 8.0 | 1e-5 | 0.005 | Lemah |
-| Moderate Privacy | 4.0 | 1e-5 | 0.010 | Sedang |
-| Strong Privacy | 1.0 | 1e-5 | 0.020 | Kuat |
+Parameter: q (client sampling rate) = 1.0 (partisipasi penuh 4 klien/ronde),
+T = 5 ronde, δ = 1e-5.
 
-Tambahkan catatan kaki:
-> "Nilai σ pada penelitian ini diturunkan secara signifikan dari rekomendasi
-> standar DP-SGD karena pada model YOLOv11 yang telah dipretrained dan
-> konvergen, noise multiplier σ ≥ 0.1 menyebabkan ketidakstabilan numerik
-> (NaN). Nilai σ kecil (0.005–0.020) dipilih untuk menguji batas bawah
-> sensitivitas model terhadap perturbasi DP."
+| Skenario | σ (aktual) | ε **LAMA (salah)** | ε **TERKOREKSI (RDP)** | Tingkat Privasi sebenarnya |
+|----------|:----------:|:------------------:|:----------------------:|----------------------------|
+| Baseline | 0.000 | ∞ | ∞ | No Privacy |
+| Weak     | 0.005 | 8.0 | **≈ 1.0 × 10⁵** | Tanpa privasi efektif |
+| Moderate | 0.010 | 4.0 | **≈ 2.6 × 10⁴** | Tanpa privasi efektif |
+| Strong   | 0.020 | 1.0 | **≈ 6.8 × 10³** | Tanpa privasi efektif |
+
+Ganti catatan kaki lama dengan yang jujur:
+> "Nilai ε pada penelitian ini dihitung menggunakan *Rényi Differential Privacy
+> accountant* (Mironov, 2017) atas mekanisme Gaussian DP-FedAvg level-klien yang
+> dikomposisikan sepanjang T = 5 ronde dengan partisipasi penuh (q = 1) dan
+> δ = 1e-5. Hasil perhitungan menunjukkan bahwa nilai σ yang digunakan
+> (0.005–0.020) menghasilkan ε ≫ 10³, sehingga **tidak berada pada rezim privasi
+> yang bermakna**. Penurunan σ dilakukan karena σ pada rentang standar DP-SGD
+> (σ ≈ 1–3, yang memberi ε ≈ 1–8) menyebabkan ketidakstabilan numerik (NaN) pada
+> YOLOv11 pretrained. Implikasinya dibahas pada analisis collapse (Subbab 4.3)."
+
+### σ yang dibutuhkan untuk privasi bermakna (RDP, T=5, δ=1e-5)
+
+Untuk konteks penguji — inilah σ yang *seharusnya* dipakai bila ingin ε bermakna:
+
+| Target ε | σ yang dibutuhkan |
+|:--------:|:-----------------:|
+| 8.0 (lemah) | ≈ 1.54 |
+| 4.0 (sedang) | ≈ 2.90 |
+| 1.0 (kuat) | ≈ 10.96 |
+
+Justru pada σ ≈ 1.5–11 inilah model collapse (NaN), sehingga eksperimen tidak
+pernah mencapai titik privasi-bermakna. **Temuan ini memperkuat R3**: collapse
+terjadi *sebelum* rezim privasi tercapai, mengindikasikan masalah pipeline,
+bukan trade-off privasi-utilitas sejati.
 
 ## Tabel 3.5 — Konfigurasi Hyperparameter (KOREKSI)
 
@@ -370,6 +394,78 @@ Baseline" + "4.4.2 Kegagalan Total Klasifikasi pada Skenario DP (semua kelas = 0
 > - Eksplorasi DP-FedAvg level server (central DP) alih-alih per-client DP-SGD,
 >   atau Secure Aggregation/Homomorphic Encryption sebagai alternatif proteksi.
 > - Schedule noise bertahap (warm-up) dan clipping norm adaptif.
+
+---
+
+# F+. R1 — Derivasi Privacy Budget ε dari Accountant (Pembimbing II)
+
+> Menjawab **R1** (isu terbesar): "Nilai ε pada DP-SGD tidak boleh ditetapkan
+> secara tabel; ia harus diturunkan dari privacy accountant (RDP/PRV)
+> berdasarkan σ, sampling rate (q), jumlah langkah (T), dan δ." Siap tempel
+> sebagai Subbab 3.X (Analisis Privacy Budget) atau lampiran derivasi.
+
+## F+.1 Mekanisme & asumsi
+
+Implementasi adalah **DP-FedAvg level-klien** (McMahan dkk., 2018), *bukan*
+per-sample DP-SGD: tiap ronde, delta bobot klien (w_local − w_global) di-clip ke
+L2-norm C lalu ditambah noise Gaussian N(0, (σ·C)²) sebelum agregasi. Maka:
+
+- **Noise multiplier** z = σ (karena noise_std / sensitivity = (σ·C)/C = σ).
+- **Sampling rate** q = 1.0 — keempat klien berpartisipasi penuh tiap ronde
+  (tidak ada amplifikasi privasi via subsampling; dengan hanya 4 klien,
+  amplifikasi memang minimal).
+- **Komposisi** T = 5 ronde komunikasi.
+- **δ** = 1e-5.
+
+## F+.2 Derivasi (RDP — Mironov, 2017)
+
+Untuk mekanisme Gaussian non-subsampled, *Rényi DP* pada order α:
+
+```
+ε_RDP(α) = T · α / (2 σ²)
+```
+
+Konversi ke (ε, δ)-DP, diminimalkan atas α > 1:
+
+```
+ε = min_{α>1} [ T·α/(2σ²) + ln(1/δ)/(α − 1) ]
+```
+
+Perhitungan ini deterministik dan diverifikasi di sel "6b. Derivasi ε"
+notebook (numpy murni; bila Opacus tersedia, di-cross-check dengan
+`RDPAccountant`). Hasil zCDP analitik (Bun & Steinke, 2016),
+ρ = T/(2σ²) lalu ε = ρ + 2√(ρ·ln(1/δ)), konsisten ±2%.
+
+## F+.3 Hasil (T=5, q=1, δ=1e-5)
+
+| σ | ε (RDP) | Interpretasi |
+|:-----:|:-----------:|--------------|
+| 0.005 | ≈ 1.0 × 10⁵ | tanpa privasi efektif |
+| 0.010 | ≈ 2.6 × 10⁴ | tanpa privasi efektif |
+| 0.020 | ≈ 6.8 × 10³ | tanpa privasi efektif |
+| 1.544 | ≈ 8.0 | privasi lemah (rezim bermakna) |
+| 2.898 | ≈ 4.0 | privasi sedang |
+| 10.96 | ≈ 1.0 | privasi kuat |
+
+## F+.4 Koreksi pemetaan & temuan
+
+- Pemetaan lama (σ=0.005 → ε=8.0) **keliru ~5 ordo besaran** (ε sebenarnya
+  ≈ 10⁵). Tabel 3.4 sudah dikoreksi di atas.
+- Semua σ yang diuji (0.005–0.020, bahkan sweep halus 0.0001–0.003) memberi
+  **ε ≫ 10³ → tidak ada privasi bermakna**.
+- Privasi bermakna (ε ≈ 1–8) menuntut σ ≈ 1.5–11; pada rentang itu model
+  collapse (NaN). **Konsekuensi:** eksperimen tidak pernah mencapai rezim
+  privasi-bermakna → menguatkan reframe R3 (collapse = artefak pipeline,
+  bukan trade-off privasi sejati).
+
+## F+.5 Tindak lanjut R1
+
+- [x] Accountant RDP eksplisit (σ,q,T,δ → ε) di notebook sel 6b
+- [x] Tabel derivasi & σ-untuk-target-ε
+- [x] Koreksi Tabel 3.4 (ε terkoreksi)
+- [ ] Tempel derivasi ke Bab 3 tesis + lampiran
+- [ ] Sitasi: Mironov (2017) RDP, Bun & Steinke (2016) zCDP, Abadi dkk. (2016)
+      — lihat juga R9
 
 ---
 
