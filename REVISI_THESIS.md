@@ -431,10 +431,12 @@ Konversi ke (ε, δ)-DP, diminimalkan atas α > 1:
 ε = min_{α>1} [ T·α/(2σ²) + ln(1/δ)/(α − 1) ]
 ```
 
-Perhitungan ini deterministik dan diverifikasi di sel "6b. Derivasi ε"
-notebook (numpy murni; bila Opacus tersedia, di-cross-check dengan
-`RDPAccountant`). Hasil zCDP analitik (Bun & Steinke, 2016),
-ρ = T/(2σ²) lalu ε = ρ + 2√(ρ·ln(1/δ)), konsisten ±2%.
+Perhitungan ini deterministik dan diimplementasikan **mandiri** (numpy) di
+sel "6b. Derivasi ε" notebook — **independen dari trainer Opacus**, yang
+memang tidak digunakan karena `ModuleValidator`-nya tidak kompatibel dengan
+BatchNorm YOLOv11 (lihat juga R2). Sebagai validasi kedua, dihitung pula
+zCDP analitik (Bun & Steinke, 2016), ρ = T/(2σ²) lalu
+ε = ρ + 2√(ρ·ln(1/δ)) — konsisten dengan RDP ±0,1%.
 
 ## F+.3 Hasil (T=5, q=1, δ=1e-5)
 
