@@ -508,6 +508,48 @@ zCDP analitik (Bun & Steinke, 2016), ρ = T/(2σ²) lalu
 
 ---
 
+# F+. R2 — Ablation Diagnosa Akar Collapse (Pembimbing II)
+
+> Menjawab **R2**: "Jalankan clipping-only, noise-only, variasi C, LR lebih
+> kecil, frozen backbone, BatchNorm→GroupNorm, dan ≥3 seed; konfirmasi apakah
+> collapse adalah bug pipeline (Opacus×BatchNorm/NaN) atau fenomena nyata."
+> Harness siap di notebook **sel 7b** (`run_ablation_unit` + grid + verdict).
+
+## F+.2.1 Desain
+
+Unit ablation = **1 update lokal (1 klien) + DP pada delta + eval** — unit
+terkecil tempat collapse muncul, sehingga murah dan decisive. Tiap konfigurasi
+diulang **3 seed** (R2). Grid menutup keenam permintaan Pembimbing II:
+
+| Kode | Variabel diuji | Hipotesis yang diuji |
+|------|----------------|----------------------|
+| A1, A2 | clipping-only (σ=0; C=10, C=1) | apakah clipping sendiri merusak? |
+| A3–A6 | noise + variasi C (noise/elem = σ·C) | apakah magnitudo noise penyebabnya? |
+| B1, B2 | LR lebih kecil (1e-3, 1e-4) | apakah delta besar penyebabnya? |
+| B3 | frozen backbone | apakah melindungi fitur pretrained menolong? |
+| C1, C1b | BatchNorm→GroupNorm (+DP / baseline) | apakah BatchNorm penyebabnya? |
+| (semua) | ≥3 seed | apakah hasil stabil / bukan kebetulan? |
+
+## F+.2.2 Status
+
+- [x] Harness ablation + verdict otomatis (notebook sel 7b)
+- [x] Diagnostik noise/sinyal & deteksi NaN per-konfigurasi
+- [ ] **Jalankan di Colab GPU** → isi `ablation_results.csv`
+- [ ] Tempel ringkasan + verdict ke Bab 4.3 (analisis penyebab)
+
+## F+.2.3 Template verdict (isi setelah Colab selesai)
+
+> Hasil ablation menunjukkan: clipping-only menghasilkan mAP = **[ISI]**
+> (≈ baseline → clipping **[bukan/ikut]** penyebab); penurunan clip-norm C dari
+> 10 ke 0,1 **[memulihkan/tidak memulihkan]** mAP (**[ISI]** → **[ISI]**),
+> mengindikasikan collapse **[didorong magnitudo noise pipeline / fenomena
+> lebih dalam]**; penggantian BatchNorm→GroupNorm **[memulihkan/tidak]**;
+> NaN **[terdeteksi/tidak]**. Kesimpulan: collapse pada konfigurasi ini paling
+> konsisten dijelaskan oleh **[artefak konfigurasi DP / batas DP yang lebih
+> mendasar]** (lihat reframe R3).
+
+---
+
 # F+. R3 — Reframe Klaim DP (Pembimbing II)
 
 > Menjawab **R3**: "Ubah klaim dari 'batas mendasar' menjadi 'pada konfigurasi
