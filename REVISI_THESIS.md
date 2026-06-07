@@ -86,9 +86,85 @@ Template kalimat kontribusi (paste-ready):
 
 ## A1.4 Tindak lanjut Bab 1
 
-- [ ] Paste teks Bab 1 (rumusan masalah, tujuan, batasan, kontribusi) ke chat
-      agar aku ubah jadi versi siap-tempel.
+- [x] Teks Bab 1 (LaTeX) diterima & direvisi (lihat A1.5 edit konkret)
+- [ ] Tempel hasil revisi ke file tesis
 - [ ] Selaraskan dengan Abstrak & Kesimpulan setelah angka simulasi final.
+
+## A1.5 Edit konkret Bab 1 (sudah disiapkan, paste-ready di chat)
+
+| Lokasi | Revisi | Aksi |
+|--------|--------|------|
+| Latar Belakang ¶1 | R10 | typo `disinilah`→`di sinilah`, rapikan tanda baca |
+| Latar Belakang ¶3 | R5 | Docker = "blueprint deployment portabel" |
+| Latar Belakang ¶4 | R3 | "menelusuri titik optimal DP" → "menyelidiki dampak DP" |
+| Rumusan Masalah #2 | R1 | "level gradien" → "pembaruan model (delta) level-klien" |
+| Tujuan #2 | R3,R1 | "mengukur efektivitas" → "menyelidiki & mengukur dampak" |
+| Batasan #3 | R5 | pertegas "simulasi federated ekuivalen", Docker=blueprint |
+| Batasan #4 | R1 | DP-FedAvg level-klien (McMahan 2018), bukan Opacus DP-SGD |
+| Batasan (baru) | R6 | per-kelas pakai centralized benchmark sbg proksi |
+| Metode Stack #2 | R5,R2,R10 | **Flower/Opacus = blueprint deployment; eksperimen = loop FedAvg kustom + DP manual**; versi software diperbaiki (PyTorch 2.11, bukan 2.1) |
+| Metode Dataset #3 | R10 | typo `unthk`→`untuk` |
+| Metode Studi Lit #1 | R10 | `empat penelitian`→`empat bidang` |
+| Metode DP #5 | R1 | ε **dihitung** dari σ via RDP accountant, bukan dikalibrasi manual |
+| Metode XAI #7 | R7 | jangan kunci definisi Average Drop di Bab 1 (tunda ke Bab 2/3) |
+| Hipotesis H2 | R3 | boleh tetap (hipotesis a-priori, ditolak di Bab 4) |
+
+> Catatan kejujuran (R5): Flower & Opacus ADA di kodebase deployment (`server/`,
+> `client/`, requirements.txt) tetapi notebook eksperimen simulasi TIDAK
+> memakainya (loop FedAvg kustom + DP level-klien manual). Bab 1 harus
+> memisahkan keduanya secara eksplisit.
+
+---
+
+# A2. REVISI DOSEN PENGUJI (E1–E5)
+
+> Sumber kedua revisi (selain Pembimbing II / Prof Teddy). Beberapa beririsan
+> dengan R1–R10.
+
+| # | Revisi Penguji | Bab terdampak | Irisan | Status |
+|---|----------------|---------------|--------|--------|
+| **E1** | Dasar teori mendalam kelapa sawit + literatur terkait | Bab 2 | — | ⬜ butuh draft |
+| **E2** | Privacy budget: jelaskan model komposisi (advanced vs linear) | Bab 3 / R1 | **R1** | 🟡 sebagian (lihat E2 di bawah) |
+| **E3** | Judul ditambah lebih detail | Cover / judul | R5 | 🟡 opsi disiapkan |
+| **E4** | Tambah penelitian sebelumnya (related work) | Bab 2 | — | ⬜ butuh draft |
+| **E5** | Rumusan masalah lebih clear: sebut masalah existing → perlu FL+XAI | Bab 1 | R3,R5 | ✅ draft siap |
+
+## E2 — Model komposisi privacy budget (advanced vs linear)
+
+Jawaban: penelitian ini memakai **komposisi LANJUT (advanced) berbasis RDP**
+(Rényi DP, Mironov 2017), bukan komposisi linear/basic. Untuk Bab 3 (paste-ready):
+
+> "Akumulasi \emph{privacy budget} sepanjang T ronde dihitung memakai komposisi
+> lanjut berbasis \emph{Rényi Differential Privacy} (RDP; Mironov, 2017),
+> bukan komposisi linear/dasar. Pada komposisi **linear (dasar)**, total ε
+> tumbuh proporsional terhadap jumlah komposisi (T·ε per mekanisme) sehingga
+> sangat longgar. Komposisi **lanjut (\emph{advanced composition}; Dwork dkk.,
+> 2010)** memperketat pertumbuhan menjadi orde √T. RDP/zCDP (Bun & Steinke,
+> 2016) memberi batas yang lebih ketat lagi untuk mekanisme Gaussian dengan
+> melacak divergensi Rényi pada setiap order α lalu mengonversinya ke (ε, δ)
+> di akhir. Penelitian ini melaporkan ε hasil komposisi RDP (lihat Tabel 3.4
+> dan derivasi Subbab F+. R1)."
+
+## E3 — Opsi judul lebih detail
+
+Judul lama: *"FedX-Palm: A Federated Explainable Framework for Privacy-Preserving
+Palm Fruit Ripeness"* (kurang: metode deteksi, "detection", jumlah kelas).
+
+Opsi (pilih/gabung):
+- **A (lengkap):** "FedX-Palm: A Privacy-Preserving and Explainable Horizontal
+  Federated Learning Framework for Six-Class Oil Palm Fresh Fruit Bunch Ripeness
+  Detection using YOLOv11 and Differential Privacy"
+- **B (dengan framing R5):** "FedX-Palm: An Explainable Federated Learning
+  Framework with Differential Privacy for Oil Palm Ripeness Detection
+  (YOLOv11) — A Simulated FL Study with a Dockerized Deployment Blueprint"
+- **C (ringkas-menengah):** "FedX-Palm: Privacy-Preserving and Explainable
+  Federated YOLOv11 for Oil Palm Fresh Fruit Bunch Ripeness Detection"
+
+> Catatan: R10 (Prof) juga minta perbaiki **judul Bab 3** "THE PROPOSED CODES"
+> (kurang tepat) → mis. "PERANCANGAN DAN IMPLEMENTASI SISTEM" / "THE PROPOSED
+> METHOD".
+
+## E5 — Rumusan masalah (existing problem → perlu FL+XAI): lihat draft di chat
 
 ---
 
