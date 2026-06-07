@@ -36,6 +36,62 @@ maupun "batas mendasar" DP-SGD. Klaim batas-mendasar ditangguhkan sampai ablatio
    ganti "is intended to be submitted to..." atau hapus.
 4. **Achievements (hal xv)**: "AAAAA" → isi publikasi nyata atau hapus halaman.
 
+---
+
+# A1. BAB 1 — Penyelarasan Klaim dengan Revisi (R3, R5, R6)
+
+> Prof Teddy tidak menyebut "Bab 1" eksplisit, tetapi 3 revisi **membingkai
+> ulang klaim** yang biasanya dinyatakan di Pendahuluan. Sesuaikan sub-bab
+> berikut agar konsisten dengan Abstrak & Kesimpulan (R5) dan tidak overclaim.
+
+## A1.1 Batasan Masalah / Ruang Lingkup (paling penting — R5 & R6)
+
+Tambahkan/perjelas batasan berikut (paste-ready, sesuaikan nomor):
+
+> - Federated Learning pada penelitian ini dijalankan sebagai **simulasi
+>   ekuivalen** (single-machine/Google Colab) yang setara secara metodologis
+>   dengan FL terdistribusi; **kontainerisasi Docker berperan sebagai blueprint
+>   deployment dan inferensi**, bukan sebagai eksekusi pelatihan multi-container
+>   terdistribusi nyata. (R5)
+> - Analisis performa **per-kelas** menggunakan model **centralized benchmark**
+>   sebagai proksi, karena logging federated hanya menyimpan metrik agregat
+>   global. (R6)
+> - Pemisahan dataset dilakukan **berbasis identitas tandan (bunch_id)** untuk
+>   mencegah kebocoran antar-split. (R4)
+
+## A1.2 Tujuan & Kontribusi (R3 & R5)
+
+- Bingkai kontribusi DP secara **jujur sebagai temuan**, bukan klaim trade-off
+  privasi-utilitas yang mulus. Hindari frasa "mencapai keseimbangan
+  privasi-utilitas"; ganti dengan investigasi & temuan.
+- Judul/kontribusi sistem: gunakan framing **"simulated equivalent federated
+  learning with a Dockerized deployment blueprint"** secara konsisten. (R5)
+
+Template kalimat kontribusi (paste-ready):
+
+> "Kontribusi penelitian ini mencakup: (i) baseline HFL yang setara centralized
+> untuk deteksi enam kelas kematangan sawit; (ii) validasi XAI kuantitatif
+> (Grad-CAM++ dengan Average Drop & Focus Retention Rate); dan (iii) **temuan
+> empiris** bahwa penerapan Differential Privacy (DP-FedAvg level-klien) pada
+> detektor objek pretrained yang sudah konvergen **menyebabkan collapse pada
+> konfigurasi yang diuji**, disertai analisis penyebabnya — sebuah hasil negatif
+> yang dilaporkan secara transparan."
+
+## A1.3 Rumusan Masalah & Hipotesis (R3)
+
+- Jika hipotesis (H1–H3) dinyatakan di Bab 1, selaraskan **H2** dengan reframe
+  R3: bukan "DP menurunkan akurasi secara proporsional", melainkan "menyelidiki
+  dampak DP terhadap utilitas" (hasil: collapse, bukan degradasi gradual — pada
+  konfigurasi ini).
+
+## A1.4 Tindak lanjut Bab 1
+
+- [ ] Paste teks Bab 1 (rumusan masalah, tujuan, batasan, kontribusi) ke chat
+      agar aku ubah jadi versi siap-tempel.
+- [ ] Selaraskan dengan Abstrak & Kesimpulan setelah angka simulasi final.
+
+---
+
 # B. BAB 2 — broken references [?]
 
 Ganti `[?]` dengan sitasi yang ada di daftar pustaka / tambahkan baru:
