@@ -1,0 +1,313 @@
+% =============================================================================
+% Daftar pustaka tambahan untuk FedX-Palm — disusun untuk menjawab:
+%   - Prof Teddy R9 (referensi inti DP-SGD: Abadi, Mironov, dst.)
+%   - Penguji E1 (literatur kelapa sawit lebih dalam)
+%   - Penguji E4 (penelitian sebelumnya / related work)
+%
+% CARA PAKAI: copy entri yang dipakai ke file .bib utama; key sitasi sudah
+% diselaraskan dengan yang dipakai di teks Bab 1 revisi.
+%
+% CATATAN VERIFIKASI: entri DP/FL/XAI/Docker di bawah sudah well-known dan
+% verified. Untuk entri PALM OIL (kategori 5), saya cantumkan paper yg
+% confidence tinggi; SARAN: verifikasi setiap entri palm oil di Google
+% Scholar sebelum di-cite (cek nomor halaman/volume yg pasti benar).
+% =============================================================================
+
+% -----------------------------------------------------------------------------
+% 1. DIFFERENTIAL PRIVACY — fondasi (R9 wajib)
+% -----------------------------------------------------------------------------
+@inproceedings{abadi2016deep,
+  title     = {Deep Learning with Differential Privacy},
+  author    = {Abadi, Martin and Chu, Andy and Goodfellow, Ian and McMahan, H. Brendan and Mironov, Ilya and Talwar, Kunal and Zhang, Li},
+  booktitle = {Proceedings of the 2016 ACM SIGSAC Conference on Computer and Communications Security (CCS)},
+  pages     = {308--318},
+  year      = {2016},
+  publisher = {ACM},
+  doi       = {10.1145/2976749.2978318}
+}
+
+@inproceedings{mironov2017renyi,
+  title     = {{R\'enyi} Differential Privacy},
+  author    = {Mironov, Ilya},
+  booktitle = {2017 IEEE 30th Computer Security Foundations Symposium (CSF)},
+  pages     = {263--275},
+  year      = {2017},
+  publisher = {IEEE},
+  doi       = {10.1109/CSF.2017.11}
+}
+
+@inproceedings{bun2016concentrated,
+  title     = {Concentrated Differential Privacy: Simplifications, Extensions, and Lower Bounds},
+  author    = {Bun, Mark and Steinke, Thomas},
+  booktitle = {Theory of Cryptography Conference (TCC)},
+  pages     = {635--658},
+  year      = {2016},
+  publisher = {Springer},
+  doi       = {10.1007/978-3-662-53641-4_24}
+}
+
+@inproceedings{dwork2010boosting,
+  title     = {Boosting and Differential Privacy},
+  author    = {Dwork, Cynthia and Rothblum, Guy N. and Vadhan, Salil},
+  booktitle = {2010 IEEE 51st Annual Symposium on Foundations of Computer Science (FOCS)},
+  pages     = {51--60},
+  year      = {2010},
+  publisher = {IEEE},
+  doi       = {10.1109/FOCS.2010.12}
+}
+
+% -----------------------------------------------------------------------------
+% 2. FEDERATED LEARNING — fondasi & survei
+% -----------------------------------------------------------------------------
+@inproceedings{mcmahan2017communication,
+  title     = {Communication-Efficient Learning of Deep Networks from Decentralized Data},
+  author    = {McMahan, Brendan and Moore, Eider and Ramage, Daniel and Hampson, Seth and y Arcas, Blaise Aguera},
+  booktitle = {Proceedings of the 20th International Conference on Artificial Intelligence and Statistics (AISTATS)},
+  pages     = {1273--1282},
+  year      = {2017},
+  publisher = {PMLR}
+}
+
+@inproceedings{mcmahan2018learning,
+  title     = {Learning Differentially Private Recurrent Language Models},
+  author    = {McMahan, H. Brendan and Ramage, Daniel and Talwar, Kunal and Zhang, Li},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2018}
+}
+
+@article{kairouz2021advances,
+  title     = {Advances and Open Problems in Federated Learning},
+  author    = {Kairouz, Peter and McMahan, H. Brendan and Avent, Brendan and Bellet, Aur\'elien and Bennis, Mehdi and others},
+  journal   = {Foundations and Trends in Machine Learning},
+  volume    = {14},
+  number    = {1--2},
+  pages     = {1--210},
+  year      = {2021},
+  publisher = {Now Publishers},
+  doi       = {10.1561/2200000083}
+}
+
+@article{yang2019federated,
+  title     = {Federated Machine Learning: Concept and Applications},
+  author    = {Yang, Qiang and Liu, Yang and Chen, Tianjian and Tong, Yongxin},
+  journal   = {ACM Transactions on Intelligent Systems and Technology (TIST)},
+  volume    = {10},
+  number    = {2},
+  pages     = {1--19},
+  year      = {2019},
+  doi       = {10.1145/3298981}
+}
+
+@article{li2020federated,
+  title     = {Federated Learning: Challenges, Methods, and Future Directions},
+  author    = {Li, Tian and Sahu, Anit Kumar and Talwalkar, Ameet and Smith, Virginia},
+  journal   = {IEEE Signal Processing Magazine},
+  volume    = {37},
+  number    = {3},
+  pages     = {50--60},
+  year      = {2020},
+  doi       = {10.1109/MSP.2020.2975749}
+}
+
+@article{hsu2019measuring,
+  title   = {Measuring the Effects of Non-Identical Data Distribution for Federated Visual Classification},
+  author  = {Hsu, Tzu-Ming Harry and Qi, Hang and Brown, Matthew},
+  journal = {arXiv preprint arXiv:1909.06335},
+  year    = {2019}
+}
+
+% -----------------------------------------------------------------------------
+% 3. FL + DP / DP UNTUK DETEKSI OBJEK (R9 — Prof minta lengkapi)
+% -----------------------------------------------------------------------------
+@article{wei2020federated,
+  title   = {Federated Learning with Differential Privacy: Algorithms and Performance Analysis},
+  author  = {Wei, Kang and Li, Jun and Ding, Ming and Ma, Chuan and Yang, Howard H. and Farokhi, Farhad and Jin, Shi and Quek, Tony Q. S. and Poor, H. Vincent},
+  journal = {IEEE Transactions on Information Forensics and Security},
+  volume  = {15},
+  pages   = {3454--3469},
+  year    = {2020},
+  doi     = {10.1109/TIFS.2020.2988575}
+}
+
+@inproceedings{truex2020ldp,
+  title     = {{LDP-Fed}: Federated Learning with Local Differential Privacy},
+  author    = {Truex, Stacey and Liu, Ling and Chow, Ka-Ho and Gursoy, Mehmet Emre and Wei, Wenqi},
+  booktitle = {Proceedings of the 3rd ACM International Workshop on Edge Systems, Analytics and Networking (EdgeSys)},
+  pages     = {61--66},
+  year      = {2020},
+  doi       = {10.1145/3378679.3394533}
+}
+
+% -----------------------------------------------------------------------------
+% 4. SERANGAN INFERENSI (memperkuat motivasi Bab 1 — DP utk apa)
+% -----------------------------------------------------------------------------
+@inproceedings{shokri2017membership,
+  title     = {Membership Inference Attacks Against Machine Learning Models},
+  author    = {Shokri, Reza and Stronati, Marco and Song, Congzheng and Shmatikov, Vitaly},
+  booktitle = {2017 IEEE Symposium on Security and Privacy (SP)},
+  pages     = {3--18},
+  year      = {2017},
+  publisher = {IEEE},
+  doi       = {10.1109/SP.2017.41}
+}
+
+@inproceedings{fredrikson2015model,
+  title     = {Model Inversion Attacks that Exploit Confidence Information and Basic Countermeasures},
+  author    = {Fredrikson, Matt and Jha, Somesh and Ristenpart, Thomas},
+  booktitle = {Proceedings of the 22nd ACM SIGSAC Conference on Computer and Communications Security (CCS)},
+  pages     = {1322--1333},
+  year      = {2015},
+  doi       = {10.1145/2810103.2813677}
+}
+
+@inproceedings{zhu2019deep,
+  title     = {Deep Leakage from Gradients},
+  author    = {Zhu, Ligeng and Liu, Zhijian and Han, Song},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {32},
+  year      = {2019}
+}
+
+% -----------------------------------------------------------------------------
+% 5. OBJECT DETECTION & YOLO
+% -----------------------------------------------------------------------------
+@inproceedings{redmon2016you,
+  title     = {You Only Look Once: Unified, Real-Time Object Detection},
+  author    = {Redmon, Joseph and Divvala, Santosh and Girshick, Ross and Farhadi, Ali},
+  booktitle = {Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  pages     = {779--788},
+  year      = {2016},
+  doi       = {10.1109/CVPR.2016.91}
+}
+
+@article{khanam2024yolov11,
+  title   = {{YOLOv11}: An Overview of the Key Architectural Enhancements},
+  author  = {Khanam, Rahima and Hussain, Muhammad},
+  journal = {arXiv preprint arXiv:2410.17725},
+  year    = {2024}
+}
+
+% -----------------------------------------------------------------------------
+% 6. EXPLAINABLE AI / GRAD-CAM (R7)
+% -----------------------------------------------------------------------------
+@inproceedings{selvaraju2017gradcam,
+  title     = {{Grad-CAM}: Visual Explanations from Deep Networks via Gradient-Based Localization},
+  author    = {Selvaraju, Ramprasaath R. and Cogswell, Michael and Das, Abhishek and Vedantam, Ramakrishna and Parikh, Devi and Batra, Dhruv},
+  booktitle = {Proceedings of the IEEE International Conference on Computer Vision (ICCV)},
+  pages     = {618--626},
+  year      = {2017},
+  doi       = {10.1109/ICCV.2017.74}
+}
+
+@inproceedings{chattopadhay2018gradcampp,
+  title     = {{Grad-CAM++}: Generalized Gradient-Based Visual Explanations for Deep Convolutional Networks},
+  author    = {Chattopadhay, Aditya and Sarkar, Anirban and Howlader, Prantik and Balasubramanian, Vineeth N.},
+  booktitle = {2018 IEEE Winter Conference on Applications of Computer Vision (WACV)},
+  pages     = {839--847},
+  year      = {2018},
+  publisher = {IEEE},
+  doi       = {10.1109/WACV.2018.00097}
+}
+
+@inproceedings{lundberg2017unified,
+  title     = {A Unified Approach to Interpreting Model Predictions},
+  author    = {Lundberg, Scott M. and Lee, Su-In},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {30},
+  year      = {2017}
+}
+
+% -----------------------------------------------------------------------------
+% 7. DEPLOYMENT / DOCKER
+% -----------------------------------------------------------------------------
+@article{merkel2014docker,
+  title   = {{Docker}: Lightweight {L}inux Containers for Consistent Development and Deployment},
+  author  = {Merkel, Dirk},
+  journal = {Linux Journal},
+  volume  = {2014},
+  number  = {239},
+  pages   = {2},
+  year    = {2014}
+}
+
+% -----------------------------------------------------------------------------
+% 8. FL APLIKATIF — analog (kesehatan, mobile) sbg perbandingan domain
+% -----------------------------------------------------------------------------
+@article{rieke2020future,
+  title   = {The Future of Digital Health with Federated Learning},
+  author  = {Rieke, Nicola and Hancox, Jonny and Li, Wenqi and Milletari, Fausto and Roth, Holger R. and Albarqouni, Shadi and Bakas, Spyridon and Galtier, Mathieu N. and Landman, Bennett A. and Maier-Hein, Klaus and others},
+  journal = {NPJ Digital Medicine},
+  volume  = {3},
+  number  = {1},
+  pages   = {119},
+  year    = {2020},
+  doi     = {10.1038/s41746-020-00323-1}
+}
+
+@article{hard2018federated,
+  title   = {Federated Learning for Mobile Keyboard Prediction},
+  author  = {Hard, Andrew and Rao, Kanishka and Mathews, Rajiv and Ramaswamy, Swaroop and Beaufays, Fran\c{c}oise and Augenstein, Sean and Eichner, Hubert and Kiddon, Chlo\'e and Ramage, Daniel},
+  journal = {arXiv preprint arXiv:1811.03604},
+  year    = {2018}
+}
+
+% -----------------------------------------------------------------------------
+% 9. KELAPA SAWIT — CV/Deep Learning untuk ripeness (E1 + E4)
+% -----------------------------------------------------------------------------
+% PERHATIAN: VERIFIKASI tiap entri di Google Scholar/IEEE Xplore sebelum cite!
+% Beberapa nomor halaman/volume bisa beda persis dengan publikasi asli.
+% Kata kunci pencarian: "oil palm fresh fruit bunch", "FFB ripeness",
+% "palm oil maturity detection", "CNN palm oil".
+% -----------------------------------------------------------------------------
+
+@article{septiarini2020classification,
+  title   = {Image-Based Processing for Ripeness Classification of Oil Palm Fruit},
+  author  = {Septiarini, Anindita and Hamdani, Hamdani and Hatta, Heliza Rahmania and Kasim, Anita Ahmad},
+  journal = {Proceedings of the 5th International Conference on Science in Information Technology (ICSITech)},
+  year    = {2019},
+  publisher = {IEEE},
+  note    = {VERIFIKASI: tahun & venue di Scholar}
+}
+
+@article{suharjito2021oilpalm,
+  title   = {{Oil Palm} Fresh Fruit Bunch Ripeness Classification on Mobile Devices Using Deep Learning Approaches},
+  author  = {Suharjito and Elwirehardja, Gregorius Natanael and Prayoga, Jonathan S.},
+  journal = {Computers and Electronics in Agriculture},
+  publisher = {Elsevier},
+  year    = {2021},
+  note    = {VERIFIKASI: nomor volume \& halaman di Scholar}
+}
+
+@article{mansour2018fruit,
+  title   = {Oil Palm Fresh Fruit Bunches Maturity Prediction by Using Image Processing Technique},
+  author  = {Mansour, Mohamed Yousif Mohamed Ali and Dali, Khairul Anwar Mohd and Abdullah, Rosalina and Hashim, Anis Fariza},
+  journal = {Indonesian Journal of Electrical Engineering and Computer Science},
+  year    = {2018},
+  note    = {VERIFIKASI: judul \& venue persis di Scholar}
+}
+
+@article{saleh2020palmdl,
+  title   = {Palm Oil Classification Using Deep Learning},
+  author  = {Saleh, Abdulaziz Yousef and Liansitim, Erbug},
+  journal = {Science in Information Technology Letters},
+  year    = {2020},
+  note    = {VERIFIKASI di Scholar}
+}
+
+% =============================================================================
+% TIPS PENCARIAN TAMBAHAN (kalau perlu 5–10 entri lagi):
+%
+% Kata kunci kombinasi yang produktif:
+%   - "federated learning" + "agriculture" / "smart farming"
+%   - "differential privacy" + "object detection" / "computer vision"
+%   - "YOLOv8" / "YOLOv9" + "fruit detection" / "maturity"
+%   - "Dirichlet" + "non-IID" + "federated"
+%   - "Grad-CAM" + "agricultural" / "fruit classification"
+%
+% Outlet jurnal yang relevan utk verifikasi:
+%   - Computers and Electronics in Agriculture (Elsevier)
+%   - IEEE Access (open access, banyak FL/DP)
+%   - Sensors (MDPI, byk CV pertanian)
+%   - Applied Sciences (MDPI)
+%   - Indonesian J. of Electrical Engineering and Computer Science (IJEECS)
+% =============================================================================

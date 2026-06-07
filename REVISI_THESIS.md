@@ -166,6 +166,23 @@ Opsi (pilih/gabung):
 
 ## E5 — Rumusan masalah (existing problem → perlu FL+XAI): lihat draft di chat
 
+## E1 + E4 + R9 — Daftar pustaka
+
+File `thesis/references_tambahan.bib` berisi **~25 entri siap-tempel** dikelompokkan:
+
+1. **DP fondasi** (R9): Abadi 2016, Mironov 2017, Bun & Steinke 2016, Dwork 2010
+2. **FL fondasi & survei**: McMahan 2017, Kairouz 2021, Yang 2019, Li 2020, Hsu 2019
+3. **FL+DP / DP utk deteksi objek** (R9): Wei 2020, Truex 2020
+4. **Serangan inferensi** (motivasi Bab 1): Shokri 2017, Fredrikson 2015, Zhu 2019
+5. **YOLO / Object detection**: Redmon 2016, Khanam & Hussain 2024 (YOLOv11)
+6. **XAI / Grad-CAM** (R7): Selvaraju 2017, Chattopadhay 2018, Lundberg 2017
+7. **Docker**: Merkel 2014
+8. **FL aplikatif analog**: Rieke 2020 (kesehatan), Hard 2018 (mobile)
+9. **Kelapa sawit / palm oil DL** (E1, E4): Septiarini, Suharjito, Mansour, Saleh
+   — VERIFIKASI tiap entri di Scholar sebelum cite.
+
+Target total: 16 (lama) + ~20 yang relevan = **~35–40** entri (sehat utk tesis S2).
+
 ---
 
 # B. BAB 2 — broken references [?]
