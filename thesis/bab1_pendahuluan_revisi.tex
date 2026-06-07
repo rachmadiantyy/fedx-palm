@@ -1,0 +1,145 @@
+\chapter{PENDAHULUAN}
+\label{chap:pendahuluan}
+
+%-----------------------------------------------------------------------------%
+\section{Latar Belakang}
+\label{sec:latar-belakang}
+%-----------------------------------------------------------------------------%
+Sebagai salah satu komoditas agro-industri paling produktif di dunia, kelapa sawit menempati posisi strategis dalam perekonomian global. Tanaman \emph{Elaeis guineensis Jacq.} dikenal memiliki rasio konversi minyak per hektar yang jauh melampaui tanaman penghasil minyak nabati lainnya, sehingga Indonesia dan Malaysia secara konsisten menjadi dua produsen terbesar minyak sawit dunia. Salah satu faktor penentu mutu minyak yang dihasilkan adalah ketepatan dalam memilih waktu panen, yang sangat bergantung pada tingkat kematangan Tandan Buah Segar (TBS) saat dipotong. Hingga saat ini, sebagian besar kebun masih mengandalkan inspeksi visual oleh pemanen untuk menentukan kelayakan panen~\cite{sinambela2019prediksi} --- sebuah pendekatan yang tidak hanya bergantung pada pengalaman individu, melainkan juga rentan terhadap inkonsistensi antar-pemanen, kelelahan, dan keterbatasan pencahayaan di lapangan. Otomatisasi berbasis kecerdasan buatan (\emph{Artificial Intelligence}) hadir sebagai kandidat solusi untuk menstandarkan proses penilaian sekaligus meningkatkan efisiensi rantai pascapanen.
+
+Kemajuan pesat di bidang \emph{Deep Learning}, terutama pada keluarga model \emph{Object Detection} generasi mutakhir seperti YOLOv11, membuka peluang baru untuk mengotomatisasi pengenalan enam tingkat kematangan buah sawit --- \emph{Unripe}, \emph{Underripe}, \emph{Ripe}, \emph{Overripe}, \emph{Empty Bunch}, dan \emph{Abnormal} --- secara \emph{real-time}. YOLOv11 menyatukan dua tugas sekaligus dalam satu \emph{forward pass}: lokalisasi posisi setiap buah dan klasifikasi tingkat kematangannya. Karakteristik ini sangat sesuai untuk deployment pada perangkat bergerak ataupun digunakan di area perkebunan luas. Model dengan kapasitas representasi tinggi semacam ini membutuhkan volume data pelatihan yang besar, dan di sinilah persoalan privasi muncul. Citra dari sebuah kebun tidak hanya merekam buah, melainkan juga menyimpan informasi yang dapat menyingkap koordinat geografis, pola budidaya, hingga strategi operasional yang dipandang sebagai aset komersial oleh pemilik kebun~\cite{wardhono2024pelindungan}.
+
+Konflik antara kebutuhan data berskala besar dengan kewajiban menjaga kerahasiaan operasional perkebunan inilah yang melatari pemilihan topologi \emph{Horizontal Federated Learning} (HFL) sebagai fondasi penelitian ini. Pada skema HFL, masing-masing \emph{client node} yang merepresentasikan perkebunan berbeda berbagi ruang fitur citra yang sama, namun memegang sampel data yang sepenuhnya terisolasi. Pembelajaran dilakukan secara lokal di setiap node, lalu hanya parameter pembaruan model (\emph{model updates}) yang dipertukarkan dengan \emph{server aggregator}; citra mentah tidak pernah keluar dari pemiliknya. Agar kerangka tersebut dapat berjalan konsisten di lingkungan komputasi yang beragam antar lokasi, seluruh komponen FedX-Palm dirancang dalam arsitektur ber-kontainer berbasis Docker sebagai \emph{blueprint} deployment yang portabel.
+
+Meski demikian, pemisahan data mentah saja tidak cukup. Sejumlah riset \emph{cybersecurity} terbaru menunjukkan bahwa parameter model yang dipertukarkan masih dapat menjadi celah bagi serangan inferensi tingkat lanjut, dua di antaranya adalah \emph{Membership Inference Attack} dan \emph{Model Inversion Attack} --- yang berpotensi memulihkan kembali citra-citra sensitif hanya dari bobot yang disadap. Untuk menutup celah ini, dibutuhkan jaminan formal yang bersifat matematis, dan \emph{Differential Privacy} (DP)~\cite{dwork2014differential} hadir sebagai kerangka teoretis yang paling matang untuk keperluan tersebut. Persoalannya, penyuntikan \emph{noise} demi kepentingan privasi tidak datang tanpa konsekuensi: konvergensi pelatihan dapat terganggu dan akurasi deteksi cenderung menurun --- fenomena yang dikenal sebagai \emph{privacy-utility trade-off}. Salah satu agenda utama penelitian ini adalah menyelidiki secara empiris dampak penerapan DP terhadap utilitas model pada konfigurasi deteksi objek yang diuji, termasuk mengidentifikasi kondisi-kondisi di mana \emph{trade-off} tersebut menjadi problematik.
+
+Persoalan lain yang menghambat penerimaan model \emph{Deep Learning} di sektor pertanian adalah karakter \emph{black-box}-nya: pengguna sulit memahami mengapa sebuah model menghasilkan keputusan tertentu~\cite{carvalho2019machine}. Untuk mengatasi keterbatasan ini, penelitian menambahkan lapisan transparansi melalui pendekatan \emph{Explainable AI} (XAI) --- secara spesifik menggunakan Grad-CAM++ --- pada model YOLOv11 hasil federasi. Tujuannya bukan sekadar menyajikan visualisasi peta panas, melainkan juga menunjukkan secara empiris bahwa keputusan model bertumpu pada ciri morfologis buah (gradasi warna, kepadatan brondolan, tekstur permukaan), bukan pada artefak latar atau distorsi yang diakibatkan oleh injeksi \emph{noise} DP.
+
+Dengan menggabungkan ketiga elemen tersebut, penelitian ini mengusulkan \textbf{FedX-Palm: A Privacy-Preserving and Explainable Horizontal Federated Learning Framework for Six-Class Oil Palm Fresh Fruit Bunch Ripeness Detection using YOLOv11 and Differential Privacy}. Kerangka kerja ini memadukan HFL sebagai tulang punggung komputasi terdistribusi, DP-FedAvg level-klien sebagai lapisan proteksi matematis, dan Grad-CAM++ sebagai jendela interpretabilitas. Harapannya, FedX-Palm dapat menjadi \emph{blueprint} solusi AI pertanian yang tidak hanya akurat secara teknis, tetapi juga melindungi privasi pemilik data dan dapat dipertanggungjawabkan keputusannya.
+
+%-----------------------------------------------------------------------------%
+\section{Rumusan Masalah}
+\label{sec:rumusan-masalah}
+%-----------------------------------------------------------------------------%
+Praktik penilaian kematangan TBS saat ini masih menyisakan tiga persoalan mendasar. \emph{Pertama}, inspeksi visual manual bersifat subjektif dan tidak konsisten antar-pemanen, sehingga otomatisasi berbasis \emph{deep learning} menjadi kebutuhan. \emph{Kedua}, otomatisasi tersebut menuntut data citra dalam jumlah besar, sementara pengumpulan data secara terpusat berisiko menyingkap informasi operasional kebun yang bersifat komersial sekaligus rentan terhadap serangan inferensi pada parameter model. \emph{Ketiga}, model deteksi modern bersifat \emph{black-box} sehingga keputusannya sulit dipercaya oleh agronom dan pemangku kepentingan. Ketiga persoalan inilah yang melatari perlunya desain terpadu \emph{Federated Learning}, \emph{Differential Privacy}, dan \emph{Explainable AI}. Mengacu pada hal tersebut, rumusan masalah penelitian ini adalah:
+\begin{enumerate}
+    \item Mengingat pendekatan pelatihan terpusat berisiko membocorkan data operasional perkebunan, bagaimana arsitektur \emph{Federated Learning} (FL) dapat dirancang agar model deteksi objek YOLOv11 dapat dilatih secara kolaboratif tanpa harus memindahkan citra mentah dari masing-masing lokasi perkebunan?
+    \item Mengingat pertukaran parameter model masih rawan terhadap \emph{membership inference} dan \emph{model inversion}, sejauh mana mekanisme \emph{Differential Privacy} (DP) yang diterapkan pada pembaruan parameter model (\emph{delta} bobot) di level klien mampu memberikan proteksi formal, dan bagaimana dampaknya terhadap utilitas model?
+    \item Mengingat karakter \emph{black-box} model deteksi menghambat kepercayaan pengguna, bagaimana penerapan teknik \emph{Explainable AI} (XAI) berbasis Grad-CAM++ dapat memberikan penjelasan visual yang dapat dipertanggungjawabkan terhadap keputusan deteksi yang dihasilkan oleh model YOLOv11 hasil federasi?
+\end{enumerate}
+
+%-----------------------------------------------------------------------------%
+\section{Tujuan Penelitian}
+\label{sec:tujuan-penelitian}
+%-----------------------------------------------------------------------------%
+Sejalan dengan rumusan masalah di atas, penelitian ini diarahkan untuk mencapai tujuan-tujuan berikut:
+\begin{enumerate}
+    \item Membangun arsitektur \emph{Federated Learning} terintegrasi dengan model YOLOv11 untuk klasifikasi enam tingkat kematangan buah kelapa sawit dalam skema komputasi terdistribusi.
+    \item Menyelidiki dan mengukur dampak penerapan \emph{Differential Privacy} (level-klien, pada pembaruan model) terhadap utilitas deteksi, termasuk mengidentifikasi kondisi di mana proteksi privasi memengaruhi konvergensi model.
+    \item Mengembangkan komponen \emph{Explainable AI} berbasis Grad-CAM++ untuk menyediakan interpretasi visual yang dapat diverifikasi atas keputusan model YOLOv11 hasil federasi.
+\end{enumerate}
+
+%-----------------------------------------------------------------------------%
+\section{Batasan Masalah}
+\label{sec:batasan-masalah}
+%-----------------------------------------------------------------------------%
+Demi menjaga fokus dan keterukuran hasil, penelitian ini dibatasi pada cakupan berikut:
+\begin{enumerate}
+    \item Subjek deteksi dibatasi pada citra Tandan Buah Segar (TBS) kelapa sawit yang dikategorikan ke dalam enam kelas kematangan: \emph{Unripe}, \emph{Underripe}, \emph{Ripe}, \emph{Overripe}, \emph{Empty Bunch}, dan \emph{Abnormal}.
+    \item Arsitektur deteksi objek yang dievaluasi adalah YOLOv11, yang dijadikan dasar model dalam kerangka \emph{Federated Learning}.
+    \item Lingkungan FL dirancang sebagai sistem ter-Dockerisasi dengan satu \emph{server aggregator} dan empat \emph{client node}. Eksperimen pelatihan dijalankan sebagai \emph{simulasi federated yang ekuivalen} (\emph{single-machine}, Google Colab) dengan skema pembagian data Non-IID (\emph{Non-Independent and Identically Distributed}); kontainerisasi Docker berperan sebagai \emph{blueprint} deployment dan inferensi, bukan sebagai eksekusi pelatihan multi-kontainer terdistribusi secara nyata.
+    \item Perlindungan privasi diwujudkan melalui \emph{Differential Privacy} level-klien (DP-FedAvg~\cite{mcmahan2018learning}) --- yaitu \emph{gradient clipping} pada norma pembaruan bobot dipadu \emph{Gaussian noise} pada \emph{delta} bobot --- sebelum proses agregasi FedAvg berlangsung di \emph{server}. Penelitian ini tidak mengaktifkan DP-SGD per-sampel (Opacus) pada jalur eksperimen karena inkompatibilitasnya dengan lapisan BatchNorm pada YOLOv11.
+    \item Teknik XAI yang digunakan terbatas pada Grad-CAM++ untuk menghasilkan peta atensi (\emph{heatmap}) atas keputusan YOLOv11, dengan validasi kuantitatif memakai metrik \emph{Average Drop} dan \emph{Focus Retention Rate} (FRR); definisi operasional kedua metrik dijabarkan pada Bab~\ref{chap:landasan-teori} dan Bab~\ref{chap:metode}.
+    \item Analisis performa \emph{per-kelas} menggunakan model \emph{centralized benchmark} sebagai proksi, karena \emph{logging} pada simulasi federated hanya menyimpan metrik agregat global.
+\end{enumerate}
+
+%-----------------------------------------------------------------------------%
+\section{Metode Penelitian}
+\label{sec:metode-penelitian}
+%-----------------------------------------------------------------------------%
+Penelitian ini mengadopsi paradigma eksperimen kuantitatif yang dipadukan dengan pendekatan \emph{Research and Development} (R\&D). Fokus eksperimennya adalah pengembangan iteratif kerangka FedX-Palm sekaligus pengukuran dampak penyisipan komponen \emph{Differential Privacy} (DP) dan \emph{Explainable AI} (XAI) terhadap performa deteksi YOLOv11 di lingkungan komputasi terdistribusi ter-Dockerisasi.
+
+\subsection{Lingkungan dan Alat Implementasi}
+Rincian lingkungan pengembangan dan eksekusi eksperimen adalah sebagai berikut:
+\begin{enumerate}
+    \item \textbf{Platform Komputasi.} Pelatihan model YOLOv11 dieksekusi pada Google Colab Pro dengan akselerator GPU NVIDIA Tesla T4 (15 GB VRAM). Bobot hasil pelatihan disimpan dalam format \texttt{.pt} pada \emph{cloud storage} sebagai \emph{checkpoint} terpadu, untuk kemudian digunakan pada tahap simulasi federated dan \emph{deployment} kontainer Docker.
+    \item \textbf{Stack Perangkat Lunak.} Implementasi memanfaatkan Python 3.x di atas \emph{framework} PyTorch 2.11 dengan paket Ultralytics 8.4.51 untuk YOLOv11. \emph{Blueprint} deployment ter-Dockerisasi menggunakan \emph{library} Flower untuk orkestrasi server--klien serta menyediakan jalur \emph{Differential Privacy} berbasis Opacus. Namun, eksperimen pelatihan dalam tesis ini dijalankan sebagai simulasi federated ekuivalen memakai \emph{loop} FedAvg kustom, dengan \emph{Differential Privacy} level-klien diimplementasikan secara mandiri (\emph{clipping} norma pembaruan bobot dipadu \emph{Gaussian noise} pada \emph{delta} bobot). Opacus DP-SGD per-sampel tidak diaktifkan pada jalur eksperimen karena \emph{ModuleValidator}-nya tidak kompatibel dengan lapisan BatchNorm pada YOLOv11.
+    \item \textbf{Dataset.} Citra Tandan Buah Segar kelapa sawit yang mencakup enam kelas kematangan dibagi ke empat \emph{client node} mengikuti distribusi Dirichlet dengan variasi parameter konsentrasi $\alpha$ untuk mensimulasikan kondisi Non-IID pada perkebunan nyata.
+\end{enumerate}
+
+\subsection{Tahapan Penelitian FedX-Palm}
+Realisasi sistem FedX-Palm dijalankan secara berurutan melalui delapan tahap berikut:
+
+\begin{enumerate}
+    \item \textbf{Studi Literatur.} Difokuskan pada empat bidang --- \emph{Federated Learning}, \emph{Differential Privacy}, Grad-CAM++ sebagai metode XAI, dan arsitektur YOLOv11 --- dengan agenda utama mengidentifikasi celah riset seputar keseimbangan antara perlindungan privasi dan keterjelasan model dalam konteks deteksi kematangan buah sawit.
+
+    \item \textbf{Perancangan Sistem.} Topologi FL dirancang dalam pola \emph{server--client} terpusat yang terdiri atas satu \emph{server aggregator} dan empat \emph{client node} ter-Dockerisasi. YOLOv11 dipilih sebagai tulang punggung model berdasarkan keunggulannya menyatukan tugas lokalisasi dan klasifikasi dalam satu \emph{inference pipeline}.
+
+    \item \textbf{Penyiapan dan Distribusi Dataset.} Citra TBS sawit dipecah ke empat klien melalui mekanisme \emph{sampling} Dirichlet, sehingga proporsi tiap kelas kematangan menjadi tidak seragam antar klien --- sebuah pendekatan yang merefleksikan heterogenitas data perkebunan di dunia nyata. Untuk mencegah kebocoran data (\emph{leakage}), pemisahan \emph{train}/\emph{validation}/\emph{test} dilakukan berbasis identitas tandan (\emph{bunch\_id}), bukan per-frame.
+
+    \item \textbf{Pelatihan Lokal (\emph{Local Fine-tuning}).} Pada tiap ronde, setiap klien menjalankan \emph{fine-tuning} YOLOv11 pada porsi data lokalnya menggunakan \emph{optimizer} SGD dengan \emph{loss} \emph{Complete IoU} (CIoU) untuk regresi \emph{bounding box}, dipadukan dengan komponen \emph{loss} klasifikasi dan \emph{Distribution Focal Loss} (DFL).
+
+    \item \textbf{Penyuntikan \emph{Differential Privacy} pada Pembaruan Model.} Sebelum bobot lokal dikirim ke server, mekanisme DP level-klien diberlakukan dalam dua langkah: pembatasan norma pembaruan bobot (\emph{delta}) melalui \emph{clipping} $C$, kemudian penambahan \emph{Gaussian noise} berskala $\sigma$. Nilai \emph{privacy budget} $\varepsilon$ dihitung dari $\sigma$ menggunakan \emph{R\'enyi Differential Privacy accountant}~\cite{mironov2017renyi} --- yakni komposisi lanjut (\emph{advanced composition}), bukan komposisi linear --- dan bukan ditetapkan secara manual. Langkah ini bertujuan menutup celah serangan inferensi pada parameter yang dipertukarkan.
+
+    \item \textbf{Agregasi Bobot Global (\emph{Federated Averaging}).} \emph{Server} mengonsolidasikan bobot dari seluruh klien menggunakan algoritma FedAvg untuk membentuk model global baru $\mathbf{w}_{t+1}$:
+    \[
+    \mathbf{w}_{t+1} = \sum_{k=1}^{K} \frac{n_k}{N} \, \mathbf{w}_k
+    \]
+    di mana $\mathbf{w}_k$ adalah bobot lokal klien ke-$k$, $n_k$ adalah ukuran data lokalnya, dan $N$ adalah jumlah total sampel di semua klien. Bobot global tersebut kemudian dikirim kembali ke setiap klien untuk siklus pelatihan berikutnya, hingga konvergensi tercapai.
+
+    \item \textbf{Pengujian Transparansi XAI.} Model global hasil agregasi diperiksa kualitas interpretasinya menggunakan Grad-CAM++. Validasinya tidak berhenti pada inspeksi visual, melainkan dikuatkan oleh dua indikator kuantitatif, yaitu \emph{Average Drop} dan \emph{Focus Retention Rate} (FRR), yang definisi operasionalnya dijabarkan pada Bab~\ref{chap:landasan-teori} dan Bab~\ref{chap:metode}.
+
+    \item \textbf{Evaluasi Akhir dan Sintesis Hasil.} Evaluasi penutup memetakan kinerja sistem terhadap tiga dimensi sekaligus: (a) metrik deteksi standar (mAP@0.5, mAP@0.5:0.95, \emph{Precision}, \emph{Recall}, F1-\emph{Score}); (b) sensitivitas model terhadap variasi \emph{privacy budget} $\varepsilon$; serta (c) kualitas penjelasan visual yang diukur dengan \emph{Average Drop} dan FRR.
+\end{enumerate}
+
+Diagram alir keseluruhan metodologi penelitian disajikan pada Gambar~\ref{fig:metodologi-fix}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{pic/metodologi-fix.JPG}
+\caption{Flowchart Metodologi Penelitian FedX-Palm}
+\label{fig:metodologi-fix}
+\end{figure}
+
+%-----------------------------------------------------------------------------%
+\section{Hipotesis}
+\label{sec:hipotesis}
+%-----------------------------------------------------------------------------%
+Mengacu pada kerangka teoretis dan rancangan metodologi yang telah diuraikan, penelitian ini menetapkan tiga hipotesis kerja berikut:
+
+\begin{enumerate}
+    \item \textbf{H1 --- Kelayakan Deteksi YOLOv11 pada Skenario Non-IID.}\\
+    Pelatihan kolaboratif YOLOv11 dengan algoritma \emph{Federated Averaging} (FedAvg) di atas empat \emph{client node} berdistribusi Non-IID diperkirakan mampu menghasilkan model global dengan \emph{mean Average Precision} (mAP@0.5) yang kompetitif, yaitu melampaui ambang 80\%.
+
+    \item \textbf{H2 --- \emph{Trade-off} Privasi versus Utilitas Deteksi.}\\
+    Penambahan \emph{Gaussian noise} dalam kerangka \emph{Differential Privacy} pada parameter YOLOv11 diasumsikan akan menurunkan akurasi deteksi secara proporsional terhadap penguatan tingkat privasi; semakin ketat anggaran privasi (semakin kecil $\varepsilon$), semakin besar penurunan akurasi yang diharapkan. Hipotesis ini diuji secara empiris, dan hasil pengujiannya dibahas pada Bab~\ref{chap:hasil}.
+
+    \item \textbf{H3 --- Validitas Interpretasi Visual Model.}\\
+    Integrasi Grad-CAM++ pada model hasil federasi diprediksi akan menghasilkan peta panas yang konsisten dengan fitur morfologis buah sawit, yang ditunjukkan oleh nilai \emph{Average Drop} dan \emph{Focus Retention Rate} yang mengindikasikan bahwa keputusan model bertumpu pada wilayah objek, bukan latar.
+\end{enumerate}
+
+%-----------------------------------------------------------------------------%
+\section{Jadwal Kegiatan Penelitian}
+\label{sec:jadwal-penelitian}
+%-----------------------------------------------------------------------------%
+Penelitian dilaksanakan dalam rentang enam bulan, terbagi atas tahapan persiapan, implementasi, eksperimen, hingga penyusunan laporan tesis. Rincian linimasa kegiatan disajikan pada Tabel~\ref{tab:jadwal_kegiatan}.
+
+\begin{table}[H]
+\centering
+\caption{Timeline Penelitian}
+\label{tab:jadwal_kegiatan}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{|c|l|c|c|c|c|c|c|}
+\hline
+\textbf{No} & \textbf{Nama Kegiatan} & \textbf{Bulan 1} & \textbf{Bulan 2} & \textbf{Bulan 3} & \textbf{Bulan 4} & \textbf{Bulan 5} & \textbf{Bulan 6} \\ \hline
+1 & Studi Literatur & \cellcolor{yellow} & \cellcolor{yellow} & & & & \\ \hline
+2 & Perancangan Sistem \& Arsitektur YOLOv11 & & \cellcolor{yellow} & \cellcolor{yellow} & & & \\ \hline
+3 & Pengumpulan dan Pembagian Dataset Non-IID & & \cellcolor{yellow} & \cellcolor{yellow} & & & \\ \hline
+4 & Implementasi Federated Learning (FedAvg) & & & \cellcolor{yellow} & \cellcolor{yellow} & & \\ \hline
+5 & Penerapan \emph{Differential Privacy} pada Gradien & & & \cellcolor{yellow} & \cellcolor{yellow} & & \\ \hline
+6 & Integrasi XAI (Grad-CAM++ \& Average Drop) & & & & \cellcolor{yellow} & \cellcolor{yellow} & \\ \hline
+7 & Evaluasi Metrik Deteksi (mAP) \& Analisis Hasil & & & & \cellcolor{yellow} & \cellcolor{yellow} & \\ \hline
+8 & Penulisan Laporan \& Penyusunan Tesis & & & & & \cellcolor{yellow} & \cellcolor{yellow} \\ \hline
+\end{tabular}%
+}
+\end{table}
