@@ -39,7 +39,7 @@ from thesis_rebuild.scripts.utils.gn_convert import (  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="B1 Centralized YOLOv11n-GN")
-    p.add_argument("--data", type=str, default="configs/data_sample.yaml")
+    p.add_argument("--data", type=str, default="data/resplit/data.yaml")
     p.add_argument("--weights", type=str, default="yolo11n.pt",
                    help="Initial weights (will have BN converted to GN)")
     p.add_argument("--epochs", type=int, default=50)

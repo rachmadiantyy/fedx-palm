@@ -37,7 +37,7 @@ SIGMA_GRID = [0.5, 1.0, 1.5, 2.0, 3.0]
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="E1 Full DP-SGD sweep")
-    p.add_argument("--data", type=str, default="configs/data_sample.yaml")
+    p.add_argument("--data", type=str, default="data/resplit/data.yaml")
     p.add_argument("--weights", type=str, default="yolo11n.pt")
     p.add_argument("--epochs", type=int, default=50)
     p.add_argument("--batch", type=int, default=16)

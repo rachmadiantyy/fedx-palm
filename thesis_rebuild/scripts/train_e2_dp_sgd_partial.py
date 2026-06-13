@@ -34,7 +34,7 @@ SIGMA_GRID = [0.5, 1.0, 1.5, 2.0, 3.0]
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="E2 Partial DP-SGD (head only)")
-    p.add_argument("--data", type=str, default="configs/data_sample.yaml")
+    p.add_argument("--data", type=str, default="data/resplit/data.yaml")
     p.add_argument("--weights", type=str, default="yolo11n.pt",
                    help="Pretrained init for backbone (kept frozen)")
     p.add_argument("--epochs", type=int, default=50)

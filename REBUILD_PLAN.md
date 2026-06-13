@@ -63,6 +63,13 @@ TIFS) yang akan minta MIA.
 - ✅ Experiment design final: B1/B2/B3/E1/E2/R1
 - ✅ Decision IIUM: rewrite paper jadi DP-SGD (submit Week 2)
 
+**Data pipeline from-zero (reproducible, seed=42) — lihat thesis_rebuild/PIPELINE.md**
+- ✅ `00_download_dataset.py` — download fresh dari Roboflow
+- ✅ `01_resplit_bunch_id.py` — anti-leakage stratified group split 80/10/10
+- ✅ `02_dirichlet_partition.py` — Non-IID 4-client (alpha 0.1/0.3/0.5/0.7)
+- Tidak ada reuse dataset lama; semua dibangun ulang dari nol untuk
+  reproducibility thesis. data/ di-gitignore (regenerable).
+
 **Hari 2 (Min, 14 Jun) — IN PROGRESS**
 - ✅ `utils/gn_convert.py` — reusable BN→GN swap (extracted from feasibility)
 - ✅ `train_b1_centralized.py` — B1 wrapper (Ultralytics native + GN swap)
