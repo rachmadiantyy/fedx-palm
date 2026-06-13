@@ -212,19 +212,22 @@ dataset (version~2) annotated with six classes, in alphabetical order:
 \emph{Underripe}, and \emph{Unripe}. Because frames originate from short
 videos of individual fresh fruit bunches, the vendor's per-frame split allows
 near-duplicate frames of the same bunch to appear in train, validation, and
-test. We therefore re-split by \emph{bunch identity} (\texttt{bunch\_id}
-parsed from filenames) using a stratified group split with target ratio
-80/10/10 and a fixed seed; the post-split audit guarantees zero shared bunches
-and zero shared filenames across splits. After the re-split, the global
-validation set used to score every reported model in this paper contains
-\textbf{935 images and 3{,}140 annotated instances}.
+test. We therefore re-split by \emph{bunch identity}
+(\texttt{bunch\_id} parsed from filenames) using a stratified group split that
+targets an 80/10/10 train/validation/test ratio \emph{at the bunch level} with
+a fixed seed; the post-split audit guarantees zero shared bunches and zero
+shared filenames across splits. Because bunches contain a variable number of
+video frames, the realized \emph{image} counts deviate from the nominal ratio.
+All models reported in this paper are scored on a common held-out validation
+set of \textbf{935 images (3{,}140 annotated instances)}; a separate held-out
+test set is reserved for future deployment evaluation and is not used here.
 
 Statistical heterogeneity is then induced by a Dirichlet label
-partition~\cite{hsu2019measuring} of the training pool across the four
+partition~\cite{hsu2019measuring} of the \emph{training} pool across the four
 clients with per-client concentration
 $\alpha\in\{0.1,0.3,0.5,0.7\}$, yielding pronounced quantity and class skew
 (Table~\ref{tab:clients}). The smallest client holds 1{,}145 images and the
-largest 3{,}339, for a total of 9{,}030 training images.
+largest 3{,}339, for a total of 9{,}030 client training images.
 
 \begin{table}[t]
 \caption{Per-Client Training Distribution (Non-IID Dirichlet)}
@@ -308,7 +311,16 @@ mAP@0.5\,=\,0.995, mAP@0.5:0.95\,=\,0.951, precision\,=\,0.998, and
 recall\,=\,0.999 (Table~\ref{tab:baseline}). The federated baseline is
 statistically indistinguishable from a centralized benchmark at mAP@0.5,
 confirming that FedAvg preserves accuracy under Non-IID data without raw images
-leaving any node. This rapid convergence also explains the model's
+leaving any node. To check that this near-perfect score reflects genuine
+separability rather than an easy majority class, we inspect the centralized
+benchmark per class: AP@0.5 is uniformly in the 0.99--1.00 range across all six
+classes, and the confusion matrix shows negligible \emph{adjacent}-class
+confusion (e.g., \emph{Ripe} vs.\ \emph{Overripe} vs.\ \emph{Underripe}); the
+dominant residual error is localization against background (false
+positives/negatives), not ripeness misclassification. The six ripeness classes
+are thus visually well-separated at close range, which---together with the
+COCO-pretrained initialization---accounts for both the high accuracy and the
+rapid convergence. This flat near-optimum also explains the model's
 sensitivity to weight perturbation analyzed below.
 
 \begin{table}[t]
@@ -385,6 +397,17 @@ rate (B1, B2) and freezing the backbone (B3) likewise fail, because the noise
 is applied to the \emph{aggregated weights}, not the local gradients. The
 practical mitigation is therefore to bound the absolute perturbation directly
 via a small clip-bound ($C{=}0.1$).
+
+We stress that $C{=}0.1$ restores \emph{utility}, not \emph{privacy}: it
+operates in the same $\varepsilon\gg10^{3}$ regime. Its value is diagnostic
+rather than deployable---quantifying the $C\!\times\!\sigma$ collapse threshold
+delimits the feasible region within which any $(C,\sigma)$ pair must lie to keep
+the detector functional. This is a prerequisite for a privacy-meaningful search:
+it tells future work that reaching a useful $\varepsilon$ at fixed utility
+cannot be done by tuning $(C,\sigma)$ alone in this regime, and must instead
+raise the sensitivity headroom (e.g., far larger $K$ with subsampling
+amplification) or lower the required noise at equal privacy (e.g., secure
+aggregation), thereby narrowing an otherwise unbounded design space.
 
 \begin{table}[t]
 \caption{Ablation (3 seeds; $\sigma{=}5\times10^{-3}$ for noise rows)}

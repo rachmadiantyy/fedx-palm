@@ -21,15 +21,39 @@ pdflatex fedx_palm_ieee
 pdflatex fedx_palm_ieee
 ```
 
-## Yang HARUS dilengkapi sebelum submit
+## Yang HARUS dilengkapi / diverifikasi sebelum submit
 - [ ] **Penulis & afiliasi** (placeholder `[Author Name]`, `[Institution]`, dst).
-- [ ] **Gambar** (opsional tapi disarankan): arsitektur sistem, kurva konvergensi,
-      grafik cliff privacy-utility (`privacy_utility_tradeoff.png`), contoh
-      heatmap Grad-CAM++. Tambah dengan `\begin{figure}...\includegraphics`.
+- [ ] **VERIFIKASI angka per-class** yang sekarang dikutip kualitatif di Sec. IV-A
+      ("AP@0.5 uniformly 0.99--1.00, adjacent-class confusion negligible").
+      Angka ini berasal dari centralized benchmark (thesis Tabel 4.9/4.7) yang
+      mungkin di-run pada split berbeda. **Regenerasi confusion matrix + tabel
+      per-class pada split bersih (palm_v2_resplit) yang dipakai paper**, lalu
+      idealnya tambahkan sebagai tabel/gambar agar makin meyakinkan reviewer.
+- [ ] **Konfirmasi jumlah citra** dari folder data autoritatif: client train
+      1145/2479/2067/3339 (=9030) dan val global 935/3140. Catatan: dokumen lama
+      `hasil_simulasi_real.md` menyebut 937/3273 dan total klien berbeda karena
+      berasal dari run Colab terdahulu; paper memakai angka run workstation
+      (ablation log). Pastikan satu sumber konsisten sebelum submit.
+- [ ] **Gambar** (disarankan): arsitektur sistem, kurva konvergensi, grafik
+      cliff privacy-utility (`saved_runs/privacy_utility_tradeoff.png`), heatmap
+      Grad-CAM++. Tambah via `\begin{figure}...\includegraphics`.
 - [ ] **Verifikasi 4 entri palm-oil** (`septiarini`, `suharjito`, `mansour`,
-      `saleh`) di Google Scholar — pastikan year/venue/halaman cocok dengan
-      publikasi asli sebelum submit.
+      `saleh`) di Google Scholar.
+- [ ] **Pemilihan venue:** paper bertipe *characterized negative result +
+      mitigation*. Targetkan venue/workshop yang ramah reproducibility/negative
+      results (mis. workshop FL/privacy) agar fit lebih baik.
 - [ ] Sesuaikan template ke venue tujuan (kalau bukan IEEE Conference standar).
+
+## Revisi v3 (jawab review lanjutan)
+- Aritmetika dataset diperbaiki: split 80/10/10 dinyatakan *per-bunch*; rasio
+  citra menyimpang karena tiap tandan punya jumlah frame berbeda; val 935/3140
+  ditegaskan sebagai scoring set, test set disisihkan & tidak dipakai di paper.
+- Ditambah kalimat per-class di Sec. IV-A (membela baseline 0.995: kelas
+  terpisah genuine, error dominan = lokalisasi/background, bukan misklasifikasi
+  kematangan).
+- Ditambah justifikasi nilai diagnostik ambang $C\times\sigma$ di Sec. IV-C
+  (kenapa $C{=}0.1$ tetap berguna untuk pencarian konfigurasi privasi-bermakna
+  walau belum privat).
 
 ## Yang sudah dibersihkan (revisi v2)
 - Title & Contribution #1 di-rebrand: tidak lagi mengklaim "Dockerized FL
