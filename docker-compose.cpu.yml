@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
     command: >
       --address 0.0.0.0:8080
-      --num-rounds 10
+      --num-rounds 5
       --num-classes 6
       --min-clients 4
 

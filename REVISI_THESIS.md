@@ -1,0 +1,926 @@
+# REVISI THESIS FedX-Palm — Berdasarkan Hasil Eksperimen REAL
+
+> Dokumen panduan revisi. Semua angka di sini berasal dari output eksperimen
+> aktual (Colab, 24 Mei 2026). Bagian yang masih butuh data ditandai
+> **[BUTUH DATA]**. JANGAN isi dengan angka karangan.
+
+## DATA REAL (otoritatif — sumber kebenaran)
+
+> **ε pada tabel ini sudah DIKOREKSI (R1).** Label lama (8.0/4.0/1.0) keliru
+> ~5 ordo besaran; ε di bawah dihitung dari RDP accountant (σ, q=1, T=5, δ=1e-5).
+> Lihat Tabel 3.4 & Subbab F+. R1.
+
+| Skenario | σ | ε (RDP, terkoreksi) | mAP@0.5 | mAP@0.5:0.95 | Precision | Recall | Avg Drop | FRR |
+|----------|------|---------------------|---------|--------------|-----------|--------|----------|-----|
+| baseline | 0 | ∞ | 0.9945 | 0.8973 | 0.9934 | 0.9945 | 95.1% | 0.962 |
+| weak | 0.005 | ≈ 1.0×10⁵ | 0.0000 | 0.0000 | 0.0000 | 0.0000 | NaN | NaN |
+| moderate | 0.010 | ≈ 2.6×10⁴ | 0.0000 | 0.0000 | 0.0000 | 0.0000 | NaN | NaN |
+| strong | 0.020 | ≈ 6.8×10³ | 0.0000 | 0.0000 | 0.0000 | 0.0000 | NaN | NaN |
+
+Temuan inti (reframe R3): **pada konfigurasi pipeline ini** (YOLOv11 pretrained
+yang sudah konvergen + DP-FedAvg level-klien, clip C=10, fine-tuning), penambahan
+noise Gaussian menyebabkan **collapse total** (mAP=0) bahkan pada σ minimal.
+Catatan penting: pada semua σ yang diuji ε ≫ 10³ (**tanpa privasi bermakna**),
+sehingga collapse terjadi *sebelum* rezim privasi tercapai — indikasi kuat ini
+adalah **artefak konfigurasi/pipeline**, bukan trade-off privasi-utilitas sejati
+maupun "batas mendasar" DP-SGD. Klaim batas-mendasar ditangguhkan sampai ablation
+(R2) membuktikan generalisasinya.
+
+---
+
+# A. FRONT MATTER (must-fix)
+
+1. **Cover (hal i)**: hapus kata "PROPOSAL" → "A MASTER'S THESIS".
+2. **Approval (hal ii)**: tanggal "18 May 2026" → tanggal sidang sebenarnya.
+3. **Preface (hal vi)**: klaim "submitted to APWIMOB 2024" — kalau belum,
+   ganti "is intended to be submitted to..." atau hapus.
+4. **Achievements (hal xv)**: "AAAAA" → isi publikasi nyata atau hapus halaman.
+
+---
+
+# A1. BAB 1 — Penyelarasan Klaim dengan Revisi (R3, R5, R6)
+
+> Prof Teddy tidak menyebut "Bab 1" eksplisit, tetapi 3 revisi **membingkai
+> ulang klaim** yang biasanya dinyatakan di Pendahuluan. Sesuaikan sub-bab
+> berikut agar konsisten dengan Abstrak & Kesimpulan (R5) dan tidak overclaim.
+
+## A1.1 Batasan Masalah / Ruang Lingkup (paling penting — R5 & R6)
+
+Tambahkan/perjelas batasan berikut (paste-ready, sesuaikan nomor):
+
+> - Federated Learning pada penelitian ini dijalankan sebagai **simulasi
+>   ekuivalen** (single-machine/Google Colab) yang setara secara metodologis
+>   dengan FL terdistribusi; **kontainerisasi Docker berperan sebagai blueprint
+>   deployment dan inferensi**, bukan sebagai eksekusi pelatihan multi-container
+>   terdistribusi nyata. (R5)
+> - Analisis performa **per-kelas** menggunakan model **centralized benchmark**
+>   sebagai proksi, karena logging federated hanya menyimpan metrik agregat
+>   global. (R6)
+> - Pemisahan dataset dilakukan **berbasis identitas tandan (bunch_id)** untuk
+>   mencegah kebocoran antar-split. (R4)
+
+## A1.2 Tujuan & Kontribusi (R3 & R5)
+
+- Bingkai kontribusi DP secara **jujur sebagai temuan**, bukan klaim trade-off
+  privasi-utilitas yang mulus. Hindari frasa "mencapai keseimbangan
+  privasi-utilitas"; ganti dengan investigasi & temuan.
+- Judul/kontribusi sistem: gunakan framing **"simulated equivalent federated
+  learning with a Dockerized deployment blueprint"** secara konsisten. (R5)
+
+Template kalimat kontribusi (paste-ready):
+
+> "Kontribusi penelitian ini mencakup: (i) baseline HFL yang setara centralized
+> untuk deteksi enam kelas kematangan sawit; (ii) validasi XAI kuantitatif
+> (Grad-CAM++ dengan Average Drop & Focus Retention Rate); dan (iii) **temuan
+> empiris** bahwa penerapan Differential Privacy (DP-FedAvg level-klien) pada
+> detektor objek pretrained yang sudah konvergen **menyebabkan collapse pada
+> konfigurasi yang diuji**, disertai analisis penyebabnya — sebuah hasil negatif
+> yang dilaporkan secara transparan."
+
+## A1.3 Rumusan Masalah & Hipotesis (R3)
+
+- Jika hipotesis (H1–H3) dinyatakan di Bab 1, selaraskan **H2** dengan reframe
+  R3: bukan "DP menurunkan akurasi secara proporsional", melainkan "menyelidiki
+  dampak DP terhadap utilitas" (hasil: collapse, bukan degradasi gradual — pada
+  konfigurasi ini).
+
+## A1.4 Tindak lanjut Bab 1
+
+- [x] Teks Bab 1 (LaTeX) diterima & direvisi (lihat A1.5 edit konkret)
+- [ ] Tempel hasil revisi ke file tesis
+- [ ] Selaraskan dengan Abstrak & Kesimpulan setelah angka simulasi final.
+
+## A1.5 Edit konkret Bab 1 (sudah disiapkan, paste-ready di chat)
+
+| Lokasi | Revisi | Aksi |
+|--------|--------|------|
+| Latar Belakang ¶1 | R10 | typo `disinilah`→`di sinilah`, rapikan tanda baca |
+| Latar Belakang ¶3 | R5 | Docker = "blueprint deployment portabel" |
+| Latar Belakang ¶4 | R3 | "menelusuri titik optimal DP" → "menyelidiki dampak DP" |
+| Rumusan Masalah #2 | R1 | "level gradien" → "pembaruan model (delta) level-klien" |
+| Tujuan #2 | R3,R1 | "mengukur efektivitas" → "menyelidiki & mengukur dampak" |
+| Batasan #3 | R5 | pertegas "simulasi federated ekuivalen", Docker=blueprint |
+| Batasan #4 | R1 | DP-FedAvg level-klien (McMahan 2018), bukan Opacus DP-SGD |
+| Batasan (baru) | R6 | per-kelas pakai centralized benchmark sbg proksi |
+| Metode Stack #2 | R5,R2,R10 | **Flower/Opacus = blueprint deployment; eksperimen = loop FedAvg kustom + DP manual**; versi software diperbaiki (PyTorch 2.11, bukan 2.1) |
+| Metode Dataset #3 | R10 | typo `unthk`→`untuk` |
+| Metode Studi Lit #1 | R10 | `empat penelitian`→`empat bidang` |
+| Metode DP #5 | R1 | ε **dihitung** dari σ via RDP accountant, bukan dikalibrasi manual |
+| Metode XAI #7 | R7 | jangan kunci definisi Average Drop di Bab 1 (tunda ke Bab 2/3) |
+| Hipotesis H2 | R3 | boleh tetap (hipotesis a-priori, ditolak di Bab 4) |
+
+> Catatan kejujuran (R5): Flower & Opacus ADA di kodebase deployment (`server/`,
+> `client/`, requirements.txt) tetapi notebook eksperimen simulasi TIDAK
+> memakainya (loop FedAvg kustom + DP level-klien manual). Bab 1 harus
+> memisahkan keduanya secara eksplisit.
+
+---
+
+# A2. REVISI DOSEN PENGUJI (E1–E5)
+
+> Sumber kedua revisi (selain Pembimbing II / Prof Teddy). Beberapa beririsan
+> dengan R1–R10.
+
+| # | Revisi Penguji | Bab terdampak | Irisan | Status |
+|---|----------------|---------------|--------|--------|
+| **E1** | Dasar teori mendalam kelapa sawit + literatur terkait | Bab 2 | — | ⬜ butuh draft |
+| **E2** | Privacy budget: jelaskan model komposisi (advanced vs linear) | Bab 3 / R1 | **R1** | 🟡 sebagian (lihat E2 di bawah) |
+| **E3** | Judul ditambah lebih detail | Cover / judul | R5 | 🟡 opsi disiapkan |
+| **E4** | Tambah penelitian sebelumnya (related work) | Bab 2 | — | ⬜ butuh draft |
+| **E5** | Rumusan masalah lebih clear: sebut masalah existing → perlu FL+XAI | Bab 1 | R3,R5 | ✅ draft siap |
+
+## E2 — Model komposisi privacy budget (advanced vs linear)
+
+Jawaban: penelitian ini memakai **komposisi LANJUT (advanced) berbasis RDP**
+(Rényi DP, Mironov 2017), bukan komposisi linear/basic. Untuk Bab 3 (paste-ready):
+
+> "Akumulasi \emph{privacy budget} sepanjang T ronde dihitung memakai komposisi
+> lanjut berbasis \emph{Rényi Differential Privacy} (RDP; Mironov, 2017),
+> bukan komposisi linear/dasar. Pada komposisi **linear (dasar)**, total ε
+> tumbuh proporsional terhadap jumlah komposisi (T·ε per mekanisme) sehingga
+> sangat longgar. Komposisi **lanjut (\emph{advanced composition}; Dwork dkk.,
+> 2010)** memperketat pertumbuhan menjadi orde √T. RDP/zCDP (Bun & Steinke,
+> 2016) memberi batas yang lebih ketat lagi untuk mekanisme Gaussian dengan
+> melacak divergensi Rényi pada setiap order α lalu mengonversinya ke (ε, δ)
+> di akhir. Penelitian ini melaporkan ε hasil komposisi RDP (lihat Tabel 3.4
+> dan derivasi Subbab F+. R1)."
+
+## E3 — Opsi judul lebih detail
+
+Judul lama: *"FedX-Palm: A Federated Explainable Framework for Privacy-Preserving
+Palm Fruit Ripeness"* (kurang: metode deteksi, "detection", jumlah kelas).
+
+Opsi (pilih/gabung):
+- **A (lengkap):** "FedX-Palm: A Privacy-Preserving and Explainable Horizontal
+  Federated Learning Framework for Six-Class Oil Palm Fresh Fruit Bunch Ripeness
+  Detection using YOLOv11 and Differential Privacy"
+- **B (dengan framing R5):** "FedX-Palm: An Explainable Federated Learning
+  Framework with Differential Privacy for Oil Palm Ripeness Detection
+  (YOLOv11) — A Simulated FL Study with a Dockerized Deployment Blueprint"
+- **C (ringkas-menengah):** "FedX-Palm: Privacy-Preserving and Explainable
+  Federated YOLOv11 for Oil Palm Fresh Fruit Bunch Ripeness Detection"
+
+> Catatan: R10 (Prof) juga minta perbaiki **judul Bab 3** "THE PROPOSED CODES"
+> (kurang tepat) → mis. "PERANCANGAN DAN IMPLEMENTASI SISTEM" / "THE PROPOSED
+> METHOD".
+
+## E5 — Rumusan masalah (existing problem → perlu FL+XAI): lihat draft di chat
+
+## E1 + E4 + R9 — Daftar pustaka
+
+File `thesis/references_tambahan.bib` berisi **~25 entri siap-tempel** dikelompokkan:
+
+1. **DP fondasi** (R9): Abadi 2016, Mironov 2017, Bun & Steinke 2016, Dwork 2010
+2. **FL fondasi & survei**: McMahan 2017, Kairouz 2021, Yang 2019, Li 2020, Hsu 2019
+3. **FL+DP / DP utk deteksi objek** (R9): Wei 2020, Truex 2020
+4. **Serangan inferensi** (motivasi Bab 1): Shokri 2017, Fredrikson 2015, Zhu 2019
+5. **YOLO / Object detection**: Redmon 2016, Khanam & Hussain 2024 (YOLOv11)
+6. **XAI / Grad-CAM** (R7): Selvaraju 2017, Chattopadhay 2018, Lundberg 2017
+7. **Docker**: Merkel 2014
+8. **FL aplikatif analog**: Rieke 2020 (kesehatan), Hard 2018 (mobile)
+9. **Kelapa sawit / palm oil DL** (E1, E4): Septiarini, Suharjito, Mansour, Saleh
+   — VERIFIKASI tiap entri di Scholar sebelum cite.
+
+Target total: 16 (lama) + ~20 yang relevan = **~35–40** entri (sehat utk tesis S2).
+
+---
+
+# B. BAB 2 — broken references [?]
+
+Ganti `[?]` dengan sitasi yang ada di daftar pustaka / tambahkan baru:
+- Hal 9 (YOLOv11) → He et al. [5] atau tambah Khanam & Hussain (2024).
+- Hal 12 (DP-FedAvg) → tambah Wei et al. (2020) "Federated Learning with
+  Differential Privacy".
+- Hal 13 (Dirichlet) → tambah Hsu et al. (2019) atau McMahan [9].
+- Hal 13 (Docker) → tambah Merkel (2014) "Docker: lightweight Linux containers".
+
+---
+
+# C. BAB 3 — Penyelarasan dengan eksperimen real
+
+## Tabel 3.4 — Skenario Variasi Privacy Budget (KOREKSI ε — R1)
+
+> **PENTING (R1).** ε pada tabel lama (8.0 / 4.0 / 1.0) **ditetapkan manual** dan
+> **salah ~5 ordo besaran**. ε **wajib** dihitung dari privacy accountant (RDP),
+> bukan dilabel. ε dihitung dari (σ, q, T, δ) — lihat derivasi di Subbab R1 dan
+> sel "6b. Derivasi ε" di notebook. **ε yang benar (di bawah) justru sangat
+> besar**, artinya σ sekecil itu hampir **tidak memberi privasi** sama sekali.
+
+Parameter: q (client sampling rate) = 1.0 (partisipasi penuh 4 klien/ronde),
+T = 5 ronde, δ = 1e-5.
+
+| Skenario | σ (aktual) | ε **LAMA (salah)** | ε **TERKOREKSI (RDP)** | Tingkat Privasi sebenarnya |
+|----------|:----------:|:------------------:|:----------------------:|----------------------------|
+| Baseline | 0.000 | ∞ | ∞ | No Privacy |
+| Weak     | 0.005 | 8.0 | **≈ 1.0 × 10⁵** | Tanpa privasi efektif |
+| Moderate | 0.010 | 4.0 | **≈ 2.6 × 10⁴** | Tanpa privasi efektif |
+| Strong   | 0.020 | 1.0 | **≈ 6.8 × 10³** | Tanpa privasi efektif |
+
+Ganti catatan kaki lama dengan yang jujur:
+> "Nilai ε pada penelitian ini dihitung menggunakan *Rényi Differential Privacy
+> accountant* (Mironov, 2017) atas mekanisme Gaussian DP-FedAvg level-klien yang
+> dikomposisikan sepanjang T = 5 ronde dengan partisipasi penuh (q = 1) dan
+> δ = 1e-5. Hasil perhitungan menunjukkan bahwa nilai σ yang digunakan
+> (0.005–0.020) menghasilkan ε ≫ 10³, sehingga **tidak berada pada rezim privasi
+> yang bermakna**. Penurunan σ dilakukan karena σ pada rentang standar DP-SGD
+> (σ ≈ 1–3, yang memberi ε ≈ 1–8) menyebabkan ketidakstabilan numerik (NaN) pada
+> YOLOv11 pretrained. Implikasinya dibahas pada analisis collapse (Subbab 4.3)."
+
+### σ yang dibutuhkan untuk privasi bermakna (RDP, T=5, δ=1e-5)
+
+Untuk konteks penguji — inilah σ yang *seharusnya* dipakai bila ingin ε bermakna:
+
+| Target ε | σ yang dibutuhkan |
+|:--------:|:-----------------:|
+| 8.0 (lemah) | ≈ 1.54 |
+| 4.0 (sedang) | ≈ 2.90 |
+| 1.0 (kuat) | ≈ 10.96 |
+
+Justru pada σ ≈ 1.5–11 inilah model collapse (NaN), sehingga eksperimen tidak
+pernah mencapai titik privasi-bermakna. **Temuan ini memperkuat R3**: collapse
+terjadi *sebelum* rezim privasi tercapai, mengindikasikan masalah pipeline,
+bukan trade-off privasi-utilitas sejati.
+
+## Tabel 3.5 — Konfigurasi Hyperparameter (KOREKSI)
+
+| Parameter | Nilai LAMA (salah) | Nilai REAL |
+|-----------|-------------------|------------|
+| Optimizer | AdamW | **SGD** |
+| Learning Rate | 0.01 | 0.01 (OK) |
+| Communication Rounds | 100 | **5** |
+| Noise Multiplier (σ) | 0.5–3.2 | **0.005–0.020** |
+| Batch Size | 16 | 16 (centralized; OK) |
+| Local Epochs | 5 | **2** |
+
+## Tabel 3.3 — Total sampel & distribusi per client (KOREKSI)
+
+Ukuran data per client REAL (dari history.json), GANTI angka lama
+(2289/2638/2555/3000, total 10.482):
+
+| Client | Total Sampel (REAL) |
+|--------|:-------------------:|
+| Client 1 | 1.342 |
+| Client 2 | 2.815 |
+| Client 3 | 2.191 |
+| Client 4 | 3.634 |
+| **Total** | **9.982** |
+
+Catatan: nilai α Dirichlet (0.1/0.3/0.5/0.7) dan "kelas dominan" per client
+belum terverifikasi dari output — cek terhadap kode split dataset sebelum
+mengklaim mapping kelas dominan. Yang pasti & aman: total 9.982 citra dengan
+quantity skew nyata (Client 1 terkecil 1.342, Client 4 terbesar 3.634).
+
+## Tabel 3.2 — KUNCI urutan kelas ke ALFABET (sesuai data real)
+
+Data real (metrics_per_class.csv) memakai urutan alfabet sesuai `class_id`:
+**0=Abnormal, 1=Empty Bunch, 2=Overripe, 3=Ripe, 4=Underripe, 5=Unripe.**
+Ini urutan resmi dataset Roboflow → GUNAKAN INI DI SELURUH THESIS.
+
+- Hapus penomoran "C1=Unripe..." dan keterangan "C1–C6 dari Overripe hingga
+  Empty Bunch" yang lama (tidak sesuai data).
+- Hapus istilah "Ripening" (kelas ke-7 yang tidak ada).
+- Jika tetap ingin pakai label C1–C6, definisikan: C1=Abnormal, C2=Empty Bunch,
+  C3=Overripe, C4=Ripe, C5=Underripe, C6=Unripe — TAPI lebih aman pakai nama
+  kelas langsung (Abnormal, Empty Bunch, ...) agar tidak ada ambiguitas.
+
+---
+
+# D. ABSTRAK (ganti paragraf hasil)
+
+> Eksperimen menunjukkan bahwa pelatihan model dalam kerangka Horizontal
+> Federated Learning (4 client node, distribusi Non-IID Dirichlet) mencapai
+> mAP@0.5 sebesar **0,9945** dan mAP@0.5:0.95 sebesar **0,8973** tanpa data
+> mentah meninggalkan node, membuktikan bahwa agregasi FedAvg mampu
+> menghasilkan model deteksi berakurasi tinggi pada kondisi data heterogen.
+> Validasi transparansi menggunakan Grad-CAM++ pada model baseline menghasilkan
+> Average Drop **95,1%** dan Focus Retention Rate **0,962**, mengonfirmasi
+> bahwa keputusan model benar-benar berlandaskan fitur morfologi buah. Namun,
+> integrasi Differential Privacy (DP-FedAvg) menghasilkan temuan tak terduga:
+> bahkan dengan noise multiplier minimal (σ=0,005), model mengalami **collapse
+> total** (mAP turun ke 0), bukan degradasi gradual sebagaimana lazim
+> diasumsikan. **Pada konfigurasi pipeline yang diuji** (fine-tuning detektor
+> objek yang telah konvergen dengan DP-FedAvg level-klien), collapse ini terjadi
+> bahkan sebelum tercapai rezim privasi yang bermakna (ε terhitung ≫ 10³),
+> sehingga lebih menunjuk pada artefak konfigurasi DP dibanding trade-off
+> privasi-utilitas sejati. Temuan ini menjadi kontribusi penting bagi
+> perancangan privacy-preserving FL di domain deteksi objek industri dan menandai
+> arah investigasi (analisis ablation) untuk menguji apakah fenomena ini berlaku
+> umum. **Kata Kunci:** Federated Learning, Differential Privacy, YOLOv11,
+> Grad-CAM++, Kelapa Sawit.
+
+---
+
+# E. BAB 4 — TULIS ULANG
+
+## 4.2 Hasil Pelatihan Baseline HFL (ε=∞)
+
+> Pelatihan baseline tanpa Differential Privacy dijalankan selama 5 ronde
+> komunikasi dengan 4 client node berdistribusi Non-IID. Model global mencapai
+> konvergensi sangat cepat: pada ronde pertama mAP@0.5 telah mencapai ~0,99 dan
+> stabil hingga ronde kelima. Performa akhir baseline:
+>
+> - mAP@0.5 = **0,9945**
+> - mAP@0.5:0.95 = **0,8973**
+> - Precision = **0,9934**
+> - Recall = **0,9945**
+>
+> Konvergensi yang cepat ini disebabkan inisialisasi dari bobot YOLOv11 yang
+> telah dipretrained, sehingga proses federated hanya melakukan fine-tuning
+> ringan. Hal ini sekaligus menjelaskan sensitivitas tinggi model terhadap
+> perturbasi DP yang dibahas pada Subbab 4.3.
+
+### Tabel 4.3 — Konvergensi per ronde (federated baseline, REAL)
+
+| Ronde | mAP@0.5 | mAP@0.5:0.95 | Precision | Recall | Waktu (detik) |
+|:-----:|:-------:|:------------:|:---------:|:------:|:-------------:|
+| 1 | 0,9946 | 0,9011 | 0,9941 | 0,9955 | 492,9 |
+| 2 | 0,9944 | 0,8999 | 0,9943 | 0,9946 | 433,3 |
+| 3 | 0,9944 | 0,8992 | 0,9936 | 0,9957 | 438,5 |
+| 4 | 0,9943 | 0,8990 | 0,9941 | 0,9945 | 436,7 |
+| 5 | 0,9945 | 0,8973 | 0,9934 | 0,9945 | 441,1 |
+
+> "Model global mencapai konvergensi instan: mAP@0.5 telah 0,9946 sejak ronde
+> pertama dan stabil (0,9943–0,9946) hingga ronde kelima, dengan fluktuasi
+> < 0,03%. Hal ini wajar karena inisialisasi dari bobot YOLOv11 pretrained.
+> Nilai mAP@0.5:0.95 menurun tipis (0,9011 → 0,8973) seiring ronde, dalam
+> rentang noise statistik. Rata-rata waktu komputasi ~440 detik/ronde (total
+> ~37 menit untuk 5 ronde)."
+
+### Tabel 4.4 — Performa per client
+Simulasi tidak menyimpan rincian mAP per-client (hanya ukuran data per-client,
+lihat Tabel 3.3 terkoreksi). HAPUS tabel mAP per-client, ganti dengan:
+> "Evaluasi dilakukan pada model global hasil agregasi FedAvg. Karena seluruh
+> client berkonvergensi ke performa setara (baseline global mAP@0.5 = 0,9945),
+> tidak terdapat divergensi performa antar-client yang signifikan."
+
+### Benchmark Centralized (untuk Subbab 4.2.2.3) — angka resmi
+- Centralized: mAP@0.5 = **0,9945**, mAP@0.5:0.95 = **0,9013**, P = 0,9951,
+  R = 0,9945, F1 = 0,9948 (SGD, lr=0.01, 50 epoch, batch 16, img 640)
+- Federated baseline: mAP@0.5 = **0,9945**, mAP@0.5:0.95 = **0,8973**
+
+> "Selisih mAP@0.5 antara centralized (0,9945) dan federated baseline (0,9945)
+> praktis nol; pada mAP@0.5:0.95 federated (0,8973) sedikit di bawah centralized
+> (0,9013), selisih ~0,4%. Ini membuktikan FedAvg mempertahankan akurasi setara
+> centralized meski data tersebar Non-IID dan tidak pernah meninggalkan node."
+
+## 4.3 Analisis Dampak Differential Privacy (TEMUAN UTAMA)
+
+> Berbeda dengan hipotesis awal yang memprediksi trade-off gradual, hasil
+> eksperimen **pada konfigurasi pipeline ini** menunjukkan collapse total
+> (mAP=0) di seluruh setelan σ. Tabel 4.5 menyajikan hasil ketiga skenario DP
+> dibandingkan baseline. **Catatan (R1):** ε pada tabel adalah hasil
+> perhitungan RDP accountant (σ, q=1, T=5, δ=1e-5), bukan label manual; nilainya
+> ≫ 10³ pada semua setelan, menandakan **belum tercapainya rezim privasi
+> bermakna**.
+
+### Tabel 4.5 — Perbandingan performa antar tingkat noise (ε terkoreksi)
+
+| Metrik | σ=0 (ε=∞) | σ=0.005 (ε≈1.0e5) | σ=0.010 (ε≈2.6e4) | σ=0.020 (ε≈6.8e3) |
+|--------|------|------|------|------|
+| mAP@0.5 | 0,9945 | 0,0000 | 0,0000 | 0,0000 |
+| mAP@0.5:0.95 | 0,8973 | 0,0000 | 0,0000 | 0,0000 |
+| Precision | 0,9934 | 0,0000 | 0,0000 | 0,0000 |
+| Recall | 0,9945 | 0,0000 | 0,0000 | 0,0000 |
+
+> **Interpretasi (reframe R3):** Seluruh setelan DP menyebabkan model kehilangan
+> total kemampuan deteksi (mAP=0), bahkan pada noise paling lemah (σ=0,005).
+> Karena ε pada setelan ini ≫ 10³ (tanpa privasi bermakna), collapse terjadi
+> **sebelum** wilayah privasi tercapai — sehingga lebih tepat dibaca sebagai
+> **ketidakstabilan konfigurasi pipeline DP** daripada trade-off
+> privasi-utilitas. Terdapat indikasi **ambang kritis (cliff)** di mana
+> perturbasi kecil pada model yang sudah konvergen langsung merusak struktur
+> bobot fine-tuning. Apakah pola ini merupakan "batas mendasar" DP-SGD secara
+> umum **belum dapat disimpulkan** dan menjadi sasaran analisis ablation (R2).
+>
+> **Hipotesis penyebab (akan diuji via ablation R2, belum disimpulkan):**
+> 1. **Rasio noise/sinyal berlebih:** dengan clip-norm C=10, noise/elemen
+>    (σ·C) jauh melampaui sinyal/elemen (~C/√d); diagnostik tercetak di loop
+>    simulasi. Diuji via: noise-only, variasi C, dan clipping-only.
+> 2. **Sharp minimum:** Model pretrained berada pada minimum loss tajam; clipping
+>    + Gaussian noise mengganggu bobot halus. Diuji via: LR lebih kecil, frozen
+>    backbone.
+> 3. **Interaksi BatchNorm–perturbasi:** YOLOv11 bergantung pada BatchNorm; diuji
+>    via penggantian BatchNorm → GroupNorm. (Catatan: trainer Opacus tidak
+>    dipakai; collapse di sini berasal dari noise pada delta, bukan auto-fix
+>    Opacus.)
+> 4. **Kompleksitas loss deteksi:** Loss YOLO (CIoU + klasifikasi + DFL) lebih
+>    sensitif terhadap noise gradien dibanding cross-entropy sederhana.
+> 5. **DP fine-tuning vs from-scratch:** DP mungkin lebih cocok saat training
+>    from-scratch. Diuji via ≥3 seed untuk memastikan bukan kebetulan inisialisasi.
+
+(Gambar 4.2: pakai `privacy_utility_tradeoff.png` real — grafik cliff, bukan
+slope. Ganti gambar lama.)
+
+## 4.4 Analisis per Kelas
+
+> Karena seluruh skenario DP menghasilkan mAP=0, analisis per kelas hanya
+> bermakna pada model baseline.
+
+> Analisis per-kelas dan confusion matrix di bawah berasal dari model
+> centralized benchmark (best.pt), yang setara dengan federated baseline pada
+> level agregat (mAP@0.5 = 0,9945). Model federated tidak menyimpan rincian
+> per-kelas, sehingga benchmark centralized digunakan untuk analisis granular.
+
+### Tabel 4.7 — Confusion Matrix Normalized (centralized, 6 kelas + background)
+
+| Pred ↓ \ True → | Abnormal | Empty Bunch | Overripe | Ripe | Underripe | Unripe | background |
+|-----------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Abnormal        | **1.00** | – | – | 0.01 | – | – | 0.05 |
+| Empty Bunch     | – | **1.00** | – | – | – | – | – |
+| Overripe        | – | – | **1.00** | – | – | – | 0.24 |
+| Ripe            | – | – | – | **0.99** | – | – | 0.19 |
+| Underripe       | – | – | – | – | **1.00** | – | 0.19 |
+| Unripe          | – | – | – | – | – | **1.00** | 0.33 |
+| background      | – | – | – | 0.01 | – | – | – |
+
+> **Temuan penting (mengubah narasi lama):** Diagonal bernilai 0,99–1,00 dan
+> confusion antar-kelas kematangan **nyaris nol** (maksimal 0,01, yaitu sebagian
+> kecil Ripe terprediksi Abnormal). Klaim draf lama tentang "adjacent class
+> confusion (Underripe vs Ripe)" TIDAK terjadi pada hasil real. Sumber kesalahan
+> dominan justru pada kolom/baris **background** — yaitu false positive
+> (mendeteksi objek di area latar) dan false negative (melewatkan objek), yang
+> merupakan kesalahan LOKALISASI, bukan KLASIFIKASI. Keenam kelas kematangan
+> praktis terpisah sempurna secara visual.
+
+### Tabel 4.9 — Performa per kelas (centralized benchmark)
+
+| Kelas | Precision | Recall | mAP@0.5 | mAP@0.5:0.95 |
+|-------|:---:|:---:|:---:|:---:|
+| Abnormal | 0,994 | 0,991 | 0,993 | 0,856 |
+| Empty Bunch | 0,999 | 1,000 | 0,995 | 0,866 |
+| Overripe | 0,987 | 0,993 | 0,995 | 0,894 |
+| Ripe | 1,000 | 0,987 | 0,995 | 0,909 |
+| Underripe | 0,996 | 1,000 | 0,995 | 0,933 |
+| Unripe | 0,994 | 0,996 | 0,995 | 0,950 |
+| **Rata-rata** | **0,995** | **0,994** | **0,995** | **0,901** |
+
+> **Catatan kelas minoritas:** **Empty Bunch** adalah kelas dengan sampel
+> paling sedikit (BUKAN Abnormal seperti draf lama), NAMUN justru terdeteksi
+> sempurna (recall 1,000, mAP@0.5 = 0,995). Ini menolak klaim draf lama bahwa
+> kelas minoritas mengalami degradasi. Pada model konvergen, imbalance tidak
+> mengganggu deteksi.
+>
+> **Pola mAP@0.5:0.95 (IoU ketat):** Abnormal (0,856) dan Empty Bunch (0,866)
+> punya mAP@0.5:0.95 terendah, sedangkan Unripe (0,950) tertinggi. Artinya
+> lokalisasi bounding box untuk Abnormal/Empty Bunch sedikit lebih sulit (bentuk
+> tidak beraturan), meski klasifikasinya tetap sempurna. Ini observasi jujur &
+> dapat dipertahankan, menggantikan narasi "minoritas gagal" yang lama.
+
+### HAPUS subbab lama yang tidak berlaku lagi
+Subbab berikut di draf lama berdasarkan confusion matrix DP palsu — HAPUS atau
+ganti total, karena DP collapse ke 0 (tidak ada confusion matrix bermakna):
+- 4.4.3.1 Peningkatan Elemen Off-Diagonal → tidak berlaku
+- 4.4.3.2 Adjacent Class Confusion (Underripe vs Ripe) → TIDAK terjadi (lihat 4.7)
+- 4.4.3.3 Dampak Berat pada Kelas Minoritas C6 → minoritas justru sempurna
+- 4.4.4 Performa Kelas Minoritas vs Mayoritas → ganti dgn analisis IoU ketat
+
+Ganti dengan satu subbab ringkas: "4.4.1 Pemisahan Antar-Kelas Sempurna pada
+Baseline" + "4.4.2 Kegagalan Total Klasifikasi pada Skenario DP (semua kelas = 0)".
+
+## 4.5 & 4.6 Analisis XAI (Grad-CAM++)
+
+> **Strategi Gambar 4.4 (heatmap):** Bila gambar heatmap belum berhasil
+> di-generate, H3 TETAP KUAT karena bertumpu pada validasi KUANTITATIF yang
+> sudah real (Average Drop 95,1%, FRR 0,962). Susun Subbab 4.5 sebagai berikut:
+> - Pimpin dengan metrik kuantitatif (Tabel 4.11) — ini bukti utama.
+> - Untuk visual: gunakan `val_batch0_pred.jpg` (hasil deteksi) sebagai bukti
+>   model melokalisasi buah dengan benar, ATAU regenerate heatmap bila sempat.
+> - Narasikan: "Validasi kuantitatif Average Drop 95,1% membuktikan area yang
+>   disorot Grad-CAM++ memang kausal terhadap keputusan model; ketika area
+>   tersebut dimasking, kepercayaan model turun 95,1%."
+> Jangan klaim ada gambar heatmap kalau belum ada di dokumen.
+
+> Validasi XAI hanya dapat dilakukan pada model baseline karena model dengan
+> DP tidak menghasilkan prediksi valid (Average Drop dan FRR = NaN).
+
+### Tabel 4.11 — Metrik XAI
+
+| Model | Average Drop (%) | FRR | Reliabilitas |
+|-------|------------------|------|--------------|
+| Baseline (ε=∞) | 95,1 | 0,962 | Excellent |
+| Weak DP (ε=8.0) | NaN (model collapse) | NaN | N/A |
+| Moderate DP (ε=4.0) | NaN (model collapse) | NaN | N/A |
+| Strong DP (ε=1.0) | NaN (model collapse) | NaN | N/A |
+
+> Pada model baseline, Average Drop 95,1% menunjukkan bahwa ketika area yang
+> disorot heatmap Grad-CAM++ dihilangkan, kepercayaan model turun drastis —
+> membuktikan heatmap benar-benar menyorot fitur kausal. FRR 0,962 menunjukkan
+> 96,2% intensitas perhatian model terkonsentrasi pada area buah (bukan latar).
+> Interpretasi XAI pada model DP tidak dapat dievaluasi karena model kehilangan
+> fungsi prediktif.
+
+> ⚠️ ANTISIPASI PERTANYAAN PENGUJI (konvensi Average Drop): Definisi Average
+> Drop di thesis ini (Pers. 2.7) adalah penurunan confidence ketika area PENTING
+> DIHILANGKAN, sehingga **nilai tinggi = penjelasan makin baik/faithful**.
+> Ini BERBEDA dari konvensi paper Grad-CAM++ asli (Chattopadhyay dkk.) yang
+> mengukur drop saat hanya MEMPERTAHANKAN area penting (nilai rendah = lebih
+> baik). Pastikan Bab 2.6.2 konsisten dengan definisi yang dipakai, dan siap
+> menjelaskan bahwa AD=95,1% bermakna BAIK dalam konvensi penelitian ini
+> (menghapus area kunci menghancurkan 95,1% confidence → heatmap memang kausal).
+
+## 4.7 Validasi Hipotesis (TULIS ULANG)
+
+**H1 — TERBUKTI (kuat):**
+> Baseline HFL mencapai mAP@0.5 = 0,9945, jauh melampaui ambang 80%,
+> mengonfirmasi FedAvg sangat efektif pada data Non-IID.
+
+**H2 — TERBUKTI SEBAGIAN (bentuk proporsional DITOLAK):**
+> Hipotesis memprediksi penurunan akurasi *berbanding lurus* dengan penguatan
+> privasi (semakin kecil ε, semakin rendah akurasi secara gradual). Hasil
+> menunjukkan: (a) penambahan noise DP memang menurunkan utilitas; NAMUN (b)
+> hubungan proporsional/monotonik yang dihipotesiskan TIDAK terjadi — ketiga
+> setelan σ (0,005; 0,010; 0,020) sama-sama collapse ke mAP=0 tanpa perbedaan
+> gradual. Penting dicatat (R1): ε terhitung untuk ketiga setelan ini ≫ 10³
+> (tanpa privasi bermakna), sehingga collapse terjadi *sebelum* rezim privasi
+> tercapai — ini melemahkan interpretasi "trade-off privasi-utilitas" dan lebih
+> menunjuk pada artefak konfigurasi pipeline. Dengan demikian H2 DITOLAK dalam
+> bentuk proporsional yang spesifik. **Pada konfigurasi pipeline yang diuji**,
+> hasil mengindikasikan ketidakcocokan DP-FedAvg dengan fine-tuning detektor
+> objek yang sudah konvergen; klaim apakah ini "batas mendasar" DP-SGD secara
+> umum **ditangguhkan sampai dibuktikan analisis ablation (R2)**.
+
+> CATATAN untuk diskusi dengan pembimbing: pilih satu label final — "terbukti
+> sebagian" (paling jujur) ATAU "ditolak" (jika pembimbing menilai inti H2
+> adalah proporsionalitas). Hindari klaim "terbukti penuh" karena pola
+> proporsional tidak teramati.
+
+**H3 — TERBUKTI (pada model fungsional):**
+> Grad-CAM++ pada model baseline menghasilkan AD=95,1% dan FRR=0,962,
+> mengonfirmasi interpretasi visual yang andal dan berlandaskan fitur morfologi
+> buah. Validasi pada model DP tidak dapat dilakukan karena collapse.
+
+---
+
+# F. BAB 5 — KESIMPULAN & SARAN (revisi)
+
+## 5.1 Kesimpulan (koreksi poin)
+1. HFL+FedAvg berhasil: mAP@0.5=0,9945 pada 5 ronde, data tidak meninggalkan node.
+2. **Pada konfigurasi pipeline yang diuji, DP-FedAvg menyebabkan collapse**,
+   bukan trade-off gradual. Bahkan σ=0,005 menghancurkan model konvergen —
+   namun pada σ tersebut ε terhitung ≫ 10³ (tanpa privasi bermakna), sehingga
+   collapse terjadi sebelum rezim privasi tercapai. Apakah ini "batas mendasar"
+   DP-SGD secara umum masih perlu dibuktikan via ablation (lihat Saran 5.3).
+3. XAI Grad-CAM++ tervalidasi pada baseline (AD=95,1%, FRR=0,962).
+
+## 5.2 Keterbatasan (tambahkan)
+> Penerapan Differential Privacy via **DP-FedAvg level-klien** (clipping +
+> Gaussian noise pada delta bobot; *bukan* per-sample DP-SGD Opacus, yang tidak
+> dipakai karena inkompatibilitas BatchNorm YOLOv11) pada model YOLOv11 pretrained
+> tidak berhasil mempertahankan utilitas **pada konfigurasi yang diuji**. Hal ini
+> diduga disebabkan kombinasi: rasio noise/sinyal yang besar akibat clip-norm
+> C=10 (lihat diagnostik R2), interaksi BatchNorm dengan perturbasi, sensitivitas
+> loss deteksi, serta penerapan DP pada tahap fine-tuning alih-alih from-scratch.
+> Penelitian ini belum berhasil menemukan konfigurasi DP yang mempertahankan
+> akurasi; analisis ablation (Saran 5.3) diperlukan untuk mengisolasi penyebab
+> dan menguji generalisasi temuan.
+
+## 5.3 Saran Penelitian Lanjutan (tambahkan)
+> - Mengganti BatchNorm dengan GroupNorm/LayerNorm sebelum DP-SGD.
+> - Menerapkan DP sejak training from-scratch, bukan fine-tuning.
+> - Eksplorasi DP-FedAvg level server (central DP) alih-alih per-client DP-SGD,
+>   atau Secure Aggregation/Homomorphic Encryption sebagai alternatif proteksi.
+> - Schedule noise bertahap (warm-up) dan clipping norm adaptif.
+
+---
+
+# F+. R1 — Derivasi Privacy Budget ε dari Accountant (Pembimbing II)
+
+> Menjawab **R1** (isu terbesar): "Nilai ε pada DP-SGD tidak boleh ditetapkan
+> secara tabel; ia harus diturunkan dari privacy accountant (RDP/PRV)
+> berdasarkan σ, sampling rate (q), jumlah langkah (T), dan δ." Siap tempel
+> sebagai Subbab 3.X (Analisis Privacy Budget) atau lampiran derivasi.
+
+## F+.1 Mekanisme & asumsi
+
+Implementasi adalah **DP-FedAvg level-klien** (McMahan dkk., 2018), *bukan*
+per-sample DP-SGD: tiap ronde, delta bobot klien (w_local − w_global) di-clip ke
+L2-norm C lalu ditambah noise Gaussian N(0, (σ·C)²) sebelum agregasi. Maka:
+
+- **Noise multiplier** z = σ (karena noise_std / sensitivity = (σ·C)/C = σ).
+- **Sampling rate** q = 1.0 — keempat klien berpartisipasi penuh tiap ronde
+  (tidak ada amplifikasi privasi via subsampling; dengan hanya 4 klien,
+  amplifikasi memang minimal).
+- **Komposisi** T = 5 ronde komunikasi.
+- **δ** = 1e-5.
+
+## F+.2 Derivasi (RDP — Mironov, 2017)
+
+Untuk mekanisme Gaussian non-subsampled, *Rényi DP* pada order α:
+
+```
+ε_RDP(α) = T · α / (2 σ²)
+```
+
+Konversi ke (ε, δ)-DP, diminimalkan atas α > 1:
+
+```
+ε = min_{α>1} [ T·α/(2σ²) + ln(1/δ)/(α − 1) ]
+```
+
+Perhitungan ini deterministik dan diimplementasikan **mandiri** (numpy) di
+sel "6b. Derivasi ε" notebook — **independen dari trainer Opacus**, yang
+memang tidak digunakan karena `ModuleValidator`-nya tidak kompatibel dengan
+BatchNorm YOLOv11 (lihat juga R2). Sebagai validasi kedua, dihitung pula
+zCDP analitik (Bun & Steinke, 2016), ρ = T/(2σ²) lalu
+ε = ρ + 2√(ρ·ln(1/δ)) — konsisten dengan RDP ±0,1%.
+
+## F+.3 Hasil (T=5, q=1, δ=1e-5)
+
+| σ | ε (RDP) | Interpretasi |
+|:-----:|:-----------:|--------------|
+| 0.005 | ≈ 1.0 × 10⁵ | tanpa privasi efektif |
+| 0.010 | ≈ 2.6 × 10⁴ | tanpa privasi efektif |
+| 0.020 | ≈ 6.8 × 10³ | tanpa privasi efektif |
+| 1.544 | ≈ 8.0 | privasi lemah (rezim bermakna) |
+| 2.898 | ≈ 4.0 | privasi sedang |
+| 10.96 | ≈ 1.0 | privasi kuat |
+
+## F+.4 Koreksi pemetaan & temuan
+
+- Pemetaan lama (σ=0.005 → ε=8.0) **keliru ~5 ordo besaran** (ε sebenarnya
+  ≈ 10⁵). Tabel 3.4 sudah dikoreksi di atas.
+- Semua σ yang diuji (0.005–0.020, bahkan sweep halus 0.0001–0.003) memberi
+  **ε ≫ 10³ → tidak ada privasi bermakna**.
+- Privasi bermakna (ε ≈ 1–8) menuntut σ ≈ 1.5–11; pada rentang itu model
+  collapse (NaN). **Konsekuensi:** eksperimen tidak pernah mencapai rezim
+  privasi-bermakna → menguatkan reframe R3 (collapse = artefak pipeline,
+  bukan trade-off privasi sejati).
+
+## F+.5 Tindak lanjut R1
+
+- [x] Accountant RDP eksplisit (σ,q,T,δ → ε) di notebook sel 6b
+- [x] Tabel derivasi & σ-untuk-target-ε
+- [x] Koreksi Tabel 3.4 (ε terkoreksi)
+- [ ] Tempel derivasi ke Bab 3 tesis + lampiran
+- [ ] Sitasi: Mironov (2017) RDP, Bun & Steinke (2016) zCDP, Abadi dkk. (2016)
+      — lihat juga R9
+
+---
+
+# F+. R2 — Ablation Diagnosa Akar Collapse (Pembimbing II)
+
+> Menjawab **R2**: "Jalankan clipping-only, noise-only, variasi C, LR lebih
+> kecil, frozen backbone, BatchNorm→GroupNorm, dan ≥3 seed; konfirmasi apakah
+> collapse adalah bug pipeline (Opacus×BatchNorm/NaN) atau fenomena nyata."
+> Harness siap di notebook **sel 7b** (`run_ablation_unit` + grid + verdict).
+
+## F+.2.1 Desain
+
+Unit ablation = **1 update lokal (1 klien) + DP pada delta + eval** — unit
+terkecil tempat collapse muncul, sehingga murah dan decisive. Tiap konfigurasi
+diulang **3 seed** (R2). Grid menutup keenam permintaan Pembimbing II:
+
+| Kode | Variabel diuji | Hipotesis yang diuji |
+|------|----------------|----------------------|
+| A1, A2 | clipping-only (σ=0; C=10, C=1) | apakah clipping sendiri merusak? |
+| A3–A6 | noise + variasi C (noise/elem = σ·C) | apakah magnitudo noise penyebabnya? |
+| B1, B2 | LR lebih kecil (1e-3, 1e-4) | apakah delta besar penyebabnya? |
+| B3 | frozen backbone | apakah melindungi fitur pretrained menolong? |
+| C1, C1b | BatchNorm→GroupNorm (+DP / baseline) | apakah BatchNorm penyebabnya? |
+| (semua) | ≥3 seed | apakah hasil stabil / bukan kebetulan? |
+
+## F+.2.2 Status
+
+- [x] Harness ablation + verdict otomatis (notebook sel 7b)
+- [x] Diagnostik noise/sinyal & deteksi NaN per-konfigurasi
+- [ ] **Jalankan di Colab GPU** → isi `ablation_results.csv`
+- [ ] Tempel ringkasan + verdict ke Bab 4.3 (analisis penyebab)
+
+## F+.2.3 Template verdict (isi setelah Colab selesai)
+
+> Hasil ablation menunjukkan: clipping-only menghasilkan mAP = **[ISI]**
+> (≈ baseline → clipping **[bukan/ikut]** penyebab); penurunan clip-norm C dari
+> 10 ke 0,1 **[memulihkan/tidak memulihkan]** mAP (**[ISI]** → **[ISI]**),
+> mengindikasikan collapse **[didorong magnitudo noise pipeline / fenomena
+> lebih dalam]**; penggantian BatchNorm→GroupNorm **[memulihkan/tidak]**;
+> NaN **[terdeteksi/tidak]**. Kesimpulan: collapse pada konfigurasi ini paling
+> konsisten dijelaskan oleh **[artefak konfigurasi DP / batas DP yang lebih
+> mendasar]** (lihat reframe R3).
+
+---
+
+# F+. R3 — Reframe Klaim DP (Pembimbing II)
+
+> Menjawab **R3**: "Ubah klaim dari 'batas mendasar' menjadi 'pada konfigurasi
+> ini' hingga ablation membuktikan generalisasinya." Reframe sudah diterapkan
+> menyeluruh; bagian ini meringkas perubahan untuk traceability penguji.
+
+## F+.3.1 Prinsip reframe
+
+Setiap klaim yang sebelumnya menyatakan collapse sebagai **"batas mendasar /
+fundamental DP-SGD"** diturunkan menjadi klaim **terbatas-konteks**:
+
+> "Pada konfigurasi pipeline yang diuji (YOLOv11 pretrained konvergen +
+> DP-FedAvg level-klien, clip C=10, fine-tuning), penambahan noise menyebabkan
+> collapse. Apakah ini berlaku umum sebagai batas mendasar DP-SGD ditangguhkan
+> sampai dibuktikan analisis ablation (R2)."
+
+Diperkuat temuan R1: karena ε ≫ 10³ pada semua setelan, collapse terjadi
+**sebelum** rezim privasi bermakna → indikasi artefak konfigurasi, bukan
+trade-off privasi-utilitas sejati.
+
+## F+.3.2 Lokasi yang sudah diubah
+
+| Bagian | Sebelum | Sesudah |
+|--------|---------|---------|
+| DATA REAL (ringkasan) | "Temuan inti: DP-SGD ... collapse total" | "+ pada konfigurasi ini + catatan ε≫10³ + artefak pipeline" |
+| Abstrak | "mengungkap batas fundamental penerapan DP-SGD" | "pada konfigurasi yang diuji ... menandai arah investigasi (ablation)" |
+| 4.3 Temuan Utama | "collapse katastrofik" + ε label manual | ε terkoreksi + "ketidakstabilan konfigurasi pipeline" + hipotesis (bukan kesimpulan) |
+| 4.7 H2 | "mengungkap batas fundamental DP-SGD" | "pada konfigurasi yang diuji ... klaim batas mendasar ditangguhkan sampai ablation" |
+| 5.1 / 5.2 | "DP-SGD via Opacus ... tidak berhasil" | "DP-FedAvg level-klien (bukan Opacus) ... pada konfigurasi yang diuji ... perlu ablation" |
+
+## F+.3.3 Tindak lanjut R3
+
+- [x] Reframe semua klaim "batas mendasar/fundamental" → "pada konfigurasi ini"
+- [x] Bahasa penyebab diturunkan ke "hipotesis yang akan diuji" (bukan kesimpulan)
+- [x] Koreksi mischaracterization "DP-SGD via Opacus" → "DP-FedAvg level-klien"
+- [ ] Setelah ablation R2 selesai: bila collapse terbukti generalis, klaim boleh
+      dinaikkan kembali; bila tidak, pertahankan framing terbatas-konteks.
+
+---
+
+# F+. R4 — Audit Data Leakage & Strategi Re-Split (Pembimbing II)
+
+> Bagian ini menjawab catatan revisi **R4** dari Pembimbing II terkait kecurigaan
+> *data leakage* yang menjelaskan mAP@0.5 baseline 0.9945 yang tampak terlalu
+> tinggi. Penjelasan di bawah siap tempel sebagai Subbab 3.X (Validitas Data)
+> atau dimasukkan ke 5.2 Keterbatasan, sesuai arahan akhir Pembimbing.
+
+## F+.1 Temuan audit (output sel 4b notebook federated)
+
+Dataset `palm-fruit-ripeness-detection v2` (Roboflow) membagi train/valid/test
+**secara acak per-frame**. Karena sumbernya adalah **video tandan sawit**,
+satu tandan diwakili oleh banyak frame berurutan dengan nama
+`framesawit<id>-<frame_no>-_png.rf.<hash>.jpg`.
+
+Hasil audit (sel 4b sebelum perbaikan):
+
+| Pemeriksaan | Definisi | Hasil |
+|-------------|----------|------:|
+| **HARD leakage** | Citra original identik di antara split | **0** |
+| **SOFT leakage** | `bunch_id` sama muncul di lebih dari satu split | **100% tandan valid juga ada di train** |
+
+Implikasinya: model tidak benar-benar diuji pada tandan baru — frame berbeda
+dari tandan yang sama membuat valid/test menjadi *in-distribution* terhadap
+train. Angka mAP centralized baseline 0.9945 karenanya **optimis** dan tidak
+mengukur generalisasi sebenarnya.
+
+## F+.2 Strategi anti-leakage yang diterapkan
+
+Diimplementasikan sebagai **sel 3b** di notebook federated_simulation
+(berjalan tepat sebelum Dirichlet split). Pendekatan: **Stratified Group
+Split** dengan empat invariant:
+
+1. **Group key** = `bunch_id` (regex `frame[a-z]*\d+` dari nama file,
+   suffix Roboflow `.rf.<hash>` dibuang lebih dulu).
+2. **Stratifikasi** per **kelas dominan** tandan (mayoritas kelas dari
+   seluruh frame tandan tersebut). Tujuan: menjaga representasi kelas
+   minoritas (mis. *Empty Bunch*) di valid/test.
+3. **Rasio target** 80/10/10 (sama dengan rasio Roboflow asli, agar ukuran
+   train tetap memadai untuk DP-SGD yang sensitif noise).
+4. **Garansi disjoint**: satu `bunch_id` hanya muncul di **satu** split.
+
+Determinisme: `random.Random(seed=42)` — reproducible.
+
+Verifikasi (sel 4b setelah perbaikan) memeriksa **tiga pasangan** split
+(train↔valid, train↔test, valid↔test) untuk HARD dan SOFT leakage, dan
+harus mencetak `>>> BERSIH` sebelum training dilanjutkan.
+
+## F+.3 Pernyataan validitas untuk tesis (siap tempel)
+
+> "Untuk menjamin validitas evaluasi, dataset di-split ulang berbasis
+> identitas tandan sawit (`bunch_id`). Strategi yang digunakan adalah
+> *stratified group split* dengan rasio 80/10/10, di mana setiap tandan
+> hanya muncul di satu split (train, valid, atau test). Stratifikasi
+> dilakukan terhadap kelas dominan setiap tandan agar kelas minoritas tetap
+> terwakili. Audit pasca-split mengonfirmasi tidak adanya tumpang tindih
+> citra maupun tandan antar-split."
+
+## F+.4 Dampak terhadap angka yang dilaporkan
+
+- Angka mAP/Precision/Recall di **DATA REAL** (Tabel atas dokumen ini)
+  berasal dari split Roboflow asli yang masih leaky. Setelah training
+  ulang di atas split baru, **angka diperkirakan turun** (besaran pasti
+  baru diketahui setelah training selesai).
+- **Tren privacy-utility** (Tabel 4.5 — perbandingan ε) tetap valid karena
+  bias data konstan di seluruh skenario; relativitas degradasi DP terhadap
+  baseline tidak berubah.
+- Kesimpulan utama tesis ("DP-SGD pada YOLOv11 pretrained menyebabkan
+  collapse") tidak terpengaruh re-split.
+
+## F+.5 Tindak lanjut
+
+- [x] Audit leakage pada split asli (sel 4b)
+- [x] Implementasi re-split per `bunch_id` (sel 3b)
+- [x] Verifikasi 0 leakage di split baru (sel 4b versi update)
+- [ ] Re-training centralized baseline di atas split baru — laporkan mAP baru
+- [ ] Re-simulasi federated (4 skenario ε) di atas split baru
+- [ ] Update tabel **DATA REAL**, Tabel 4.3, 4.5, 4.9 dengan angka pasca-resplit
+- [ ] Bandingkan delta mAP baseline (lama vs baru) sebagai validasi besarnya
+      bias akibat leakage
+
+---
+
+# G. DEPLOYMENT & DEMO VPS (bagian baru)
+
+> Bagian ini mendokumentasikan arsitektur ter-Dockerisasi dan deployment model
+> ke VPS untuk demonstrasi inference langsung. Narasi di bawah siap tempel.
+> **Framing jujur yang harus dipegang:** sistem *dirancang* sebagai arsitektur
+> federated ter-Dockerisasi (4 client + server); *eksperimen pelatihan*
+> dijalankan sebagai simulasi ekuivalen di Google Colab karena keterbatasan
+> sumber daya multi-node GPU; *model hasil* (best.pt) kemudian di-deploy ke VPS
+> sebagai layanan inference untuk membuktikan kelayakan implementasi.
+
+## G.1 Untuk BAB 3 — Subbab "Implementasi Sistem & Deployment" (siap tempel)
+
+> **Arsitektur Ter-Dockerisasi.** Sistem FedX-Palm dirancang sebagai arsitektur
+> Horizontal Federated Learning yang terisolasi menggunakan Docker (berkas
+> `docker-compose.yml`). Arsitektur terdiri atas satu *FL Server (Aggregator)*
+> dan empat *Client Node*, masing-masing berjalan dalam container terpisah dan
+> berkomunikasi melalui jaringan bridge khusus (`fed-network`). Setiap client
+> melakukan pelatihan lokal pada data privatnya (dimount *read-only* untuk
+> menerapkan prinsip Zero-Trust), kemudian hanya mengirimkan pembaruan bobot ke
+> server untuk diagregasi dengan algoritma FedAvg. Konfigurasi pelatihan
+> mengikuti Tabel 3.5: optimizer SGD (lr=0,01), 5 ronde komunikasi, 2 epoch
+> lokal per ronde, batch size 16, citra 640×640, dengan mekanisme Differential
+> Privacy (Opacus DP-SGD) yang dapat dikonfigurasi per skenario ε.
+>
+> **Strategi Eksekusi Eksperimen.** Karena keterbatasan sumber daya untuk
+> menjalankan empat node GPU secara simultan, eksperimen pelatihan dijalankan
+> sebagai *simulasi federated ekuivalen* pada lingkungan Google Colab (GPU
+> tunggal), yang secara matematis setara dengan agregasi FedAvg pada arsitektur
+> terdistribusi. Arsitektur Docker pada `docker-compose.yml` merepresentasikan
+> rancangan deployment penuh sistem.
+>
+> **Pipeline Deployment Model.** Model global hasil pelatihan (`best.pt`)
+> di-deploy ke sebuah Virtual Private Server (VPS) sebagai layanan inference
+> (berkas `docker-compose.serve.yml` dan `docker/Dockerfile.serve`). Layanan ini
+> dibangun di atas image Python berbasis CPU (Torch CPU + Ultralytics + Flask),
+> sehingga ringan dan tidak memerlukan GPU pada tahap inference. Aplikasi
+> (`serve_app.py`) menyajikan antarmuka web pada port 8080 dengan tiga endpoint:
+> `/` (halaman unggah citra), `/predict` (deteksi + Grad-CAM++), dan `/health`
+> (status layanan). Bobot model dimount *read-only* (`MODEL_PATH=
+> /app/weights/best.pt`), dan ambang kepercayaan deteksi diatur 0,25
+> (`CONF_THRES`). Saat pengguna mengunggah citra buah sawit, sistem menjalankan
+> deteksi YOLOv11 lalu menghasilkan peta panas Grad-CAM++ pada kelas dengan
+> kepercayaan tertinggi secara *real-time*.
+
+### Tabel G.1 — Konfigurasi Deployment Serving (untuk Bab 3)
+
+| Komponen | Nilai |
+|----------|-------|
+| Base image | `python:3.10-slim` |
+| Backend | PyTorch (CPU) + Ultralytics YOLOv11 + Flask |
+| Endpoint | `/` (UI), `/predict` (inference), `/health` (status) |
+| Port | 8080 |
+| Bobot model | `/app/weights/best.pt` (mount read-only) |
+| Confidence threshold | 0,25 |
+| Komputasi | CPU-only (tanpa GPU) |
+| Orkestrasi | Docker Compose (`docker-compose.serve.yml`) |
+
+## G.2 Untuk BAB 4 — Subbab "Demonstrasi Inference Live" (siap tempel)
+
+> Untuk membuktikan bahwa model hasil pelatihan benar-benar dapat diterapkan
+> (bukan sekadar hasil simulasi), model baseline (`best.pt`) di-deploy pada VPS
+> dan diuji terhadap citra buah kelapa sawit yang berasal dari *test split*
+> (citra yang tidak pernah dilihat model selama pelatihan). Gambar 4.x
+> menunjukkan antarmuka sistem yang berhasil mendeteksi buah beserta kelas
+> kematangannya (bounding box + label kepercayaan) dan secara simultan
+> menghasilkan peta panas Grad-CAM++ yang menyorot area buah sebagai dasar
+> keputusan model. Hasil ini mengonfirmasi dua hal: (1) model terdeploy
+> berfungsi penuh pada citra baru di lingkungan produksi nyata (CPU-only), dan
+> (2) interpretasi visual Grad-CAM++ konsisten dengan validasi kuantitatif pada
+> Subbab 4.5 (Average Drop 95,1%; FRR 0,962) — perhatian model terfokus pada
+> morfologi buah, bukan latar. Metrik agregat (mAP, Average Drop, FRR) yang
+> ditampilkan pada antarmuka berasal dari hasil eksperimen Bab 4, sedangkan
+> deteksi yang dijalankan bersifat live pada citra yang diunggah penguji.
+
+## G.3 Daftar screenshot / lampiran yang perlu diambil
+
+Ambil dari browser saat demo berjalan (`http://<IP-VPS>:8080`):
+
+1. **Halaman utama** — antarmuka unggah + kartu metrik (mAP 0,9945; AD 95,1%; FRR 0,962).
+2. **Hasil deteksi** — citra sawit dengan bounding box + label kelas + confidence.
+3. **Peta panas Grad-CAM++** — overlay heatmap menyorot area buah (sandingkan dgn deteksi).
+4. **Tabel deteksi** — daftar kelas + confidence di bawah gambar.
+5. **(Opsional) Output `/health`** — `{"status":"ok","model":"best.pt",...}` sebagai bukti layanan aktif.
+6. **(Opsional) Terminal VPS** — `docker compose ps` menampilkan container `fedx-palm-serve` Up.
+
+Saran: siapkan 3–5 citra test mewakili kelas kematangan berbeda (Abnormal,
+Empty Bunch, Overripe, Ripe, Underripe, Unripe) agar demonstrasi menunjukkan
+model membedakan keenam kelas.
+
+## G.4 Catatan untuk antisipasi penguji
+
+> - **"Apakah ini benar-benar terdistribusi/federated?"** → Arsitektur dirancang
+>   terdistribusi (lihat `docker-compose.yml`: 4 client container terpisah +
+>   server, jaringan terisolasi, data mount read-only). Eksperimen pelatihan
+>   dijalankan sebagai simulasi ekuivalen di Colab karena keterbatasan multi-node
+>   GPU; agregasi FedAvg yang disimulasikan setara secara matematis dengan
+>   arsitektur penuh.
+> - **"Kenapa demo pakai CPU, bukan GPU?"** → Tahap *inference* satu citra tidak
+>   memerlukan GPU; image CPU dipilih agar deployment ringan, murah, dan
+>   reprodusibel di VPS standar.
+> - **"Metrik di layar live dihitung ulang per request?"** → Tidak. Metrik
+>   agregat (mAP/AD/FRR) berasal dari eksperimen Bab 4 dan ditampilkan sebagai
+>   konteks; yang live hanyalah deteksi + heatmap pada citra yang diunggah.

@@ -1,0 +1,10 @@
+# Demo: lightweight FL client (simulates client local training + Flower handshake)
+FROM python:3.10-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir requests==2.31.0
+
+COPY docker/client_demo.py /app/client_demo.py
+
+CMD ["python", "client_demo.py"]

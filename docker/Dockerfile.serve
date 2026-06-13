@@ -1,0 +1,21 @@
+# FedX-Palm — Model serving (inference + Grad-CAM++) untuk demo VPS (CPU-only).
+# Memuat best.pt hasil Colab dan menyajikan endpoint web deteksi + heatmap.
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# libGL + glib dibutuhkan OpenCV (dependensi ultralytics).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Torch versi CPU (jauh lebih kecil dari varian CUDA).
+RUN pip install --no-cache-dir torch torchvision \
+        --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir ultralytics flask
+
+COPY xai/ /app/xai/
+COPY docker/serve_app.py /app/serve_app.py
+
+EXPOSE 8080
+CMD ["python", "serve_app.py"]
