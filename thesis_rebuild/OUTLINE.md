@@ -147,52 +147,85 @@ agregasi → XAI → evaluasi.
 ### 3.8 Metrik Evaluasi
 - mAP@0.5, mAP@0.5:0.95
 - Precision, Recall, F1
-- ε (RDP) per setting
+- ε via PRV accountant (Opacus default, lebih tight dari RDP) — δ=1e-5
 - XAI: AD, FRR
 
 ### 3.9 Skenario Eksperimen
-- E1: Baseline FL (no DP)
-- E2: FL + DP-SGD sweep (target ε bermakna)
-- E3: Multiple seeds untuk variance
-- E4: Ablation (optional)
+
+**Baselines (no DP):**
+| ID | Setup | Tujuan | Compute (RTX 4080) |
+|---|---|---|---|
+| **B1** | Centralized YOLOv11n-GN, no DP | Upper bound utility | ~2 jam |
+| **B2** | Federated YOLOv11n-GN, no DP, K=4 Non-IID α=0.5 | Mengukur "FL cost" murni | ~3 jam |
+| **B3** | Federated + DP-FedAvg (reuse hasil ablation collapse) | Pembanding mekanisme DP | 0 jam (data eksis) |
+
+**Experiments DP-SGD (per-sampel via Opacus):**
+| ID | Setup | Sweep | Tujuan | Compute |
+|---|---|---|---|---|
+| **E1** | Full DP-SGD (semua 2.6M param) | σ ∈ {0.5, 1.0, 1.5, 2.0, 3.0} | Privacy-utility curve utama | ~15 jam |
+| **E2** | Partial DP-SGD (backbone frozen, ~0.2M head param) | σ ∈ {0.5, 1.0, 1.5, 2.0, 3.0} | Tunjukkan dimensionality matter (Tramer & Boneh 2021) | ~12 jam |
+
+**Robustness:**
+| ID | Setup | Tujuan | Compute |
+|---|---|---|---|
+| **R1** | 3 seed × {B2, E1 best σ, E1 worst feasible σ} | Statistical robustness | ~6 jam |
+
+**Total compute: ~38 jam single-GPU → 1.5-2 hari training**
+
+**Pilihan σ-grid:** dipilih untuk meng-cover rentang ε bermakna dari ~1 (privasi
+ketat) hingga ~10+ (privasi longgar), dengan target sweet spot ε ≈ 4-8.
+
+**Catatan teknis:**
+- GroupNorm WAJIB di semua skenario (Opacus tidak support BatchNorm).
+  Bukan eksperimen terpisah — ini foundation.
+- Privacy accountant: PRVAccountant (Opacus 1.5.4 default, lebih tight dari RDP).
+- max_grad_norm (C) initial = 1.0; ablation C opsional di akhir kalau ada waktu.
 
 ### 3.10 Lingkungan Implementasi
-- Hardware: workstation RTX 4080 / RunPod
-- Software stack: PyTorch 2.x, Ultralytics 8.4.x, Opacus 1.x
-- Docker deployment blueprint
+- Hardware: workstation RTX 4080 (training), VPS (Docker deployment blueprint)
+- Software stack: PyTorch 2.5.1+cu121, Ultralytics 8.4.51, **Opacus 1.5.4**
+- Per-sample gradient: Opacus `GradSampleModule` (functorch backend di PyTorch 2.5)
+- OS: Windows 11 + miniconda env `fedx`
 
 ---
 
 ## BAB 4 — HASIL DAN PEMBAHASAN
 
-### 4.1 Validasi Setup
-- Sanity test: GN baseline (no DP) reproduce mAP ~0.977 (cf C1b ablation)
+### 4.1 Validasi Setup (B1)
+- Sanity test: Centralized GN baseline mencapai mAP ≥ baseline literatur
+- Reproduce hasil ablation C1b (~0.977) sebagai cross-check
 
-### 4.2 Baseline FL (no DP)
-- 5 ronde komunikasi, 4 client Non-IID
+### 4.2 Baseline FL no-DP (B2)
+- 5 ronde komunikasi, 4 client Non-IID α=0.5
 - mAP@0.5, mAP@0.5:0.95, P, R
 - Tabel konvergensi per round
 - Per-class AP@0.5 + confusion matrix
-- Comparison dengan centralized benchmark
+- FL cost = (B1 - B2) mAP
 
-### 4.3 DP-SGD Sweep
-- Tabel: σ, ε (RDP), mAP@0.5, mAP@0.5:0.95
+### 4.3 DP-SGD Full Sweep (E1)
+- Tabel: σ ∈ {0.5, 1, 1.5, 2, 3}, ε (PRV), mAP@0.5, mAP@0.5:0.95
 - Plot privacy-utility curve (mAP vs ε log-scale)
 - Diskusi: titik trade-off optimal
 - Verdict H2
 
-### 4.4 Comparison: DP-FedAvg (level-klien) vs DP-SGD (per-sampel)
-- **Reuse hasil eksperimen DP-FedAvg lama** sebagai baseline pembanding
-- Tabel side-by-side: same σ, ε, mAP untuk dua mekanisme
+### 4.4 DP-SGD Partial Sweep (E2): Backbone frozen, head only
+- Same σ-grid sebagai E1, tapi hanya head (~0.2M param) yang trainable
+- Tabel & curve side-by-side dengan E1
+- Hipotesis verifikasi: E2 dominate E1 pada ε rendah (high privacy)
+  karena noise budget tersebar di parameter jauh lebih sedikit
+- Reference: Tramer & Boneh 2021 ("DP learning needs better features")
+
+### 4.5 Comparison: DP-FedAvg vs DP-SGD (B3 vs E1/E2)
+- Reuse hasil eksperimen DP-FedAvg lama sebagai baseline pembanding
+- Tabel side-by-side: ε vs mAP untuk tiga mekanisme
 - Highlight: DP-FedAvg collapse pada σ kecil; DP-SGD memberi trade-off gradual
 - Diagnosis: kenapa DP-SGD lebih ramah optimizer (noise di gradient bisa
   di-dampen oleh momentum, vs noise pada bobot teragregasi yang permanen)
 - Kontribusi: pemilihan mekanisme DP penting untuk object detection
-  (literatur jarang membandingkan kedua mekanisme di task non-classification)
 
-### 4.5 Statistical Robustness
-- 3 seed × baseline + 2 σ kunci
-- Mean ± std table
+### 4.5b Statistical Robustness (R1)
+- 3 seed × {B2, E1 best σ, E1 worst feasible σ}
+- Mean ± std table, confidence interval untuk angka utama
 
 ### 4.6 XAI Validation
 - Grad-CAM++ pada FL baseline (AD, FRR)

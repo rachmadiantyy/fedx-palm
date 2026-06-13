@@ -51,17 +51,25 @@ TIFS) yang akan minta MIA.
 
 ### Week 1 — EKSPERIMEN
 
-**Hari 1 (Sabtu, 13 Jun) — HARI INI**
-- ✅ Buat branch
-- ✅ Susun rebuild plan (file ini)
-- 🔲 Feasibility test: Opacus + GN + YOLO11n di Colab/workstation
-- 🔲 Plan grid σ untuk DP-SGD sweep (target ε bermakna: 1, 4, 8, ∞)
-- 🔲 Decide: IIUM paper sync atau independent?
+**Hari 1 (Sabtu, 13 Jun) — DONE ✅**
+- ✅ Buat branch + PR #3
+- ✅ Susun rebuild plan + outline 5 bab
+- ✅ Feasibility test PASSED di workstation RTX 4080:
+  - Opacus 1.5.4 + PyTorch 2.5.1+cu121 + Ultralytics 8.4.51
+  - 81 BatchNorm → GroupNorm conversion clean
+  - PrivacyEngine.make_private wrap YOLOv11n-GN sukses
+  - PRVAccountant default (lebih tight dari RDP)
+- ✅ Scope decision: FL + DP-SGD core, XAI sebagai validasi
+- ✅ Experiment design final: B1/B2/B3/E1/E2/R1
+- ✅ Decision IIUM: rewrite paper jadi DP-SGD (submit Week 2)
 
-**Hari 2 (Min, 14 Jun)**
-- 🔲 Implement DP-SGD training pipeline (Opacus wrapper)
-- 🔲 Replace BN → GN di YOLO11n (gunakan C1b approach)
-- 🔲 Sanity test: baseline DP-SGD σ=0 → harus reproduce ~0.977
+**Hari 2 (Min, 14 Jun) — NEXT**
+- 🔲 Implement custom YOLO training loop dgn Opacus (bypass Ultralytics
+     Trainer karena DDP/AMP-nya tidak compat dengan PrivacyEngine)
+- 🔲 Reuse: Ultralytics `v8DetectionLoss`, dataloader, val pipeline
+- 🔲 Wrap: PrivacyEngine pada custom optimizer
+- 🔲 Sanity: σ=0 + lr kecil → reproduce mAP baseline GN dalam 2 epoch
+- 🔲 Run B1 centralized (training penuh ~50 epoch)
 
 **Hari 3-4 (Sen-Sel, 15-16 Jun)**
 - 🔲 Run σ sweep DP-SGD: {0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0}

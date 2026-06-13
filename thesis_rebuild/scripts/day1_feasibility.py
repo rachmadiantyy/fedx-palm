@@ -126,6 +126,8 @@ print("=" * 70)
 
 from opacus.validators import ModuleValidator
 
+# Opacus mensyaratkan model dalam training mode sebelum validasi
+model.train()
 errors = ModuleValidator.validate(model, strict=False)
 if not errors:
     print("✓ Model PASSED ModuleValidator — siap untuk DP-SGD!")
