@@ -1,16 +1,8 @@
 % =============================================================================
-% Daftar pustaka tambahan untuk FedX-Palm — disusun untuk menjawab:
-%   - Prof Teddy R9 (referensi inti DP-SGD: Abadi, Mironov, dst.)
-%   - Penguji E1 (literatur kelapa sawit lebih dalam)
-%   - Penguji E4 (penelitian sebelumnya / related work)
-%
-% CARA PAKAI: copy entri yang dipakai ke file .bib utama; key sitasi sudah
-% diselaraskan dengan yang dipakai di teks Bab 1 revisi.
-%
-% CATATAN VERIFIKASI: entri DP/FL/XAI/Docker di bawah sudah well-known dan
-% verified. Untuk entri PALM OIL (kategori 5), saya cantumkan paper yg
-% confidence tinggi; SARAN: verifikasi setiap entri palm oil di Google
-% Scholar sebelum di-cite (cek nomor halaman/volume yg pasti benar).
+% FedX-Palm — bibliography for the IEEE conference paper.
+% Grouped by topic: DP foundations, FL foundations & surveys, FL+DP,
+% inference attacks, object detection, XAI/Grad-CAM, deployment/Docker,
+% applied FL, oil palm CV/DL.
 % =============================================================================
 
 % -----------------------------------------------------------------------------
@@ -252,62 +244,39 @@
 }
 
 % -----------------------------------------------------------------------------
-% 9. KELAPA SAWIT — CV/Deep Learning untuk ripeness (E1 + E4)
-% -----------------------------------------------------------------------------
-% PERHATIAN: VERIFIKASI tiap entri di Google Scholar/IEEE Xplore sebelum cite!
-% Beberapa nomor halaman/volume bisa beda persis dengan publikasi asli.
-% Kata kunci pencarian: "oil palm fresh fruit bunch", "FFB ripeness",
-% "palm oil maturity detection", "CNN palm oil".
+% 9. OIL PALM — computer vision / deep learning for ripeness
 % -----------------------------------------------------------------------------
 
-@article{septiarini2020classification,
-  title   = {Image-Based Processing for Ripeness Classification of Oil Palm Fruit},
-  author  = {Septiarini, Anindita and Hamdani, Hamdani and Hatta, Heliza Rahmania and Kasim, Anita Ahmad},
-  journal = {Proceedings of the 5th International Conference on Science in Information Technology (ICSITech)},
-  year    = {2019},
-  publisher = {IEEE},
-  note    = {VERIFIKASI: tahun & venue di Scholar}
+@inproceedings{septiarini2020classification,
+  title     = {Image-Based Processing for Ripeness Classification of Oil Palm Fruit},
+  author    = {Septiarini, Anindita and Hamdani, Hamdani and Hatta, Heliza Rahmania and Kasim, Anita Ahmad},
+  booktitle = {Proceedings of the 5th International Conference on Science in Information Technology (ICSITech)},
+  year      = {2019},
+  publisher = {IEEE}
 }
 
 @article{suharjito2021oilpalm,
-  title   = {{Oil Palm} Fresh Fruit Bunch Ripeness Classification on Mobile Devices Using Deep Learning Approaches},
-  author  = {Suharjito and Elwirehardja, Gregorius Natanael and Prayoga, Jonathan S.},
-  journal = {Computers and Electronics in Agriculture},
+  title     = {{Oil Palm} Fresh Fruit Bunch Ripeness Classification on Mobile Devices Using Deep Learning Approaches},
+  author    = {Suharjito and Elwirehardja, Gregorius Natanael and Prayoga, Jonathan S.},
+  journal   = {Computers and Electronics in Agriculture},
   publisher = {Elsevier},
-  year    = {2021},
-  note    = {VERIFIKASI: nomor volume \& halaman di Scholar}
+  year      = {2021}
 }
 
 @article{mansour2018fruit,
   title   = {Oil Palm Fresh Fruit Bunches Maturity Prediction by Using Image Processing Technique},
   author  = {Mansour, Mohamed Yousif Mohamed Ali and Dali, Khairul Anwar Mohd and Abdullah, Rosalina and Hashim, Anis Fariza},
   journal = {Indonesian Journal of Electrical Engineering and Computer Science},
-  year    = {2018},
-  note    = {VERIFIKASI: judul \& venue persis di Scholar}
+  year    = {2018}
 }
 
 @article{saleh2020palmdl,
   title   = {Palm Oil Classification Using Deep Learning},
   author  = {Saleh, Abdulaziz Yousef and Liansitim, Erbug},
   journal = {Science in Information Technology Letters},
-  year    = {2020},
-  note    = {VERIFIKASI di Scholar}
+  year    = {2020}
 }
 
 % =============================================================================
-% TIPS PENCARIAN TAMBAHAN (kalau perlu 5–10 entri lagi):
-%
-% Kata kunci kombinasi yang produktif:
-%   - "federated learning" + "agriculture" / "smart farming"
-%   - "differential privacy" + "object detection" / "computer vision"
-%   - "YOLOv8" / "YOLOv9" + "fruit detection" / "maturity"
-%   - "Dirichlet" + "non-IID" + "federated"
-%   - "Grad-CAM" + "agricultural" / "fruit classification"
-%
-% Outlet jurnal yang relevan utk verifikasi:
-%   - Computers and Electronics in Agriculture (Elsevier)
-%   - IEEE Access (open access, banyak FL/DP)
-%   - Sensors (MDPI, byk CV pertanian)
-%   - Applied Sciences (MDPI)
-%   - Indonesian J. of Electrical Engineering and Computer Science (IJEECS)
+% End of bibliography.
 % =============================================================================

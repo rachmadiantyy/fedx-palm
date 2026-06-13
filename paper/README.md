@@ -23,15 +23,28 @@ pdflatex fedx_palm_ieee
 
 ## Yang HARUS dilengkapi sebelum submit
 - [ ] **Penulis & afiliasi** (placeholder `[Author Name]`, `[Institution]`, dst).
-- [ ] **Per-client training counts** (footnote di Sec. III-B) — ambil dari
-      `saved_runs/summary_all_scenarios.csv` / split akhir. Saat ini hanya val
-      global yang dicantumkan (935 citra, 3140 instance).
 - [ ] **Gambar** (opsional tapi disarankan): arsitektur sistem, kurva konvergensi,
       grafik cliff privacy-utility (`privacy_utility_tradeoff.png`), contoh
       heatmap Grad-CAM++. Tambah dengan `\begin{figure}...\includegraphics`.
-- [ ] **Verifikasi entri palm oil** di `references.bib` (ada tanda `VERIFIKASI`)
-      sebelum dipakai/diperluas.
-- [ ] Sesuaikan judul venue/konferensi bila template panitia berbeda.
+- [ ] **Verifikasi 4 entri palm-oil** (`septiarini`, `suharjito`, `mansour`,
+      `saleh`) di Google Scholar — pastikan year/venue/halaman cocok dengan
+      publikasi asli sebelum submit.
+- [ ] Sesuaikan template ke venue tujuan (kalau bukan IEEE Conference standar).
+
+## Yang sudah dibersihkan (revisi v2)
+- Title & Contribution #1 di-rebrand: tidak lagi mengklaim "Dockerized FL
+  training"; eksplisit "single-GPU FedAvg simulation + Docker deployment
+  blueprint + real inference container".
+- "Privacy-Preserving" dihapus dari title — paper sekarang dipresentasikan
+  sebagai *characterized failure mode + mitigation*, sesuai dengan
+  $\varepsilon \gg 10^{3}$ pada seluruh setelan.
+- Dataset subsection diperinci: total 9{,}030 training images, per-client
+  Dirichlet $\alpha$, global val 935/3{,}140; sumber Roboflow disebut.
+- Threats to Validity dinaikkan jadi Limitations eksplisit: execution model,
+  optimistic baseline, limited federated dynamics, no meaningful privacy.
+- `references.bib` dirapikan: catatan editorial Indonesia (`VERIFIKASI`,
+  `TIPS PENCARIAN`) dihapus; tipe entri ICSITech diperbaiki ke
+  `@inproceedings`.
 
 ## Catatan konsistensi angka (sumber kebenaran)
 - Baseline global: mAP@0.5 = 0.995, mAP@0.5:0.95 = 0.951, P = 0.998, R = 0.999.
