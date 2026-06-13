@@ -340,15 +340,33 @@ Recall         & 0.999 & 0.995 \\
 \end{table}
 
 \subsection{Effect of Differential Privacy}
-Table~\ref{tab:dp} reports the DP sweep with RDP-computed $\varepsilon$.
-\emph{Every} setting drives the global model to mAP\,=\,0, even at the weakest
-noise ($\sigma{=}10^{-4}$). Crucially, all $\varepsilon \gg 10^{3}$: the
-collapse occurs \emph{before} any meaningful-privacy regime is reached. The
-failure is therefore better described as a configuration/pipeline instability
-than as a genuine privacy--utility trade-off. We also observed that local
-client models remained accurate at small $\sigma$ while the \emph{aggregate}
-collapsed, indicating that the perturbation of the aggregated weights---not
-local training---is responsible.
+Table~\ref{tab:dp} reports the DP sweep with RDP-computed $\varepsilon$, and
+Fig.~\ref{fig:tradeoff} visualizes both per-round convergence and the resulting
+privacy--utility curve. \emph{Every} setting drives the global model to
+mAP\,=\,0, even at the weakest noise ($\sigma{=}10^{-4}$). Crucially, all
+$\varepsilon \gg 10^{3}$: the collapse occurs \emph{before} any
+meaningful-privacy regime is reached. The failure is therefore better described
+as a configuration/pipeline instability than as a genuine privacy--utility
+trade-off. We also observed that local client models remained accurate at small
+$\sigma$ while the \emph{aggregate} collapsed, indicating that the perturbation
+of the aggregated weights---not local training---is responsible. The curve in
+Fig.~\ref{fig:tradeoff}(right) is a sharp \emph{cliff} rather than a gradual
+slope: utility drops from 0.995 to 0 with no intermediate operating point.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{privacy_utility_tradeoff.png}
+\caption{Differential privacy results. \textbf{Left:} per-round global mAP@0.5
+for all scenarios---the non-private baseline ($\sigma{=}0$) stays at
+$\approx 0.995$ across the five rounds while every DP setting sits at $0$ from
+round~1. \textbf{Right:} final global mAP@0.5 versus noise multiplier $\sigma$
+(log scale), with RDP-computed $\varepsilon$ annotated. The relationship is a
+sharp cliff: all tested $\sigma$ collapse to mAP\,$=0$ despite
+$\varepsilon\gg10^{3}$ (no meaningful privacy), supporting a
+configuration-artifact interpretation rather than a genuine privacy--utility
+trade-off.}
+\label{fig:tradeoff}
+\end{figure*}
 
 \begin{table}[t]
 \caption{Global Utility Under Client-Level DP ($C{=}10$, $q{=}1$, $T{=}5$, $\delta{=}10^{-5}$)}

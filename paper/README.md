@@ -7,6 +7,21 @@ HFL + Differential Privacy + XAI untuk deteksi kematangan TBS kelapa sawit.
 - `fedx_palm_ieee.tex` — manuskrip utama (kelas `IEEEtran`, mode `conference`).
 - `references.bib` — daftar pustaka (22 sitasi terpakai, sudah diverifikasi).
 
+## Gambar yang harus disalin ke folder ini sebelum compile
+Paper mereferensikan `privacy_utility_tradeoff.png` (Fig. 1, dua panel:
+konvergensi + cliff trade-off). **Salin file PNG dari
+`saved_runs/privacy_utility_tradeoff.png` ke folder `paper/`** sebelum compile,
+atau Overleaf akan error "file not found". Tanpa file itu, comment dulu blok
+`\begin{figure*}...\end{figure*}` agar tetap bisa compile.
+
+## ‼️ BUG yang ditemukan: ε di `privacy_budget_derivation.csv` salah faktor 10^6
+`privacy_budget_derivation.csv` melaporkan eps_rdp ~10^14 (σ=1e-4), TAPI
+`summary_all_scenarios.csv`, anotasi pada `privacy_utility_tradeoff.png`, dan
+verifikasi manual rumus RDP semuanya memberi ~10^8. Paper memakai angka yang
+BENAR (10^8). **Jangan pakai kolom eps di `privacy_budget_derivation.csv`**
+tanpa memperbaiki skrip derivasinya (ada faktor 10^6 yang keliru, kemungkinan
+σ ter-skala salah). Conclusion tidak terpengaruh: semua tetap ε ≫ 10³.
+
 ## Cara compile (paling mudah: Overleaf)
 1. Buka https://overleaf.com → New Project → Upload Project (zip folder `paper/`),
    atau New Project → Blank, lalu upload kedua file.
