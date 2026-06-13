@@ -7,11 +7,19 @@ HFL + Differential Privacy + XAI untuk deteksi kematangan TBS kelapa sawit.
 - `fedx_palm_ieee.tex` — manuskrip utama (kelas `IEEEtran`, mode `conference`).
 - `references.bib` — daftar pustaka (22 sitasi terpakai, sudah diverifikasi).
 
-## Gambar yang harus disalin ke folder ini sebelum compile
-Paper mereferensikan `privacy_utility_tradeoff.png` (Fig. 1, dua panel:
-konvergensi + cliff trade-off). **Salin file PNG dari
-`saved_runs/privacy_utility_tradeoff.png` ke folder `paper/`** sebelum compile,
-atau Overleaf akan error "file not found". Tanpa file itu, comment dulu blok
+## Gambar yang harus tersedia sebelum compile
+Paper mereferensikan dua gambar:
+1. `privacy_utility_tradeoff.png` (Fig. 1, full-width, dua panel:
+   konvergensi + cliff trade-off). **Salin dari
+   `saved_runs/privacy_utility_tradeoff.png`** ke folder `paper/`.
+2. `figures/confusion_matrix_normalized.png` (Fig. 2). **Sudah ada** di
+   `paper/figures/` — diekstrak dari notebook centralized training
+   (`yolov11-roboflow-setup-JlyWD/notebooks/fedx_palm_centralized_training.ipynb`).
+   Folder `figures/` juga berisi: `confusion_matrix.png` (raw), `BoxPR_curve.png`,
+   `BoxF1_curve.png`, `BoxP_curve.png`, `BoxR_curve.png` — siap dipakai kalau
+   mau tambah figure pendukung.
+
+Tanpa Fig. 1 (PNG-nya belum di paper/), comment dulu blok
 `\begin{figure*}...\end{figure*}` agar tetap bisa compile.
 
 ## ‼️ BUG yang ditemukan: ε di `privacy_budget_derivation.csv` salah faktor 10^6

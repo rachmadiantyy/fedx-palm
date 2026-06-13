@@ -313,15 +313,51 @@ statistically indistinguishable from a centralized benchmark at mAP@0.5,
 confirming that FedAvg preserves accuracy under Non-IID data without raw images
 leaving any node. To check that this near-perfect score reflects genuine
 separability rather than an easy majority class, we inspect the centralized
-benchmark per class: AP@0.5 is uniformly in the 0.99--1.00 range across all six
-classes, and the confusion matrix shows negligible \emph{adjacent}-class
-confusion (e.g., \emph{Ripe} vs.\ \emph{Overripe} vs.\ \emph{Underripe}); the
-dominant residual error is localization against background (false
-positives/negatives), not ripeness misclassification. The six ripeness classes
-are thus visually well-separated at close range, which---together with the
-COCO-pretrained initialization---accounts for both the high accuracy and the
-rapid convergence. This flat near-optimum also explains the model's
+benchmark, which we use as a per-class proxy because the federated logging
+records only aggregate global metrics. The per-class AP@0.5 (Table~\ref{tab:perclass})
+is uniformly $0.993$--$0.995$, and the normalized confusion matrix
+(Fig.~\ref{fig:cm}) is essentially diagonal: \emph{adjacent}-class confusion
+between visually similar ripeness stages (e.g., \emph{Ripe} vs.\
+\emph{Overripe} vs.\ \emph{Underripe}) is $0.00$. The residual error is
+entirely concentrated in the background column---false positives where the
+detector fires on background ($0.05$--$0.33$ across classes)---and a single
+$0.01$ false negative for \emph{Ripe}. The six ripeness classes are therefore
+\emph{visually well-separated} at close range; combined with the
+COCO-pretrained initialization, this accounts for both the high accuracy and
+the rapid convergence. This flat near-optimum also explains the model's
 sensitivity to weight perturbation analyzed below.
+
+\begin{table}[t]
+\caption{Per-Class AP@0.5 (Centralized Benchmark, Used as Proxy for the\\
+Federated Baseline Whose Logging Is Aggregate-Only)}
+\label{tab:perclass}
+\centering
+\begin{tabular}{lc}
+\toprule
+\textbf{Class} & \textbf{AP@0.5} \\
+\midrule
+Abnormal     & 0.993 \\
+Empty Bunch  & 0.995 \\
+Overripe     & 0.995 \\
+Ripe         & 0.995 \\
+Underripe    & 0.995 \\
+Unripe       & 0.995 \\
+\midrule
+all classes  & 0.995 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/confusion_matrix_normalized.png}
+\caption{Normalized confusion matrix on the centralized benchmark (proxy for
+per-class behavior of the federated baseline). Adjacent-class confusion among
+the four maturity stages is $0.00$; the only residual error is false
+positives against background (rightmost column) and one $0.01$
+\emph{Ripe}\,$\rightarrow$\,background false negative.}
+\label{fig:cm}
+\end{figure}
 
 \begin{table}[t]
 \caption{Federated Baseline vs.\ Centralized Benchmark}
