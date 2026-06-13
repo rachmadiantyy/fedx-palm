@@ -318,8 +318,11 @@ records only aggregate global metrics. The per-class AP@0.5 (Table~\ref{tab:perc
 is uniformly $0.993$--$0.995$, and the normalized confusion matrix
 (Fig.~\ref{fig:cm}) is essentially diagonal: \emph{adjacent}-class confusion
 between visually similar ripeness stages (e.g., \emph{Ripe} vs.\
-\emph{Overripe} vs.\ \emph{Underripe}) is $0.00$. The residual error is
-entirely concentrated in the background column---false positives where the
+\emph{Overripe} vs.\ \emph{Underripe}) is $0.00$. Notably, the minority class
+\emph{Empty Bunch}---visibly the smallest cell on the diagonal of
+Fig.~\ref{fig:cm}---also attains AP\,=\,0.995, which rules out a majority-class
+bias as the explanation for the near-perfect global score. The residual error
+is entirely concentrated in the background column---false positives where the
 detector fires on background ($0.05$--$0.33$ across classes)---and a single
 $0.01$ false negative for \emph{Ripe}. The six ripeness classes are therefore
 \emph{visually well-separated} at close range; combined with the
@@ -328,22 +331,22 @@ the rapid convergence. This flat near-optimum also explains the model's
 sensitivity to weight perturbation analyzed below.
 
 \begin{table}[t]
-\caption{Per-Class AP@0.5 with Instance Counts (Centralized Benchmark,\\
-Used as Proxy for the Federated Baseline Whose Logging Is Aggregate-Only)}
+\caption{Per-Class AP@0.5 (Centralized Benchmark, Used as Proxy for the
+Federated Baseline Whose Logging Is Aggregate-Only)}
 \label{tab:perclass}
 \centering
-\begin{tabular}{lcc}
+\begin{tabular}{lc}
 \toprule
-\textbf{Class} & \textbf{Instances} & \textbf{AP@0.5} \\
+\textbf{Class} & \textbf{AP@0.5} \\
 \midrule
-Abnormal     & 219 & 0.993 \\
-Empty Bunch  &  91 & 0.995 \\
-Overripe     & 292 & 0.995 \\
-Ripe         & 347 & 0.995 \\
-Underripe    & 289 & 0.995 \\
-Unripe       & 251 & 0.995 \\
+Abnormal     & 0.993 \\
+Empty Bunch  & 0.995 \\
+Overripe     & 0.995 \\
+Ripe         & 0.995 \\
+Underripe    & 0.995 \\
+Unripe       & 0.995 \\
 \midrule
-all classes  & 1{,}489 & 0.995 \\
+all classes  & 0.995 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -391,7 +394,7 @@ slope: utility drops from 0.995 to 0 with no intermediate operating point.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=\textwidth]{privacy_utility_tradeoff.png}
+\includegraphics[width=\textwidth]{figures/privacy_utility_tradeoff.png}
 \caption{Differential privacy results. \textbf{Left:} per-round global mAP@0.5
 for all scenarios---the non-private baseline ($\sigma{=}0$) stays at
 $\approx 0.995$ across the five rounds while every DP setting sits at $0$ from

@@ -7,20 +7,17 @@ HFL + Differential Privacy + XAI untuk deteksi kematangan TBS kelapa sawit.
 - `fedx_palm_ieee.tex` — manuskrip utama (kelas `IEEEtran`, mode `conference`).
 - `references.bib` — daftar pustaka (22 sitasi terpakai, sudah diverifikasi).
 
-## Gambar yang harus tersedia sebelum compile
-Paper mereferensikan dua gambar:
-1. `privacy_utility_tradeoff.png` (Fig. 1, full-width, dua panel:
-   konvergensi + cliff trade-off). **Salin dari
-   `saved_runs/privacy_utility_tradeoff.png`** ke folder `paper/`.
-2. `figures/confusion_matrix_normalized.png` (Fig. 2). **Sudah ada** di
-   `paper/figures/` — diekstrak dari notebook centralized training
-   (`yolov11-roboflow-setup-JlyWD/notebooks/fedx_palm_centralized_training.ipynb`).
-   Folder `figures/` juga berisi: `confusion_matrix.png` (raw), `BoxPR_curve.png`,
-   `BoxF1_curve.png`, `BoxP_curve.png`, `BoxR_curve.png` — siap dipakai kalau
-   mau tambah figure pendukung.
+## Gambar — semua harus di folder `paper/figures/` sebelum compile
+Paper mereferensikan dua gambar dengan path konsisten di `figures/`:
+1. `figures/confusion_matrix_normalized.png` (Fig. 1). **Sudah ada**, diekstrak
+   dari notebook centralized training.
+2. `figures/privacy_utility_tradeoff.png` (Fig. 2, full-width). **Belum ada
+   di repo** — salin manual dari `saved_runs/privacy_utility_tradeoff.png`
+   workstation ke `paper/figures/`. Tanpa file ini compile gagal di Fig. 2.
 
-Tanpa Fig. 1 (PNG-nya belum di paper/), comment dulu blok
-`\begin{figure*}...\end{figure*}` agar tetap bisa compile.
+Folder `figures/` juga berisi pendukung yang tidak dirujuk di paper saat ini:
+`confusion_matrix.png` (raw counts), `BoxPR/F1/P/R_curve.png` — siap pakai
+kalau mau tambah figure tambahan.
 
 ## ‼️ BUG yang ditemukan: ε di `privacy_budget_derivation.csv` salah faktor 10^6
 `privacy_budget_derivation.csv` melaporkan eps_rdp ~10^14 (σ=1e-4), TAPI
@@ -77,6 +74,20 @@ pdflatex fedx_palm_ieee
 - Ditambah justifikasi nilai diagnostik ambang $C\times\sigma$ di Sec. IV-C
   (kenapa $C{=}0.1$ tetap berguna untuk pencarian konfigurasi privasi-bermakna
   walau belum privat).
+
+## Revisi v4 (fix inkonsistensi 1.489 vs 3.140 + path gambar)
+- **Inkonsistensi instance count diselesaikan**: kolom `Instances` di Table II
+  (per-class) dihapus karena angkanya (total 1.489) berasal dari run
+  centralized lama yang TIDAK konsisten dengan val set utama (935/3.140) yang
+  dipakai di seluruh paper. Penguji teliti pasti tangkap konflik 1.489 vs
+  3.140; sekarang dihilangkan total.
+- Argumen "minority class Empty Bunch tetap AP=0.995" tetap dipertahankan,
+  tapi sekarang dirujuk ke Fig. 1 (confusion matrix) yang secara visual
+  menunjukkan Empty Bunch sebagai cell terkecil di diagonal — tidak butuh
+  kolom angka.
+- Path gambar disamakan: Fig. 1 dan Fig. 2 sama-sama di `figures/`.
+- Caption Table II disederhanakan (hapus line-break manual `\\` yang bisa
+  bikin warning IEEEtran).
 
 ## Yang sudah dibersihkan (revisi v2)
 - Title & Contribution #1 di-rebrand: tidak lagi mengklaim "Dockerized FL
