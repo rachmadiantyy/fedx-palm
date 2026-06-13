@@ -47,6 +47,28 @@ TIFS) yang akan minta MIA.
    untuk detector pretrained (reuse hasil collapse DP-FedAvg sebagai
    baseline pembanding).
 
+## Workflow PARALEL (write + train berbarengan)
+
+Setelah user pilih full grid K {2,4,8,16} x sigma full (45 main runs ~200h),
+compute time melebihi sisa hari. Tidak realistis tunggu training selesai
+baru menulis. Track A dan B HARUS jalan paralel:
+
+```
+Hari:  3  4  5  6  7  8  9  10 11 12 13 14
+A:    [============= TRAIN ==================|R1 multi-seed]
+B:        [=== Bab 1,2,3 draft ===|Bab 4,5 sambil hasil masuk]
+```
+
+- **Track A (Compute, background)**: Workstation 24/7 jalanin
+  `run_full_grid.py`. User cek pagi/sore: progress di
+  `thesis_rebuild/runs/`, error log, restart kalau crash.
+- **Track B (Writing, foreground)**: Aku draft Bab 1 (Pendahuluan),
+  Bab 2 (Landasan Teori), Bab 3 (Metodologi) -- semua bisa ditulis
+  TANPA hasil eksperimen final. Mulai Hari 3 paralel dengan training.
+- **Track C (Analisis, on demand)**: Begitu CSV phase keluar
+  (b2_fl_summary, e1_fl_full_grid, e2_fl_full_grid), aku langsung
+  generate tabel/plot dan tempelkan ke Bab 4.
+
 ## Timeline 2 minggu (Hari 1-14)
 
 ### Week 1 — EKSPERIMEN
