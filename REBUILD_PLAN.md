@@ -63,13 +63,28 @@ TIFS) yang akan minta MIA.
 - ✅ Experiment design final: B1/B2/B3/E1/E2/R1
 - ✅ Decision IIUM: rewrite paper jadi DP-SGD (submit Week 2)
 
-**Hari 2 (Min, 14 Jun) — NEXT**
-- 🔲 Implement custom YOLO training loop dgn Opacus (bypass Ultralytics
-     Trainer karena DDP/AMP-nya tidak compat dengan PrivacyEngine)
-- 🔲 Reuse: Ultralytics `v8DetectionLoss`, dataloader, val pipeline
-- 🔲 Wrap: PrivacyEngine pada custom optimizer
-- 🔲 Sanity: σ=0 + lr kecil → reproduce mAP baseline GN dalam 2 epoch
-- 🔲 Run B1 centralized (training penuh ~50 epoch)
+**Hari 2 (Min, 14 Jun) — IN PROGRESS**
+- ✅ `utils/gn_convert.py` — reusable BN→GN swap (extracted from feasibility)
+- ✅ `train_b1_centralized.py` — B1 wrapper (Ultralytics native + GN swap)
+- ✅ `utils/yolo_dp_loop.py` — custom DP-SGD training loop:
+  - reuses Ultralytics `v8DetectionLoss`, `build_yolo_dataset`
+  - bypasses BaseTrainer DDP/AMP plumbing
+  - wraps optimizer + dataloader via PrivacyEngine BEFORE loop
+  - supports `freeze_backbone` flag for E2
+- ✅ `train_e1_dp_sgd_full.py` — sweep wrapper (σ ∈ {0.5,1,1.5,2,3})
+- ✅ `train_e2_dp_sgd_partial.py` — sweep wrapper with backbone freeze
+- 🔲 **NEXT (user runs)**: smoke test B1 on workstation, then E1 single-σ
+- 🔲 Add per-epoch DetectionValidator → fills `best_mAP50` in CSV (Day 3)
+- 🔲 Wire federation on top (B2 + federated DP-SGD) (Day 3)
+
+**Known TODOs in Day 2 scripts (deferred to Day 3):**
+- No per-epoch val (saves `final.pt` instead of `best.pt`) — Day 3 adds
+  `DetectionValidator` integration so we track best-on-val mAP
+- No federated wrapper yet — Day 3 builds B2 by running B1-style train
+  per client + FedAvg aggregation; same applies to FL variant of E1/E2
+- Possible Opacus quirk: YOLO loss returns batch-summed loss; per-sample
+  hooks rely on this being differentiable per sample. Smoke test on
+  workstation confirms. Fallback: BatchMemoryManager for memory safety
 
 **Hari 3-4 (Sen-Sel, 15-16 Jun)**
 - 🔲 Run σ sweep DP-SGD: {0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0}
