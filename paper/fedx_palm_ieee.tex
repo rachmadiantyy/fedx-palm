@@ -64,8 +64,8 @@ as a real Docker inference container. Third, privacy budgets are
 than labeled by hand. Over five communication rounds with four Non-IID
 (Dirichlet) clients and a leakage-free bunch-identity split (9{,}030 training
 and 935 validation images / 3{,}140 instances), the non-private federated
-model reaches mAP@0.5\,=\,0.995 and mAP@0.5:0.95\,=\,0.951, statistically
-matching a centralized benchmark, while Grad-CAM++ yields an Average Drop of
+model reaches mAP@0.5\,=\,0.995 and mAP@0.5:0.95\,=\,0.947, on par
+with a centralized benchmark, while Grad-CAM++ yields an Average Drop of
 95.1\% and a Focus Retention Rate of 0.962. Adding client-level Gaussian DP
 under standard settings (clip-norm $C{=}10$) collapses the global model to
 mAP\,=\,0 at every tested noise level. A 12-configuration ablation (three
@@ -307,32 +307,36 @@ region.
 Initialized from pretrained weights, the global model converges almost
 immediately: mAP@0.5 reaches $\approx 0.995$ in round~1 and remains stable
 through round~5. The final non-private global model attains
-mAP@0.5\,=\,0.995, mAP@0.5:0.95\,=\,0.951, precision\,=\,0.998, and
-recall\,=\,0.999 (Table~\ref{tab:baseline}). The federated baseline is
-statistically indistinguishable from a centralized benchmark at mAP@0.5,
-confirming that FedAvg preserves accuracy under Non-IID data without raw images
-leaving any node. To check that this near-perfect score reflects genuine
-separability rather than an easy majority class, we inspect the centralized
-benchmark, which we use as a per-class proxy because the federated logging
-records only aggregate global metrics. The per-class AP@0.5 (Table~\ref{tab:perclass})
-is uniformly $0.993$--$0.995$, and the normalized confusion matrix
-(Fig.~\ref{fig:cm}) is essentially diagonal: \emph{adjacent}-class confusion
-between visually similar ripeness stages (e.g., \emph{Ripe} vs.\
-\emph{Overripe} vs.\ \emph{Underripe}) is $0.00$. Notably, the minority class
-\emph{Empty Bunch}---visibly the smallest cell on the diagonal of
-Fig.~\ref{fig:cm}---also attains AP\,=\,0.995, which rules out a majority-class
-bias as the explanation for the near-perfect global score. The residual error
-is entirely concentrated in the background column---false positives where the
-detector fires on background ($0.05$--$0.33$ across classes)---and a single
-$0.01$ false negative for \emph{Ripe}. The six ripeness classes are therefore
-\emph{visually well-separated} at close range; combined with the
+mAP@0.5\,=\,0.995, mAP@0.5:0.95\,=\,0.947, precision\,=\,0.998, and
+recall\,=\,0.999 (Table~\ref{tab:baseline}). The federated baseline is on
+par with a centralized benchmark at mAP@0.5, confirming that FedAvg preserves
+accuracy under Non-IID data without raw images leaving any node. The
+marginally higher mAP@0.5:0.95 of the federated model (0.947 vs.\ 0.901) falls
+within expected run-to-run variation and does not indicate a systematic
+advantage over centralized training. To check that this near-perfect score
+reflects genuine separability rather than an easy majority class, we evaluate
+the federated baseline directly on the same 935-image / 3{,}140-instance
+validation set used throughout this paper. The per-class
+AP@0.5 (Table~\ref{tab:perclass}) is uniformly $0.993$--$0.995$, and the
+normalized confusion matrix (Fig.~\ref{fig:cm}) is essentially diagonal: all
+six ripeness classes attain a normalized diagonal of $1.00$, and
+\emph{adjacent}-class confusion among visually similar ripeness stages (e.g.,
+\emph{Ripe} vs.\ \emph{Overripe} vs.\ \emph{Underripe}) is effectively zero
+(two \emph{Overripe} instances out of 558 are misclassified as \emph{Ripe},
+i.e.\ $\sim$0.4\%). Notably, the minority class \emph{Empty Bunch}, the
+smallest cell on the diagonal of Fig.~\ref{fig:cm}, also attains
+AP\,=\,0.995, which rules out a majority-class bias as the explanation for
+the near-perfect global score. The residual error consists of only five
+background false positives---two predicted as \emph{Overripe} and three as
+\emph{Ripe}---and no missed detections at all. The six ripeness classes are
+therefore \emph{visually well-separated} at close range; combined with the
 COCO-pretrained initialization, this accounts for both the high accuracy and
 the rapid convergence. This flat near-optimum also explains the model's
 sensitivity to weight perturbation analyzed below.
 
 \begin{table}[t]
-\caption{Per-Class AP@0.5 (Centralized Benchmark, Used as Proxy for the
-Federated Baseline Whose Logging Is Aggregate-Only)}
+\caption{Per-Class AP@0.5 of the Federated Baseline on the 935-Image /
+3{,}140-Instance Validation Set}
 \label{tab:perclass}
 \centering
 \begin{tabular}{lc}
@@ -354,11 +358,13 @@ all classes  & 0.995 \\
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/confusion_matrix_normalized.png}
-\caption{Normalized confusion matrix on the centralized benchmark (proxy for
-per-class behavior of the federated baseline). Adjacent-class confusion among
-the four maturity stages is $0.00$; the only residual error is false
-positives against background (rightmost column) and one $0.01$
-\emph{Ripe}\,$\rightarrow$\,background false negative.}
+\caption{Normalized confusion matrix of the federated baseline on the
+935-image / 3{,}140-instance validation set. All six ripeness classes attain
+a normalized diagonal of $1.00$; adjacent-class confusion among the four
+maturity stages is effectively zero. The only residual error consists of
+five background false
+positives in the rightmost column (two predicted as \emph{Overripe},
+$0.40$, and three as \emph{Ripe}, $0.60$), and no missed detections.}
 \label{fig:cm}
 \end{figure}
 
@@ -371,7 +377,7 @@ positives against background (rightmost column) and one $0.01$
 \textbf{Metric} & \textbf{Federated (HFL)} & \textbf{Centralized} \\
 \midrule
 mAP@0.5        & 0.995 & 0.995 \\
-mAP@0.5:0.95   & 0.951 & 0.901 \\
+mAP@0.5:0.95   & 0.947 & 0.901 \\
 Precision      & 0.998 & 0.995 \\
 Recall         & 0.999 & 0.995 \\
 \bottomrule
@@ -415,7 +421,7 @@ trade-off.}
 \toprule
 \textbf{$\sigma$} & \textbf{$\varepsilon$ (RDP)} & \textbf{mAP@0.5} & \textbf{mAP@0.5:0.95}\\
 \midrule
-0 (baseline)        & $\infty$            & 0.995 & 0.951 \\
+0 (baseline)        & $\infty$            & 0.995 & 0.947 \\
 $1\times10^{-4}$    & $2.53\times10^{8}$  & 0.000 & 0.000 \\
 $3\times10^{-4}$    & $2.81\times10^{7}$  & 0.000 & 0.000 \\
 $5\times10^{-4}$    & $1.01\times10^{7}$  & 0.000 & 0.000 \\
@@ -566,7 +572,7 @@ We presented FedX-Palm, an explainable Horizontal Federated Learning framework
 for six-class oil palm FFB ripeness detection with YOLOv11n, evaluated as a
 single-GPU FedAvg simulation and shipped with a Docker deployment blueprint
 plus a real inference container. The non-private federated baseline reaches
-mAP@0.5\,=\,0.995 and mAP@0.5:0.95\,=\,0.951 on a leakage-free bunch-identity
+mAP@0.5\,=\,0.995 and mAP@0.5:0.95\,=\,0.947 on a leakage-free bunch-identity
 split, with Grad-CAM++ confirming morphology-grounded saliency (Average Drop
 95.1\%, FRR 0.962). When client-level Gaussian DP is added, the global model
 collapses to mAP\,=\,0 across every tested $\sigma$. Our main contribution is

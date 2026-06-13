@@ -75,6 +75,39 @@ pdflatex fedx_palm_ieee
   (kenapa $C{=}0.1$ tetap berguna untuk pencarian konfigurasi privasi-bermakna
   walau belum privat).
 
+## Revisi v5 (final — direct federated CM, 0.947 mAP@0.5:0.95, all checklist done)
+
+**WAJIB DILAKUKAN DI OVERLEAF SEBELUM COMPILE:**
+Confusion matrix di repo (`paper/figures/confusion_matrix_normalized.png`) masih
+versi LAMA (centralized notebook). Versi BARU sudah ada di Colab kamu di
+`/content/regen_cm/baseline_clean/confusion_matrix_normalized.png` —
+**swap manual** di Overleaf:
+1. Download `confusion_matrix_normalized.png` (dan optional `.png` raw + `results.csv`) dari Colab via `files.download(...)`.
+2. Upload ke folder `figures/` di Overleaf project, replace yang lama.
+3. Compile pdflatex → bibtex → pdflatex × 2.
+
+Yang sudah dirombak di paper (sesuai checklist final):
+- **Caption Fig. 1** disesuaikan dengan gambar baru: semua diagonal 1.00,
+  bg col Overripe 0.40 + Ripe 0.60, no missed detections (false negative row
+  kosong).
+- **Sec. IV-A prose** dirombak:
+  - Hapus "0.05--0.33 across classes" dan "single 0.01 false negative for Ripe"
+    yang tidak lagi muncul di CM baru.
+  - Hapus framing "centralized benchmark as proxy" → ganti "evaluate the
+    federated baseline directly on the same 935-image / 3,140-instance
+    validation set used throughout this paper".
+  - Tambah karakteristik baru: 2 Overripe→Ripe (~0.4%), 5 bg FP only,
+    no missed detections.
+- **mAP@0.5:0.95**: semua tempat (abstract, Sec. IV-A prose, Tabel III/IV)
+  diganti 0.951 → **0.947** (cocok dengan log val fresh).
+- **Caption Tabel II** hapus "proxy", ganti jadi "Federated Baseline on the
+  935-Image / 3,140-Instance Validation Set".
+- "Statistically indistinguishable" / "statistically matching" diganti
+  "on par with" + kalimat run-to-run variation.
+- 3,140 instances tetap di III-B dan Tabel III (terbukti dari log val).
+- Path gambar konsisten di `figures/` (`figures/confusion_matrix_normalized.png`
+  + `figures/privacy_utility_tradeoff.png`).
+
 ## Revisi v4 (fix inkonsistensi 1.489 vs 3.140 + path gambar)
 - **Inkonsistensi instance count diselesaikan**: kolom `Instances` di Table II
   (per-class) dihapus karena angkanya (total 1.489) berasal dari run
