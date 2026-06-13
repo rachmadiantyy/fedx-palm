@@ -26,6 +26,27 @@ Setiap tahap menjawab kebutuhan tahap berikutnya:
 | Hasil DP yang diharap | Collapse (sudah dibuktikan) | **Trade-off curve nyata** |
 | Klaim paper/thesis | Negative result + characterization | Trade-off privasi-utilitas terdokumentasi |
 
+## Scope & venue target
+
+**Scope inti:** Federated Learning + Differential Privacy (DP-SGD).
+**XAI:** dipertahankan sebagai validasi interpretasi, BUKAN kontribusi inti.
+
+**SKIP (out of scope untuk venue Q3 FL/ML applied):**
+- Empirical Membership Inference Attack (MIA) — fitur security-pure venue
+- Extensive threat model section (cukup brief 1 paragraf di Bab 3)
+
+**Target venue Q3:** IEEE Access, Sensors (MDPI), Computers and Electronics
+in Agriculture, Applied Sciences. BUKAN security-pure (Computers & Security,
+TIFS) yang akan minta MIA.
+
+**Kontribusi paper akan ada 3:**
+1. HFL+YOLOv11 untuk deteksi 6-kelas TBS sawit (Non-IID realistic).
+2. DP-SGD per-sampel pada object detection — privacy-utility trade-off
+   curve terdokumentasi (target ε ≤ 10 dengan utility dipertahankan).
+3. Comparison empiris DP-SGD vs DP-FedAvg — pemilihan mekanisme penting
+   untuk detector pretrained (reuse hasil collapse DP-FedAvg sebagai
+   baseline pembanding).
+
 ## Timeline 2 minggu (Hari 1-14)
 
 ### Week 1 — EKSPERIMEN

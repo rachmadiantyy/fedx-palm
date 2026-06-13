@@ -2,6 +2,13 @@
 
 Mengikuti alur: **Kelapa Sawit → YOLOv11 → FL → DP-SGD → XAI**
 
+**Scope thesis & jurnal target:**
+- Kontribusi inti: **Federated Learning + Differential Privacy (DP-SGD)**
+- XAI sebagai validasi interpretasi (bukan kontribusi inti)
+- **Bukan** security-deep venue (skip MIA empirical attack, skip extensive threat model)
+- Target: Q3 FL/ML applied venue (mis. IEEE Access, Sensors MDPI, Computers and
+  Electronics in Agriculture)
+
 ---
 
 ## BAB 1 — PENDAHULUAN
@@ -174,21 +181,30 @@ agregasi → XAI → evaluasi.
 - Diskusi: titik trade-off optimal
 - Verdict H2
 
-### 4.4 Statistical Robustness
+### 4.4 Comparison: DP-FedAvg (level-klien) vs DP-SGD (per-sampel)
+- **Reuse hasil eksperimen DP-FedAvg lama** sebagai baseline pembanding
+- Tabel side-by-side: same σ, ε, mAP untuk dua mekanisme
+- Highlight: DP-FedAvg collapse pada σ kecil; DP-SGD memberi trade-off gradual
+- Diagnosis: kenapa DP-SGD lebih ramah optimizer (noise di gradient bisa
+  di-dampen oleh momentum, vs noise pada bobot teragregasi yang permanen)
+- Kontribusi: pemilihan mekanisme DP penting untuk object detection
+  (literatur jarang membandingkan kedua mekanisme di task non-classification)
+
+### 4.5 Statistical Robustness
 - 3 seed × baseline + 2 σ kunci
 - Mean ± std table
 
-### 4.5 XAI Validation
+### 4.6 XAI Validation
 - Grad-CAM++ pada FL baseline (AD, FRR)
 - Grad-CAM++ pada FL+DP terbaik (AD, FRR — harus tetap > threshold)
 - Comparison heatmap visual
 
-### 4.6 Validasi Hipotesis
+### 4.7 Validasi Hipotesis
 - H1 ✓ kalau baseline > 0.9
 - H2 ✓ kalau ada kurva (bukan cliff)
 - H3 ✓ kalau Grad-CAM++ masih meaningful pada DP-trained
 
-### 4.7 Threats to Validity
+### 4.8 Threats to Validity
 
 ---
 
