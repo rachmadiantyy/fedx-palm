@@ -47,6 +47,47 @@ TIFS) yang akan minta MIA.
    untuk detector pretrained (reuse hasil collapse DP-FedAvg sebagai
    baseline pembanding).
 
+## Strategi compute 2-fase (adopsi dari konsultasi sebelumnya)
+
+Daripada full multi-seed semua kombinasi, pakai 2-fase untuk hemat compute
+~50% sambil tetap punya bukti statistik yang valid:
+
+**Fase 1 — Eksplorasi (1 seed, full grid):**
+- B1: 1 run
+- B2 × 4 K: 4 run
+- E1-FL × 4 K × 5 σ: 20 run
+- E2-FL × 4 K × 5 σ: 20 run
+- Total: 45 run (~200 jam)
+- Tujuan: temukan "zona menarik" — (K, σ) mana yang mempertahankan mAP > 0.5
+  pada ε ≤ 8
+
+**Fase 2 — Konfirmasi (3 seed, subset menjanjikan):**
+- 3 seed × {B2 K=4, E1-FL 2 (K,σ) kunci, E2-FL 2 (K,σ) kunci}
+- Estimasi 15-18 run (~60 jam)
+- Tujuan: mean ± std untuk angka utama paper
+
+Total realistis: ~63 run ~260 jam (vs 51 run × 3 seed = 153 run ~600 jam
+kalau semua multi-seed dari awal).
+
+## Definisi operasional collapse
+
+Untuk klasifikasi konsisten lintas (K, σ, strategi):
+- **collapsed**: mAP@0.5 < 0.05 (tidak berguna, model gagal belajar)
+- **degraded**: 0.05 ≤ mAP@0.5 < 0.70 (training jalan tapi tidak praktis)
+- **acceptable**: 0.70 ≤ mAP@0.5 < 0.90 (trade-off privasi yang berguna)
+- **excellent**: mAP@0.5 ≥ 0.90 (mendekati baseline)
+
+## Catatan hipotesis K untuk DP-SGD per-sampel
+
+Berbeda dari hipotesis untuk DP-FedAvg (di mana K besar = noise lebih kecil),
+pada DP-SGD per-sampel **arah K terbalik**:
+
+- K kecil → samples-per-klien besar → DP-SGD stabil → utilitas lebih baik
+- K besar → samples-per-klien kecil → noise mendominasi sinyal → collapse cepat
+
+Untuk K=16 dengan dataset ~7200 train, samples-per-klien ~450 → di ambang
+batas konvergensi DP-SGD. Hasil K=16 akan dilaporkan sebagai *limit study*.
+
 ## Workflow PARALEL (write + train berbarengan)
 
 Setelah user pilih full grid K {2,4,8,16} x sigma full (45 main runs ~200h),

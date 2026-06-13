@@ -191,6 +191,17 @@ ketat) hingga ~10+ (privasi longgar), dengan target sweet spot ε ≈ 4-8.
 
 ## BAB 4 — HASIL DAN PEMBAHASAN
 
+### 4.0 Definisi operasional & catatan metodologis
+- **Threshold klasifikasi hasil:**
+  - collapsed: mAP@0.5 < 0.05
+  - degraded: 0.05 ≤ mAP < 0.70
+  - acceptable: 0.70 ≤ mAP < 0.90
+  - excellent: mAP ≥ 0.90
+- **ε dari accountant** (Opacus PRV), bukan dari rumus tertutup
+- **δ per-K**: δ = 1/(10·N_eff) di mana N_eff = jumlah samples per klien
+- **Arah K**: berbanding terbalik dengan prediksi DP-FedAvg
+  (lihat catatan REBUILD_PLAN: K besar = noise dominasi pada DP-SGD per-sampel)
+
 ### 4.1 Validasi Setup (B1)
 - Sanity test: Centralized GN baseline mencapai mAP ≥ baseline literatur
 - Reproduce hasil ablation C1b (~0.977) sebagai cross-check

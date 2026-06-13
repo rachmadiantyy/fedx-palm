@@ -240,9 +240,17 @@ mencapai mAP@0.5 ≥ 0.90 pada set validasi global, dengan FL-cost
 
 **H2** *DP-SGD per-sampel menghasilkan trade-off privacy-utility
 yang gradual*: terdapat setting σ ∈ {0.5, 1.0, 1.5} yang menjaga
-mAP@0.5 dalam ambang ≥ 0.70 pada ε ≤ 8, dengan degradasi yang
-monotonik terhadap σ (bukan cliff/collapse seperti pada DP-FedAvg
-level-klien).
+mAP@0.5 dalam kategori *acceptable* (≥ 0.70) pada ε ≤ 8, dengan
+degradasi yang monotonik terhadap σ (bukan *cliff* / *collapse*
+seperti pada DP-FedAvg level-klien yang sudah didokumentasikan pada
+eksperimen pendahuluan). Ambang operasional *collapse*: mAP@0.5 < 0.05.
+
+**H2-K** *Arah pengaruh K pada DP-SGD per-sampel berkebalikan dari
+DP-FedAvg level-klien*: pada DP-SGD per-sampel, K besar berarti
+samples-per-klien kecil sehingga noise mendominasi sinyal lokal
+sebelum agregasi global; mAP diharapkan **menurun** seiring K naik
+pada σ tetap. K = 16 dilaporkan sebagai *limit study* karena
+samples-per-klien (~450) berada di ambang batas konvergensi DP-SGD.
 
 **H3** *Strategi partial DP-SGD mendominasi full DP-SGD pada regime
 ε rendah*: untuk ε ≤ 4, mAP@0.5 dari E2 (head only, ~0.2M params
