@@ -1,0 +1,433 @@
+%==============================================================================
+% FedX-Palm — IEEE Conference Paper (draft)
+% Compile: pdflatex -> bibtex -> pdflatex x2
+% Requires: IEEEtran.cls (standard on Overleaf "IEEE Conference" template)
+%==============================================================================
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{url}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{FedX-Palm: A Privacy-Preserving and Explainable\\
+Federated Learning Framework for Oil Palm Ripeness\\
+Detection --- A Simulated FL Study with a\\
+Dockerized Deployment Blueprint}
+
+\author{
+\IEEEauthorblockN{[Author Name]}
+\IEEEauthorblockA{\textit{[Department / Program Studi]} \\
+\textit{[Institution]}\\
+[City, Country] \\
+[email]}
+\and
+\IEEEauthorblockN{[Advisor Name]}
+\IEEEauthorblockA{\textit{[Department]} \\
+\textit{[Institution]}\\
+[City, Country] \\
+[email]}
+}
+
+\maketitle
+
+%==============================================================================
+\begin{abstract}
+%==============================================================================
+Automated assessment of oil palm Fresh Fruit Bunch (FFB) ripeness can
+standardize harvest decisions, but collecting plantation imagery in a central
+repository risks exposing commercially sensitive operational data. This paper
+presents FedX-Palm, a Horizontal Federated Learning (HFL) framework that
+couples a YOLOv11 detector for six-class FFB ripeness detection with
+client-level Differential Privacy (DP) and Grad-CAM++ explainability. The
+system is designed as a fully Dockerized architecture (one aggregation server,
+four client nodes, and an inference service); the \emph{training} experiments
+are executed as a mathematically equivalent federated \emph{simulation} on a
+single GPU, while model \emph{serving} is deployed as a real Docker container,
+following a deployment-blueprint methodology. Over five communication rounds
+with four Non-IID (Dirichlet) clients and a leakage-free bunch-identity split,
+the non-private global model attains mAP@0.5\,=\,0.995 and
+mAP@0.5:0.95\,=\,0.951, statistically matching a centralized benchmark.
+Grad-CAM++ validation yields an Average Drop of 95.1\% and a Focus Retention
+Rate of 0.962, confirming morphology-grounded decisions. When client-level
+Gaussian DP is added under standard settings (clip-norm $C{=}10$), the global
+model collapses to mAP\,=\,0 across all tested noise levels. A 12-configuration
+ablation (3 seeds) isolates the root cause: collapse is governed by the
+\emph{absolute per-parameter perturbation magnitude} $C\!\times\!\sigma$ rather
+than the noise-to-signal ratio or BatchNorm statistics; reducing the clip-bound
+to $C{=}0.1$ fully restores utility (mAP\,=\,0.995). Because all tested settings
+sit at $\varepsilon \gg 10^{3}$ (no meaningful privacy, by an RDP accountant),
+the collapse is best read as a pipeline-configuration artifact rather than a
+fundamental privacy--utility trade-off---consistent with known limits of
+client-level DP at small client counts.
+\end{abstract}
+
+\begin{IEEEkeywords}
+federated learning, differential privacy, object detection, YOLOv11,
+explainable AI, Grad-CAM++, oil palm, Non-IID, Docker
+\end{IEEEkeywords}
+
+%==============================================================================
+\section{Introduction}
+%==============================================================================
+Oil palm (\emph{Elaeis guineensis Jacq.}) is among the world's most productive
+oil crops, and Indonesia and Malaysia consistently lead global palm-oil
+production. The quality of the extracted oil depends strongly on harvesting
+Fresh Fruit Bunches (FFB) at the correct maturity. In practice, ripeness is
+still judged by visual inspection, which is subjective, inconsistent across
+workers, and sensitive to fatigue and field lighting~\cite{septiarini2020classification}.
+Deep-learning object detectors such as YOLOv11~\cite{khanam2024yolov11} can
+localize and classify each bunch in a single forward pass, making automated,
+real-time ripeness assessment feasible.
+
+High-capacity detectors require large training corpora. Aggregating plantation
+imagery centrally, however, can leak commercially sensitive
+information---geographic coordinates, cultivation patterns, and operational
+strategy. Horizontal Federated Learning
+(HFL)~\cite{mcmahan2017communication,yang2019federated} addresses this by
+keeping raw images on the owning node and exchanging only model updates. Yet
+exchanged parameters are not risk-free: membership inference~\cite{shokri2017membership},
+model inversion~\cite{fredrikson2015model}, and gradient leakage~\cite{zhu2019deep}
+attacks can partially reconstruct sensitive data from weights alone.
+Differential Privacy (DP)~\cite{abadi2016deep} provides the strongest formal
+remedy, but injecting noise perturbs convergence and typically reduces
+accuracy---the \emph{privacy--utility trade-off}. Finally, the
+\emph{black-box} nature of deep detectors hampers adoption by agronomists,
+motivating Explainable AI (XAI).
+
+This paper integrates these three concerns into \textbf{FedX-Palm} and reports
+an honest, fully-characterized empirical study. Our contributions are:
+\begin{enumerate}
+\item A Dockerized HFL framework for six-class FFB ripeness detection with
+YOLOv11, validated as a \emph{simulated-equivalent} federated study and
+accompanied by a real containerized serving deployment
+(Section~\ref{sec:method}).
+\item Quantitative XAI validation of the federated baseline using Grad-CAM++
+with the Average Drop and Focus Retention Rate metrics
+(Section~\ref{sec:results}).
+\item A reproducible diagnosis of \emph{catastrophic collapse} under
+client-level Gaussian DP. Through a 12-configuration ablation we show the
+collapse is driven by the absolute per-parameter perturbation magnitude
+$C\!\times\!\sigma$---not by the noise-to-signal ratio, the learning-rate
+schedule, or BatchNorm statistics---and that a small clip-bound ($C{=}0.1$)
+restores utility (Section~\ref{sec:results}).
+\end{enumerate}
+
+%==============================================================================
+\section{Related Work}
+%==============================================================================
+\textbf{Federated learning and Non-IID data.} FedAvg~\cite{mcmahan2017communication}
+established communication-efficient federated optimization; subsequent surveys
+\cite{kairouz2021advances,li2020federated} distinguish \emph{cross-device} FL
+(thousands to millions of unreliable clients) from \emph{cross-silo} FL (a few
+reliable institutional participants). Our plantation-consortium scenario
+($K{=}4$ stable nodes) is squarely cross-silo. Statistical heterogeneity is
+commonly emulated with a Dirichlet label
+partition~\cite{hsu2019measuring}.
+
+\textbf{Differential privacy in FL.} DP-SGD~\cite{abadi2016deep} clips
+per-example gradients and adds Gaussian noise, with privacy accounted via
+Rényi DP (RDP)~\cite{mironov2017renyi} or zCDP~\cite{bun2016concentrated};
+advanced composition~\cite{dwork2010boosting} tightens the linear bound to
+order $\sqrt{T}$. At the federation level, DP-FedAvg~\cite{mcmahan2018learning}
+clips and perturbs the \emph{client update} rather than per-sample gradients.
+Wei~\emph{et al.}~\cite{wei2020federated} analyze the resulting
+privacy--utility behavior, and LDP-Fed~\cite{truex2020ldp} studies local DP.
+A recurring theme is that client-level DP requires a \emph{large} number of
+participating clients to retain utility, because privacy amplification by
+subsampling scales with the participation ratio $q{=}m/K$; with few clients and
+full participation ($q{=}1$) no amplification occurs. Our results corroborate
+this regime empirically for object detection.
+
+\textbf{DP for object detection.} Most FL+DP studies target image
+classification on MNIST/CIFAR; DP applied to detectors (YOLO/SSD/Faster-RCNN),
+whose multi-term losses (localization, classification, distribution focal) are
+more perturbation-sensitive, remains sparsely explored. We contribute a
+characterized negative result and a practical mitigation in this gap.
+
+\textbf{Explainability.} Grad-CAM~\cite{selvaraju2017gradcam} and
+Grad-CAM++~\cite{chattopadhay2018gradcampp} produce gradient-based saliency
+maps; faithfulness can be quantified by causal perturbation metrics such as
+Average Drop. We adopt Grad-CAM++ on the federated detector and report Average
+Drop and Focus Retention Rate.
+
+\textbf{Applied FL.} Federated learning has matured in
+healthcare~\cite{rieke2020future} and mobile keyboard
+prediction~\cite{hard2018federated}; agricultural deployments remain emerging,
+and FedX-Palm contributes a privacy-and-explainability case study for
+plantations.
+
+%==============================================================================
+\section{Methodology}
+\label{sec:method}
+%==============================================================================
+\subsection{System Architecture and Execution Model}
+FedX-Palm is designed as a containerized HFL system comprising one FedAvg
+\emph{aggregation server} and four \emph{client nodes}, each running in an
+isolated Docker container connected over a private bridge network, with
+read-only data mounts enforcing a zero-trust boundary~\cite{merkel2014docker}.
+To clearly separate design from execution (and to remain reproducible on a
+single accelerator), the training experiments in this paper are executed as a
+\emph{mathematically equivalent federated simulation}: per-round local training
+followed by weighted FedAvg aggregation, identical to the distributed
+formulation. The \texttt{docker-compose} architecture serves as a deployment
+blueprint, while the trained model is additionally deployed as a \emph{real}
+Docker inference container exposing a web endpoint for live detection and
+Grad-CAM++ visualization.
+
+\subsection{Dataset and Non-IID Partitioning}
+We use a six-class oil palm FFB dataset (classes, in alphabetical order:
+\emph{Abnormal}, \emph{Empty Bunch}, \emph{Overripe}, \emph{Ripe},
+\emph{Underripe}, \emph{Unripe}). Because the source frames originate from
+video, naive per-frame splitting leaks near-duplicate frames of the same bunch
+across train/val/test. We therefore re-split by \emph{bunch identity}
+(\texttt{bunch\_id}) using a stratified group split (80/10/10), guaranteeing
+that all frames of a bunch reside in exactly one split. The global validation
+set contains 935 images with 3{,}140 annotated instances.\footnote{Per-client
+training counts are set by a Dirichlet partition with concentration
+$\alpha\in\{0.1,0.3,0.5,0.7\}$ across the four clients; exact counts should be
+taken from the final \texttt{summary} export.} Heterogeneity is emulated by a
+Dirichlet label partition across the four clients, yielding pronounced quantity
+and class skew.
+
+\subsection{Federated Training}
+Each client fine-tunes YOLOv11n from pretrained weights for two local epochs
+per round using SGD (learning rate $0.01$, batch size $16$, image size
+$640{\times}640$), optimizing the standard YOLO loss (CIoU for box regression,
+classification loss, and Distribution Focal Loss). The server aggregates client
+weights by FedAvg,
+\begin{equation}
+\mathbf{w}_{t+1} = \sum_{k=1}^{K} \frac{n_k}{N}\,\mathbf{w}_k ,
+\end{equation}
+where $n_k$ is client $k$'s sample count and $N=\sum_k n_k$. We run $T{=}5$
+communication rounds with full participation of all $K{=}4$ clients.
+
+\subsection{Client-Level Differential Privacy}
+We implement DP-FedAvg~\cite{mcmahan2018learning} at the client level (not
+per-sample DP-SGD). Each round, the client update
+$\Delta_k=\mathbf{w}_k-\mathbf{w}_t$ is clipped to $\ell_2$-norm $C$ and
+perturbed with Gaussian noise before aggregation:
+\begin{equation}
+\tilde{\Delta}_k = \Delta_k \cdot \min\!\Big(1,\tfrac{C}{\lVert \Delta_k \rVert_2}\Big)
+\;+\; \mathcal{N}\!\big(0,(\sigma C)^2 \mathbf{I}\big).
+\end{equation}
+The noise multiplier is $z{=}\sigma$ (since noise std / sensitivity
+$=\sigma C / C=\sigma$). We sweep $\sigma\in\{10^{-4},3{\times}10^{-4},
+5{\times}10^{-4},10^{-3},3{\times}10^{-3}\}$ at $C{=}10$.
+
+\textbf{Privacy accounting.} Rather than labeling $\varepsilon$ manually, we
+compute it from $(\sigma,q,T,\delta)$ via an RDP accountant~\cite{mironov2017renyi},
+with full participation $q{=}1$, $T{=}5$ rounds, and $\delta{=}10^{-5}$. For a
+non-subsampled Gaussian mechanism, RDP at order $\alpha$ is
+$\varepsilon_{\mathrm{RDP}}(\alpha)=T\alpha/(2\sigma^2)$, converted by
+$\varepsilon=\min_{\alpha>1}\big[T\alpha/(2\sigma^2)+\ln(1/\delta)/(\alpha-1)\big]$.
+A zCDP cross-check~\cite{bun2016concentrated} agrees within $0.1\%$. As shown in
+Section~\ref{sec:results}, all swept $\sigma$ yield $\varepsilon\gg 10^{3}$:
+the tested regime carries \emph{no meaningful privacy}, which is central to
+interpreting the utility results.
+
+\subsection{Ablation Design}
+To diagnose the collapse, we run a 12-configuration ablation, each repeated
+with three seeds. The grid isolates candidate causes:
+clipping-only ($\sigma{=}0$; $C{\in}\{10,1\}$), noise with varied clip-bound
+($C{\in}\{10,1,0.1\}$ at $\sigma{=}5{\times}10^{-3}$), reduced learning rate
+($10^{-3},10^{-4}$), a frozen backbone, and replacing BatchNorm with GroupNorm
+(with and without noise). The reported quantity is the global mAP@0.5.
+
+\subsection{Explainability}
+We apply Grad-CAM++~\cite{chattopadhay2018gradcampp} to the federated baseline
+and quantify faithfulness with two metrics: \emph{Average Drop}, the drop in
+class confidence when the salient region is \emph{removed} (under this
+convention, \emph{higher} indicates a more causal explanation), and the
+\emph{Focus Retention Rate} (FRR), the fraction of attention mass on the object
+region.
+
+%==============================================================================
+\section{Results and Discussion}
+\label{sec:results}
+%==============================================================================
+\subsection{Federated Baseline (No DP)}
+Initialized from pretrained weights, the global model converges almost
+immediately: mAP@0.5 reaches $\approx 0.995$ in round~1 and remains stable
+through round~5. The final non-private global model attains
+mAP@0.5\,=\,0.995, mAP@0.5:0.95\,=\,0.951, precision\,=\,0.998, and
+recall\,=\,0.999 (Table~\ref{tab:baseline}). The federated baseline is
+statistically indistinguishable from a centralized benchmark at mAP@0.5,
+confirming that FedAvg preserves accuracy under Non-IID data without raw images
+leaving any node. This rapid convergence also explains the model's
+sensitivity to weight perturbation analyzed below.
+
+\begin{table}[t]
+\caption{Federated Baseline vs.\ Centralized Benchmark}
+\label{tab:baseline}
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \textbf{Federated (HFL)} & \textbf{Centralized} \\
+\midrule
+mAP@0.5        & 0.995 & 0.995 \\
+mAP@0.5:0.95   & 0.951 & 0.901 \\
+Precision      & 0.998 & 0.995 \\
+Recall         & 0.999 & 0.995 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Effect of Differential Privacy}
+Table~\ref{tab:dp} reports the DP sweep with RDP-computed $\varepsilon$.
+\emph{Every} setting drives the global model to mAP\,=\,0, even at the weakest
+noise ($\sigma{=}10^{-4}$). Crucially, all $\varepsilon \gg 10^{3}$: the
+collapse occurs \emph{before} any meaningful-privacy regime is reached. The
+failure is therefore better described as a configuration/pipeline instability
+than as a genuine privacy--utility trade-off. We also observed that local
+client models remained accurate at small $\sigma$ while the \emph{aggregate}
+collapsed, indicating that the perturbation of the aggregated weights---not
+local training---is responsible.
+
+\begin{table}[t]
+\caption{Global Utility Under Client-Level DP ($C{=}10$, $q{=}1$, $T{=}5$, $\delta{=}10^{-5}$)}
+\label{tab:dp}
+\centering
+\begin{tabular}{ccc c}
+\toprule
+\textbf{$\sigma$} & \textbf{$\varepsilon$ (RDP)} & \textbf{mAP@0.5} & \textbf{mAP@0.5:0.95}\\
+\midrule
+0 (baseline)        & $\infty$            & 0.995 & 0.951 \\
+$1\times10^{-4}$    & $2.53\times10^{8}$  & 0.000 & 0.000 \\
+$3\times10^{-4}$    & $2.81\times10^{7}$  & 0.000 & 0.000 \\
+$5\times10^{-4}$    & $1.01\times10^{7}$  & 0.000 & 0.000 \\
+$1\times10^{-3}$    & $2.53\times10^{6}$  & 0.000 & 0.000 \\
+$3\times10^{-3}$    & $2.82\times10^{5}$  & 0.000 & 0.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Ablation: Locating the Root Cause}
+Table~\ref{tab:ablation} summarizes the 12-configuration ablation (mean over
+three seeds; per-seed variance was zero). Three findings stand out.
+
+\textbf{(1) Clipping is harmless; noise is the trigger.} Clipping-only at both
+$C{=}10$ (A1) and $C{=}1$ (A2) preserves mAP\,=\,0.995. Collapse appears only
+when Gaussian noise is added.
+
+\textbf{(2) The absolute perturbation magnitude $C\!\times\!\sigma$, not the
+noise/signal ratio, governs collapse.} Configuration A5 ($C{=}0.1$,
+$\sigma{=}5{\times}10^{-3}$) preserves mAP\,=\,0.995 even though its
+noise-to-signal diagnostic is identical to the collapsing A3/A4. The only
+quantity that changes is the per-element noise $C\!\times\!\sigma$:
+$5{\times}10^{-2}$ (A3) and $5{\times}10^{-3}$ (A4) collapse, whereas
+$5{\times}10^{-4}$ (A5) survives. Combined with the main sweep
+($C{=}10,\sigma{=}10^{-4}\!\Rightarrow\!C\!\times\!\sigma{=}10^{-3}$, collapse),
+the empirical threshold lies between $5{\times}10^{-4}$ (safe) and
+$10^{-3}$ (collapse), i.e.\ the per-element noise must stay below
+$\sim\!8\%$ of the per-element signal ($\approx 6.19\times10^{-3}$) so that
+five rounds of accumulation do not push the global weights into a
+non-functional region.
+
+\textbf{(3) BatchNorm is not the culprit, and non-DP remedies do not help.}
+Replacing BatchNorm with GroupNorm and adding noise (C1) still collapses, while
+GroupNorm without noise (C1b) trains normally (0.977). Reducing the learning
+rate (B1, B2) and freezing the backbone (B3) likewise fail, because the noise
+is applied to the \emph{aggregated weights}, not the local gradients. The
+practical mitigation is therefore to bound the absolute perturbation directly
+via a small clip-bound ($C{=}0.1$).
+
+\begin{table}[t]
+\caption{Ablation (3 seeds; $\sigma{=}5\times10^{-3}$ for noise rows)}
+\label{tab:ablation}
+\centering
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llccc c}
+\toprule
+\textbf{ID} & \textbf{Configuration} & \textbf{$C$} & \textbf{$\sigma$} & \textbf{$C\!\times\!\sigma$} & \textbf{mAP} \\
+\midrule
+A0  & baseline (BN, no DP)        & ---  & 0        & 0                  & 0.995 \\
+A1  & clip-only                   & 10   & 0        & 0                  & 0.995 \\
+A2  & clip-only                   & 1    & 0        & 0                  & 0.995 \\
+A3  & noise                       & 10   & 5e\!-\!3 & 5e\!-\!2           & 0.000 \\
+A4  & noise                       & 1    & 5e\!-\!3 & 5e\!-\!3           & 0.000 \\
+\textbf{A5} & \textbf{noise}      & \textbf{0.1} & \textbf{5e\!-\!3} & \textbf{5e\!-\!4} & \textbf{0.995} \\
+A6  & noise                       & 10   & 1e\!-\!3 & 1e\!-\!2           & 0.000 \\
+B1  & lr=$10^{-3}$ + noise        & 10   & 5e\!-\!3 & 5e\!-\!2           & 0.000 \\
+B2  & lr=$10^{-4}$ + noise        & 10   & 5e\!-\!3 & 5e\!-\!2           & 0.000 \\
+B3  & frozen backbone + noise     & 10   & 5e\!-\!3 & 5e\!-\!2           & 0.000 \\
+C1  & GroupNorm + noise           & 10   & 5e\!-\!3 & 5e\!-\!2           & 0.000 \\
+C1b & GroupNorm, no noise         & ---  & 0        & 0                  & 0.977 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Why Small-$K$ Client-Level DP Is Hard}
+The collapse is consistent with the theory of client-level DP. Privacy
+amplification by subsampling scales with $q{=}m/K$; with $K{=}4$ and full
+participation $q{=}1$, there is \emph{no} amplification, and the update
+sensitivity ($\sim\!C/K$) is large. Achieving a meaningful $\varepsilon$ would
+require $\sigma$ orders of magnitude larger than tested---well past the collapse
+threshold. This matches long-standing observations that client-level DP needs
+many participating clients to retain utility~\cite{mcmahan2018learning,kairouz2021advances}.
+Our study confirms this prediction empirically in the under-explored setting of
+object detection, and contributes a concrete failure mechanism (absolute
+perturbation magnitude) and mitigation (small $C$).
+
+\subsection{Explainability of the Baseline}
+On the functional (non-private) baseline, Grad-CAM++ yields an Average Drop of
+95.1\% and an FRR of 0.962. Under our convention, the high Average Drop means
+that removing the highlighted region collapses the model's confidence by
+95.1\%---evidence that the saliency is causal rather than incidental---while
+FRR\,=\,0.962 indicates that 96.2\% of the attention mass concentrates on the
+fruit region rather than the background. XAI could not be evaluated on the DP
+models, which produce no valid predictions.
+
+\subsection{Threats to Validity}
+Training was executed as a single-GPU federated simulation rather than across
+physically separate Docker containers; the computation is FedAvg-equivalent,
+and the containerized architecture and a real serving container are provided as
+the deployment blueprint. The very high baseline accuracy reflects a strong
+pretrained initialization on a visually well-separated six-class problem; the
+bunch-identity split removes the most severe leakage but residual
+distributional similarity between splits may remain. Finally, the DP findings
+are established for client-level DP-FedAvg on YOLOv11n at $K{=}4$; generalization
+to per-sample DP-SGD or large-$K$ cross-device settings is left to future work.
+
+%==============================================================================
+\section{Conclusion}
+%==============================================================================
+FedX-Palm demonstrates that Horizontal Federated Learning with YOLOv11 attains
+centralized-level accuracy (mAP@0.5\,=\,0.995) for six-class oil palm FFB
+ripeness detection without sharing raw imagery, and that Grad-CAM++ provides
+faithful, morphology-grounded explanations (Average Drop 95.1\%, FRR 0.962).
+Adding client-level Gaussian Differential Privacy under standard settings
+collapses the global model to mAP\,=\,0; a 12-configuration ablation shows the
+cause is the absolute per-parameter perturbation magnitude $C\!\times\!\sigma$
+exceeding the model's weight scale---not the noise/signal ratio, the
+learning-rate schedule, or BatchNorm---and that a small clip-bound ($C{=}0.1$)
+fully restores utility. Since all tested settings lie at $\varepsilon\gg10^{3}$,
+the collapse is a pipeline-configuration artifact rather than a fundamental
+trade-off, consistent with the difficulty of client-level DP at small client
+counts. Future work will pursue meaningful privacy via secure aggregation or
+trusted execution, adaptive clipping with noise warm-up, and validation on a
+physically distributed multi-container deployment.
+
+%==============================================================================
+\section*{Reproducibility}
+%==============================================================================
+The Dockerized architecture (\texttt{docker-compose.yml}), training/ablation
+scripts, and the privacy accountant are available in the project repository.
+
+%==============================================================================
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+%==============================================================================
+
+\end{document}
