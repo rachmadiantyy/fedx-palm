@@ -328,22 +328,22 @@ the rapid convergence. This flat near-optimum also explains the model's
 sensitivity to weight perturbation analyzed below.
 
 \begin{table}[t]
-\caption{Per-Class AP@0.5 (Centralized Benchmark, Used as Proxy for the\\
-Federated Baseline Whose Logging Is Aggregate-Only)}
+\caption{Per-Class AP@0.5 with Instance Counts (Centralized Benchmark,\\
+Used as Proxy for the Federated Baseline Whose Logging Is Aggregate-Only)}
 \label{tab:perclass}
 \centering
-\begin{tabular}{lc}
+\begin{tabular}{lcc}
 \toprule
-\textbf{Class} & \textbf{AP@0.5} \\
+\textbf{Class} & \textbf{Instances} & \textbf{AP@0.5} \\
 \midrule
-Abnormal     & 0.993 \\
-Empty Bunch  & 0.995 \\
-Overripe     & 0.995 \\
-Ripe         & 0.995 \\
-Underripe    & 0.995 \\
-Unripe       & 0.995 \\
+Abnormal     & 219 & 0.993 \\
+Empty Bunch  &  91 & 0.995 \\
+Overripe     & 292 & 0.995 \\
+Ripe         & 347 & 0.995 \\
+Underripe    & 289 & 0.995 \\
+Unripe       & 251 & 0.995 \\
 \midrule
-all classes  & 0.995 \\
+all classes  & 1{,}489 & 0.995 \\
 \bottomrule
 \end{tabular}
 \end{table}
