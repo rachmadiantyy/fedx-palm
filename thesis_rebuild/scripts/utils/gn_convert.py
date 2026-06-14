@@ -51,6 +51,26 @@ def replace_bn_with_gn(module: nn.Module, num_groups: int = 8) -> int:
     return converted
 
 
+def disable_inplace_activations(module: nn.Module) -> int:
+    """Set inplace=False on all activations (in-place ops break Opacus).
+
+    YOLOv11 uses in-place SiLU (and similar) activations. Opacus'
+    GradSampleModule installs backward hooks whose output views must not be
+    modified in-place, otherwise per-sample gradients become incorrect and
+    PyTorch raises a RuntimeError. Walking the module and flipping every
+    `inplace` flag to False makes each activation allocate a fresh tensor.
+
+    Returns:
+        Number of modules whose inplace flag was disabled.
+    """
+    count = 0
+    for m in module.modules():
+        if getattr(m, "inplace", False):
+            m.inplace = False
+            count += 1
+    return count
+
+
 def count_bn_layers(module: nn.Module) -> Tuple[int, int]:
     """Return (n_bn_remaining, n_gn_present)."""
     n_bn = sum(

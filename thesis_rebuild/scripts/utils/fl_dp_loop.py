@@ -48,6 +48,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from thesis_rebuild.scripts.utils.gn_convert import (  # noqa: E402
     count_bn_layers,
+    disable_inplace_activations,
     replace_bn_with_gn,
 )
 
@@ -90,6 +91,8 @@ def build_gn_yolo(weights: str, num_groups: int, freeze_backbone: bool) -> nn.Mo
     yolo = YOLO(weights)
     model = yolo.model
     replace_bn_with_gn(model, num_groups=num_groups)
+    # Opacus forbids in-place ops (in-place SiLU breaks per-sample grad hooks).
+    disable_inplace_activations(model)
     n_bn, n_gn = count_bn_layers(model)
     assert n_bn == 0
     model.train()
