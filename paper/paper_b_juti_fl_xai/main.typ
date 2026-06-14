@@ -70,7 +70,7 @@
 
 The oil palm industry is a cornerstone of Indonesian and Malaysian agribusiness, with the two countries together accounting for over 85% of the world's palm oil supply @usda2024. At the operational level, the single most influential decision in determining oil yield and quality is the timing of fresh fruit bunch (FFB) harvest. Bunches harvested too early contain insufficient mesocarp oil, whereas bunches harvested too late accumulate Free Fatty Acid (FFA), degrading Crude Palm Oil (CPO) quality. Industry practice distinguishes six commercially relevant ripeness classes: _Unripe_, _Underripe_, _Ripe_, _Overripe_, _Empty Bunch_, and _Abnormal_ @junos2022. Traditional assessment by harvest foremen, based on bunch color and loose fruitlet count, is subjective and has reported misclassification rates of 15--25% under suboptimal lighting @sabri2017.
 
-Modern object detectors such as YOLOv11 can localize and classify multiple bunches in a single frame in real time, making vision-based automation feasible at the plantation scale @yolov11. However, training accurate detectors requires diverse imagery spanning seasons, lighting, and geographic conditions. Centralizing such imagery clashes with a practical reality: plantation images are commercially sensitive -- revealing block locations, production volumes, and operational practices -- and estates are reluctant to ship raw data to a shared server.
+Modern object detectors of the YOLO family @yolo_redmon, of which YOLOv11 @yolov11 is the latest iteration, can localize and classify multiple bunches in a single frame in real time, making vision-based automation feasible at the plantation scale. However, training accurate detectors requires diverse imagery spanning seasons, lighting, and geographic conditions. Centralizing such imagery clashes with a practical reality: plantation images are commercially sensitive -- revealing block locations, production volumes, and operational practices -- and estates are reluctant to ship raw data to a shared server.
 
 Federated learning (FL) @fedavg provides an architectural answer: multiple estates collaboratively train a shared model while raw imagery remains on local infrastructure; only model parameters traverse the network. In the taxonomy of Kairouz et al. @kairouz2021, the plantation-consortium scenario is _cross-silo_ -- few clients, each holding large amounts of data, with stable availability.
 
@@ -86,11 +86,11 @@ Several studies have investigated automated palm ripeness assessment using deep 
 
 == Federated Learning for Cross-Silo Scenarios
 
-McMahan et al. @fedavg introduced the canonical FedAvg algorithm: clients perform local stochastic gradient descent and the server aggregates updates by a data-size-weighted average. Kairouz et al. @kairouz2021 distinguish _cross-device_ (millions of unreliable clients with little data each) from _cross-silo_ (few reliable clients with large data each) -- a plantation consortium clearly falls in the latter regime. Data heterogeneity between sites is commonly simulated via Dirichlet partitioning @hsu2019, where a concentration parameter $alpha$ controls per-client class imbalance.
+McMahan et al. @fedavg introduced the canonical FedAvg algorithm: clients perform local stochastic gradient descent and the server aggregates updates by a data-size-weighted average; see @li2020federated for a broader survey of FL challenges and methods. Kairouz et al. @kairouz2021 distinguish _cross-device_ (millions of unreliable clients with little data each) from _cross-silo_ (few reliable clients with large data each) -- a plantation consortium clearly falls in the latter regime. Data heterogeneity between sites is commonly simulated via Dirichlet partitioning @hsu2019, where a concentration parameter $alpha$ controls per-client class imbalance.
 
 == Explainable AI and Faithfulness Metrics
 
-Grad-CAM @gradcam weights each feature-map channel by the spatially-averaged gradient of the target-class score, producing a class activation heatmap. Grad-CAM++ @gradcampp refines this using a weighted combination of positive partial derivatives, providing more accurate localization when multiple instances of the same class are present -- a condition that routinely occurs in FFB imagery containing several bunches per frame. Two complementary faithfulness metrics are used here: Average Drop (AD), measuring the confidence lost when the input is restricted to the heatmap region, and Focus Retention Rate (FRR), measuring the fraction of heatmap intensity falling inside the ground-truth fruit boxes. FRR thus doubles as an agronomic alignment proxy.
+Grad-CAM @gradcam weights each feature-map channel by the spatially-averaged gradient of the target-class score, producing a class activation heatmap. Grad-CAM++ @gradcampp refines this using a weighted combination of positive partial derivatives, providing more accurate localization when multiple instances of the same class are present -- a condition that routinely occurs in FFB imagery containing several bunches per frame. Two complementary faithfulness metrics are used here: Average Drop (AD), measuring the confidence lost when the input is restricted to the heatmap region, and Focus Retention Rate (FRR), measuring the fraction of heatmap intensity falling inside the ground-truth fruit boxes; both belong to the broader family of perturbation-based faithfulness evaluations such as RISE @petsiuk2018. FRR thus doubles as an agronomic alignment proxy.
 
 = Methodology
 
@@ -123,7 +123,7 @@ The training partition is divided among #tbd("K, e.g., 4") clients using a Diric
 
 == Detector and Architectural Modification
 
-The base detector is YOLOv11n (~2.6M parameters), initialized from COCO pre-trained weights. All 81 BatchNorm layers are converted in place to GroupNorm (eight groups; auto-reduced when it does not divide a layer's channel count), with affine parameters copied to preserve pre-trained initialization. This ensures consistency with the companion differential-privacy study @paperA, whose per-sample gradient computation requires per-sample-independent normalization. After conversion, zero BatchNorm layers remain.
+The base detector is YOLOv11n (~2.6M parameters), initialized from COCO @coco pre-trained weights. All 81 BatchNorm layers are converted in place to GroupNorm @groupnorm (eight groups; auto-reduced when it does not divide a layer's channel count), with affine parameters copied to preserve pre-trained initialization. This ensures consistency with the companion differential-privacy study @paperA, whose per-sample gradient computation (DP-SGD @abadi2016) requires per-sample-independent normalization. After conversion, zero BatchNorm layers remain.
 
 == Federated Training Procedure
 
@@ -235,7 +235,7 @@ The authors declare that they have no known competing financial interests or per
 
 = Declaration of Generative AI and AI-assisted Technologies in the Writing Process
 
-The authors used #tbd("tool & version, e.g., Claude Sonnet 4.6") to improve the writing clarity of this paper and to assist with formatting. The authors reviewed and edited the AI-assisted content and take full responsibility for the final publication.
+The authors used Claude (Anthropic) to assist with drafting and improving the writing clarity of this paper and with LaTeX/Typst formatting. All experimental design, code, results, and analysis are the authors' own. The authors reviewed and edited the AI-assisted content and take full responsibility for the final publication.
 
 = Data availability
 

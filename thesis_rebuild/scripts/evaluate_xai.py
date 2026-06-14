@@ -108,6 +108,39 @@ def read_labels(img: Path, w: int, h: int) -> list[tuple[int, list[int]]]:
     return out
 
 
+def overlay_heatmap(img_bgr: np.ndarray, heatmap: np.ndarray) -> np.ndarray:
+    """Blend a Grad-CAM++ heatmap (0-1, any size) onto a BGR image."""
+    hm = cv2.resize(heatmap.astype(np.float32), (img_bgr.shape[1], img_bgr.shape[0]))
+    hm = hm - hm.min()
+    hm = hm / (hm.max() + 1e-8)
+    hm_u8 = np.uint8(255 * hm)
+    hm_color = cv2.applyColorMap(hm_u8, cv2.COLORMAP_JET)
+    return cv2.addWeighted(img_bgr, 0.55, hm_color, 0.45, 0)
+
+
+def save_grid(per_cls_repr: dict, fig_out: str, cell: int = 320) -> None:
+    """Save a 2x3 montage of representative per-class Grad-CAM++ overlays."""
+    rows, cols = 2, 3
+    canvas = np.full((rows * cell, cols * cell, 3), 255, np.uint8)
+    for cls in range(len(CLASS_NAMES)):
+        r, c = divmod(cls, cols)
+        y0, x0 = r * cell, c * cell
+        if cls in per_cls_repr:
+            img, hm = per_cls_repr[cls]
+            ov = overlay_heatmap(img, hm)
+            ov = cv2.resize(ov, (cell, cell - 24))
+        else:
+            ov = np.full((cell - 24, cell, 3), 230, np.uint8)
+        canvas[y0:y0 + cell - 24, x0:x0 + cell] = ov
+        cv2.putText(canvas, f"({chr(97 + cls)}) {CLASS_NAMES[cls]}",
+                    (x0 + 6, y0 + cell - 6), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55, (0, 0, 0), 1, cv2.LINE_AA)
+    out = Path(fig_out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(out), canvas)
+    print(f"[fig] Grad-CAM++ grid -> {out}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Per-class Grad-CAM++ XAI evaluation")
     ap.add_argument("--weights", required=True, help="best.pt (federated or B1)")
@@ -116,6 +149,9 @@ def main() -> None:
     ap.add_argument("--mask-threshold", type=float, default=0.5)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--out", default="thesis_rebuild/tables/xai_per_class.csv")
+    ap.add_argument("--fig-out",
+                    default="paper/paper_b_juti_fl_xai/figures/xai_per_class.png",
+                    help="output path for the 2x3 per-class heatmap grid (Fig. 1)")
     args = ap.parse_args()
 
     device = args.device if torch.cuda.is_available() else "cpu"
@@ -132,6 +168,7 @@ def main() -> None:
     per_cls_imgs: dict[int, list[np.ndarray]] = {}
     per_cls_heat: dict[int, list[np.ndarray]] = {}
     per_cls_boxes: dict[int, list[list[list[int]]]] = {}
+    per_cls_repr: dict[int, tuple] = {}  # one (img, heatmap) per class for Fig. 1
 
     for i, img_path in enumerate(images):
         img = cv2.imread(str(img_path))
@@ -154,6 +191,8 @@ def main() -> None:
             per_cls_imgs.setdefault(cls, []).append(img)
             per_cls_heat.setdefault(cls, []).append(expl.heatmap)
             per_cls_boxes.setdefault(cls, []).append(boxes)
+            # Keep one representative (image, heatmap) per class for Fig. 1.
+            per_cls_repr.setdefault(cls, (img, expl.heatmap))
         if (i + 1) % 20 == 0:
             print(f"  ...{i + 1}/{len(images)}")
 
@@ -198,6 +237,10 @@ def main() -> None:
         w.writeheader()
         for r in rows:
             w.writerow(r)
+
+    # Fig. 1: representative per-class Grad-CAM++ grid for the paper.
+    if per_cls_repr:
+        save_grid(per_cls_repr, args.fig_out)
 
     print(f"\n[xai] per-class results -> {out}")
     print(f"{'class':<12} {'n':>4} {'AD%':>8} {'FRR':>7}")
