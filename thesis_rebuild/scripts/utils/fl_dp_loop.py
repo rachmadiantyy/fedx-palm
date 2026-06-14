@@ -163,16 +163,24 @@ def train_one_client(
         )
 
     n_samples = 0
+    step = 0
     for epoch in range(cfg.local_epochs):
         for batch in loader:
             imgs = batch["img"].to(cfg.device, non_blocking=True).float() / 255.0
             batch_gpu = {k: (v.to(cfg.device) if torch.is_tensor(v) else v)
                          for k, v in batch.items()}
             optimizer.zero_grad(set_to_none=True)
-            loss, _ = criterion(model(imgs), batch_gpu)
+            loss_components, _ = criterion(model(imgs), batch_gpu)
+            # v8DetectionLoss returns [box, cls, dfl] in ultralytics 8.4.x;
+            # .sum() reduces to scalar (idempotent if already scalar) and
+            # keeps the per-sample sum semantics Opacus expects.
+            loss = loss_components.sum()
             loss.backward()
             optimizer.step()
             n_samples += imgs.shape[0]
+            if step % 20 == 0:
+                print(f"    ep{epoch} step{step:04d} loss={float(loss.detach()):.4f}")
+            step += 1
 
     if privacy_engine is not None:
         eps = privacy_engine.get_epsilon(delta=cfg.target_delta)

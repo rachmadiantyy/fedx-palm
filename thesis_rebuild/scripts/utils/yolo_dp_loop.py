@@ -223,7 +223,10 @@ def train_one_run(cfg: DPSGDConfig) -> dict:
             }
             optimizer.zero_grad(set_to_none=True)
             preds = model(imgs)
-            loss, _ = criterion(preds, batch_gpu)
+            loss_components, _ = criterion(preds, batch_gpu)
+            # v8DetectionLoss returns [box, cls, dfl] in ultralytics 8.4.x;
+            # .sum() reduces to scalar (idempotent if already scalar).
+            loss = loss_components.sum()
             loss.backward()
             optimizer.step()
             running_loss += float(loss.detach())
