@@ -257,45 +257,57 @@ def run_federated(cfg: FedDPConfig) -> dict:
     final_eps = 0.0
     best_map = 0.0
     best_state = global_state
-    for r in range(1, cfg.rounds + 1):
-        print(f"\n-- Round {r}/{cfg.rounds} --")
-        client_results = []
-        round_eps = []
-        for cdir in client_dirs:
-            loader = make_client_loader(cdir, cfg)
-            new_state, eps, n = train_one_client(
-                global_state, loader, cfg,
-            )
-            client_results.append((new_state, n))
-            round_eps.append(eps)
-            print(f"  {cdir.name}: n={n}, eps={eps:.3f}")
 
-        global_state = fedavg(client_results)
-        # eps after this round (max across clients; same sigma so they match)
-        final_eps = max(round_eps) if round_eps else 0.0
+    # Open rounds.csv and write incrementally so a mid-run crash still
+    # leaves usable partial results on disk (long full-grid runs).
+    csv_path = out_dir / "rounds.csv"
+    csv_f = csv_path.open("w", newline="")
+    csv_w = csv.DictWriter(
+        csv_f,
+        fieldnames=["round", "epsilon", "mAP50", "mAP5095", "precision", "recall"],
+    )
+    csv_w.writeheader()
+    csv_f.flush()
 
-        metrics = evaluate_global(global_state, cfg)
-        print(f"  GLOBAL val: mAP50={metrics['mAP50']:.4f} "
-              f"mAP5095={metrics['mAP5095']:.4f}  eps={final_eps:.3f}")
-        history.append({"round": r, "epsilon": final_eps, **metrics})
+    try:
+        for r in range(1, cfg.rounds + 1):
+            print(f"\n-- Round {r}/{cfg.rounds} --")
+            client_results = []
+            round_eps = []
+            for cdir in client_dirs:
+                loader = make_client_loader(cdir, cfg)
+                new_state, eps, n = train_one_client(
+                    global_state, loader, cfg,
+                )
+                client_results.append((new_state, n))
+                round_eps.append(eps)
+                print(f"  {cdir.name}: n={n}, eps={eps:.3f}")
 
-        if metrics["mAP50"] > best_map:
-            best_map = metrics["mAP50"]
-            best_state = global_state
+            global_state = fedavg(client_results)
+            # eps after this round (max across clients; same sigma so they match)
+            final_eps = max(round_eps) if round_eps else 0.0
 
-    # Save best + final
-    torch.save({"state": best_state, "config": cfg.__dict__,
-                "final_eps": final_eps, "best_mAP50": best_map},
-               out_dir / "best.pt")
+            metrics = evaluate_global(global_state, cfg)
+            print(f"  GLOBAL val: mAP50={metrics['mAP50']:.4f} "
+                  f"mAP5095={metrics['mAP5095']:.4f}  eps={final_eps:.3f}")
+            row = {"round": r, "epsilon": final_eps, **metrics}
+            history.append(row)
+            csv_w.writerow(row)
+            csv_f.flush()
 
-    # Per-round CSV
-    with (out_dir / "rounds.csv").open("w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["round", "epsilon",
-                                          "mAP50", "mAP5095",
-                                          "precision", "recall"])
-        w.writeheader()
-        for row in history:
-            w.writerow(row)
+            if metrics["mAP50"] > best_map:
+                best_map = metrics["mAP50"]
+                best_state = global_state
+                # Persist best.pt the moment we beat the prior best — mid-run
+                # crashes after this point still leave the best checkpoint.
+                torch.save(
+                    {"state": best_state, "config": cfg.__dict__,
+                     "final_eps": final_eps, "best_mAP50": best_map,
+                     "round": r},
+                    out_dir / "best.pt",
+                )
+    finally:
+        csv_f.close()
 
     return {
         "K": cfg.K, "sigma": cfg.noise_multiplier if cfg.use_dp else 0,

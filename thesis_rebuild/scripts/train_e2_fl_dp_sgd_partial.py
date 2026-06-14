@@ -4,7 +4,7 @@ E2-FL: Federated Partial DP-SGD (backbone frozen, head only).
 Backbone model.0-9 frozen (pretrained, no DP). Only head ~0.2M params
 trainable + DP-protected. Should dominate E1-FL at low epsilon.
 
-Full grid: K {2,4,8,16} x sigma {0.5,1.0,1.5,2.0,3.0} = 20 runs.
+Full grid: K {2,4,8,12,16} x sigma {0.5,1.0,1.5,2.0,3.0} = 25 runs.
 
 Run:
     python thesis_rebuild/scripts/train_e2_fl_dp_sgd_partial.py --K 4 --sigma 1.0
@@ -25,7 +25,7 @@ from thesis_rebuild.scripts.utils.fl_dp_loop import (  # noqa: E402
 )
 
 
-K_GRID = [2, 4, 8, 16]
+K_GRID = [2, 4, 8, 12, 16]
 SIGMA_GRID = [0.5, 1.0, 1.5, 2.0, 3.0]
 
 
@@ -76,19 +76,21 @@ def main() -> None:
             seed=args.seed,
             device=args.device,
             project=args.project,
-            name=f"e2_fl_K{K}_sigma{sigma}",
+            name=f"e2_fl_K{K}_sigma{sigma}_seed{args.seed}",
         )
         results.append(run_federated(cfg))
 
-    out = Path(args.project) / "e2_fl_full_grid.csv"
+    out = Path(args.project) / f"e2_fl_full_grid_seed{args.seed}.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["K", "sigma", "freeze_backbone",
                                           "rounds", "best_mAP50",
-                                          "final_epsilon", "ckpt"])
+                                          "final_epsilon", "ckpt", "seed"])
         w.writeheader()
         for r in results:
-            w.writerow({k: r[k] for k in w.fieldnames})
+            row = {k: r[k] for k in w.fieldnames if k != "seed"}
+            row["seed"] = args.seed
+            w.writerow(row)
     print(f"\nE2-FL summary -> {out}")
 
 

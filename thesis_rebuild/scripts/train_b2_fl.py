@@ -4,7 +4,7 @@ B2: Federated YOLOv11n-GN baseline (no DP).
 Federated FedAvg without any DP noise. Measures the 'FL cost' relative
 to B1 (centralized): how much utility is lost just by federating?
 
-Sweeps K in {2, 4, 8, 16} per user's full-grid decision.
+Sweeps K in {2, 4, 8, 12, 16} per user's full-grid decision.
 
 Run single K:
     python thesis_rebuild/scripts/train_b2_fl.py --K 4 --rounds 5
@@ -26,7 +26,7 @@ from thesis_rebuild.scripts.utils.fl_dp_loop import (  # noqa: E402
 )
 
 
-K_GRID = [2, 4, 8, 16]
+K_GRID = [2, 4, 8, 12, 16]
 
 
 def parse_args() -> argparse.Namespace:
@@ -73,19 +73,21 @@ def main() -> None:
             seed=args.seed,
             device=args.device,
             project=args.project,
-            name=f"b2_fl_K{K}",
+            name=f"b2_fl_K{K}_seed{args.seed}",
         )
         results.append(run_federated(cfg))
 
-    out = Path(args.project) / "b2_fl_summary.csv"
+    out = Path(args.project) / f"b2_fl_summary_seed{args.seed}.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["K", "sigma", "freeze_backbone",
                                           "rounds", "best_mAP50",
-                                          "final_epsilon", "ckpt"])
+                                          "final_epsilon", "ckpt", "seed"])
         w.writeheader()
         for r in results:
-            w.writerow({k: r[k] for k in w.fieldnames})
+            row = {k: r[k] for k in w.fieldnames if k != "seed"}
+            row["seed"] = args.seed
+            w.writerow(row)
     print(f"\nSummary -> {out}")
 
 
