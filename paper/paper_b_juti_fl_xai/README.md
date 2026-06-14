@@ -1,10 +1,22 @@
 # Paper B — JUTI (Jurnal Ilmiah Teknologi Informasi), ITS — SINTA 3
 
-Manuskrip kedua dari proyek FedX-Palm, mengikuti **template JUTI EN** resmi
-(single-column A4, Times Roman 10pt, English).
+Manuskrip kedua dari proyek FedX-Palm.
 
-- **Sumber tunggal:** `main.tex` (compile dengan pdfLaTeX di Overleaf).
-- `draft.md` versi awal sudah dihapus — semua isi sekarang di `main.tex`.
+- **PRIMARY: `main.typ`** — template **JUTI Typst resmi** (`@preview/juti:0.0.3`).
+  Inilah yang dipakai untuk submission. Butuh `setup.typ` (bagian dari project
+  template JUTI) + `references.bib` (disediakan di sini).
+- `main.tex` — versi LaTeX alternatif (Overleaf/pdfLaTeX), dipertahankan
+  sebagai cadangan. Boleh diabaikan kalau pakai Typst.
+
+## Cara compile Typst (rekomendasi)
+
+1. Pastikan ada `setup.typ` dari project template JUTI di folder yang sama.
+2. **GANTI `references.bib` bawaan template** dengan `references.bib` di sini
+   (berisi 10 referensi Paper B). Kunci sitasi (`@usda2024`, dll.) sudah
+   cocok dengan `main.typ`.
+3. Compile `main.typ` (Typst web app / `typst compile main.typ`).
+4. Semua angka pending tampil **MERAH** sebagai `[FILL: ...]` — ganti dengan
+   angka nyata sebelum submit.
 
 ## Logo JUTI (opsional)
 
