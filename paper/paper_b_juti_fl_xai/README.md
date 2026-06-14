@@ -6,6 +6,22 @@ Manuskrip kedua dari proyek FedX-Palm, mengikuti **template JUTI EN** resmi
 - **Sumber tunggal:** `main.tex` (compile dengan pdfLaTeX di Overleaf).
 - `draft.md` versi awal sudah dihapus — semua isi sekarang di `main.tex`.
 
+## Logo JUTI (opsional)
+
+`main.tex` punya slot otomatis untuk logo JUTI di header kiri. **Tanpa
+logo, paper tetap compile bersih** (fallback ke header teks-only) — editor
+JUTI biasanya menambahkan logo saat final formatting.
+
+Kalau mau menyertakan sendiri:
+
+1. Buka template DOCX JUTI yang kamu unduh (di komputer): klik kanan logo
+   di pojok kiri-atas → *Save as Picture* → simpan sebagai
+   `figures/juti_logo.png`. **ATAU**
+2. Kunjungi situs jurnal JUTI ITS (juti.if.its.ac.id) → unduh asetnya
+   resmi.
+3. Letakkan file di `paper/paper_b_juti_fl_xai/figures/juti_logo.png`,
+   compile ulang — logo otomatis muncul. Tidak perlu edit LaTeX.
+
 ## Cara upload ke Overleaf hari ini
 
 1. Overleaf → **New Project → Upload Project** → unggah folder

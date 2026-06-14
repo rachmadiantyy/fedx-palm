@@ -42,12 +42,22 @@
 \titleformat{\subsection}{\normalfont\normalsize\itshape}{\thesubsection}{0.5em}{}
 
 % --- JUTI-style header / footer
+% Logo: place an official JUTI logo at figures/juti_logo.png and it will
+% appear in the left header on every page. If the file is absent, the
+% header gracefully falls back to text-only — JUTI's editorial board
+% typically adds the logo during final formatting anyway.
 \pagestyle{fancy}
 \fancyhf{}
+\fancyhead[LO,LE]{%
+  \IfFileExists{figures/juti_logo.png}{%
+    \raisebox{-0.4\height}{\includegraphics[height=1.0cm]{figures/juti_logo.png}}%
+  }{}%
+}
 \fancyhead[CO]{\small\itshape JUTI: Jurnal Ilmiah Teknologi Informasi -- Volume x, Number x, January 202x: x -- x}
 \fancyhead[CE]{\small\itshape First A. Author et al -- Paper Title}
 \fancyfoot[C]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
+\setlength{\headheight}{32pt}
 
 % --- table numbering: Roman (Table I, II, ...) per JUTI rule
 \renewcommand{\thetable}{\Roman{table}}
