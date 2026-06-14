@@ -119,7 +119,10 @@ def make_client_loader(client_dir: Path, cfg: FedDPConfig) -> DataLoader:
     args = get_cfg(DEFAULT_CFG)
     args.imgsz = cfg.imgsz
     args.batch = cfg.batch_size
-    args.workers = 2
+    # Windows + Opacus DPDataLoader (Poisson sampler) deadlocks with
+    # num_workers > 0; force single-threaded loading. ~15% slower but
+    # eliminates the hang we hit on the K=2 sigma=1.0 cell.
+    args.workers = 0
     args.cache = False
     args.rect = False
 
@@ -231,8 +234,44 @@ def evaluate_global(state: dict, cfg: FedDPConfig) -> dict:
     }
 
 
+def already_complete(cfg: FedDPConfig) -> Optional[dict]:
+    """If this run already finished (rounds.csv has cfg.rounds rows + best.pt
+    exists), return a result dict so the caller can skip. Otherwise None.
+
+    Used by wrappers to make a long grid resumable: re-running the orchestrator
+    after a crash will pick up where it left off instead of redoing finished
+    cells.
+    """
+    out_dir = Path(cfg.project) / cfg.name
+    csv_path = out_dir / "rounds.csv"
+    ckpt = out_dir / "best.pt"
+    if not (csv_path.exists() and ckpt.exists()):
+        return None
+    with csv_path.open() as f:
+        rows = list(csv.DictReader(f))
+    if len(rows) < cfg.rounds:
+        return None  # partial — re-run from scratch
+    best = max(rows, key=lambda r: float(r["mAP50"]))
+    return {
+        "K": cfg.K,
+        "sigma": cfg.noise_multiplier if cfg.use_dp else 0,
+        "freeze_backbone": cfg.freeze_backbone,
+        "rounds": cfg.rounds,
+        "best_mAP50": float(best["mAP50"]),
+        "final_epsilon": float(rows[-1]["epsilon"]),
+        "ckpt": str(ckpt),
+        "history": rows,
+    }
+
+
 def run_federated(cfg: FedDPConfig) -> dict:
     """Drive the K-client × T-round federated DP-SGD loop."""
+    cached = already_complete(cfg)
+    if cached is not None:
+        print(f"[skip] {cfg.name} already complete "
+              f"(best mAP50={cached['best_mAP50']:.4f}, eps={cached['final_epsilon']:.3f})")
+        return cached
+
     torch.manual_seed(cfg.seed)
     out_dir = Path(cfg.project) / cfg.name
     out_dir.mkdir(parents=True, exist_ok=True)
