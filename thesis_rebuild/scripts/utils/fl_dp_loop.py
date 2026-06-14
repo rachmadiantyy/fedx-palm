@@ -95,6 +95,11 @@ def build_gn_yolo(weights: str, num_groups: int, freeze_backbone: bool) -> nn.Mo
     disable_inplace_activations(model)
     n_bn, n_gn = count_bn_layers(model)
     assert n_bn == 0
+    # GroupNorm has no running_var, but ultralytics' is_fused() miscounts GN
+    # as a norm layer and tries Conv+BN fusion during val()/AutoBackend,
+    # crashing on the missing attribute. Fusion is a BN-only inference
+    # speedup (numerically identical result), so neutralize it to a no-op.
+    model.fuse = lambda verbose=True: model
     model.train()
     if freeze_backbone:
         for name, p in model.named_parameters():
