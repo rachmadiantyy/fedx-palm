@@ -230,7 +230,11 @@ ketat) hingga ~10+ (privasi longgar), dengan target sweet spot ε ≈ 4-8.
   - acceptable: 0.70 ≤ mAP < 0.90
   - excellent: mAP ≥ 0.90
 - **ε dari accountant** (Opacus PRV), bukan dari rumus tertutup
-- **δ per-K**: δ = 1/(10·N_eff) di mana N_eff = jumlah samples per klien
+- **δ = 1e-5 tetap** untuk semua K (sesuai implementasi `target_delta`).
+  Valid & konservatif: klien terkecil (K=16) memiliki 270 sampel,
+  sehingga δ=1e-5 ≪ 1/270 ≈ 3,7·10⁻³ memenuhi syarat δ < 1/n_k pada
+  semua konfigurasi. Pelaporan ε pada δ tetap memudahkan perbandingan
+  antar-K.
 - **Arah K**: berbanding terbalik dengan prediksi DP-FedAvg
   (lihat catatan REBUILD_PLAN: K besar = noise dominasi pada DP-SGD per-sampel)
 
