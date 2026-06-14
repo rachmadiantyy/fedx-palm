@@ -98,25 +98,43 @@ agregasi → XAI → evaluasi.
 - Metrik faithfulness: Average Drop, FRR
 
 ### 2.9 Container Deployment (Docker)
-- Konsep deployment blueprint
-- Multi-container architecture (server + clients)
+- Konsep image vs container (Dockerfile = blueprint reproducible)
+- Docker untuk **deployment inference**, BUKAN untuk training/arsitektur FL
+- Justifikasi: training memakai simulasi FL sequential di 1 GPU
+  (lihat 3.1), sehingga containerization hanya relevan pada tahap
+  serving model akhir (best.pt) ke lingkungan edge/server
+- Portabilitas & reproducibility sebagai motivasi utama
 
 ---
 
 ## BAB 3 — METODOLOGI
 
-### 3.1 Arsitektur Sistem
-- 1 server aggregator + 4 client nodes
-- Bridge network terisolasi
-- Volume mount read-only (zero-trust)
-- Docker-compose blueprint
+### 3.1 Arsitektur Sistem & Simulasi
+- **Simulasi FL sequential di 1 GPU** (RTX 4080), bukan multi-container.
+  Tiap ronde: server "mengaktifkan" K klien secara berurutan dalam satu
+  proses Python (`utils/fl_dp_loop.py`), melatih lokal, lalu agregasi
+  FedAvg. Mode ini standar pada riset FL (mis. Flower simulation,
+  FedML) karena hasil numerik identik dengan deployment terdistribusi
+  namun jauh lebih hemat sumber daya.
+- Justifikasi: privasi dijamin oleh **mekanisme DP-SGD per-sampel**, bukan
+  oleh isolasi jaringan; data antar-klien tidak pernah digabung dalam
+  memori bersama (partisi disk terpisah `data/clients_K{K}/`).
+- Docker hanya pada tahap **deployment inference** (lihat 3.10), bukan
+  pada tahap pelatihan.
 
 ### 3.2 Dataset
-- Roboflow palm-fruit-ripeness-detection v2
+- Roboflow palm-fruit-ripeness-detection v2 (10.814 citra, 89 tandan unik)
 - 6 kelas urutan alfabet
-- Re-split bunch_id-based (anti-leakage)
-- Train 9030 / Val 935 / Test held-out
-- Dirichlet α ∈ {0.1, 0.3, 0.5, 0.7} untuk 4 client
+- Re-split **bunch_id-based stratified group split** (anti-leakage):
+  tidak ada tandan yang sama muncul di lebih dari satu split
+- **Train 9094 (72 tandan) / Valid 769 (8 tandan) / Test 951 (9 tandan)**
+- Audit kebocoran: train↔valid, train↔test, valid↔test = BERSIH
+- Partisi Non-IID Dirichlet untuk **K ∈ {2, 4, 8, 12, 16}** klien;
+  α di-sweep per klien (0.1 ekstrem hingga 0.8 mendekati IID) sehingga
+  setiap K memiliki heterogenitas yang terkontrol & realistis
+- Konsekuensi samples-per-klien (penting untuk H2-K):
+  K=2 → 1156–7938 img; K=16 → 270–819 img (klien terkecil di ambang
+  konvergensi DP-SGD)
 
 ### 3.3 Model
 - YOLOv11n
@@ -182,10 +200,24 @@ ketat) hingga ~10+ (privasi longgar), dengan target sweet spot ε ≈ 4-8.
 - max_grad_norm (C) initial = 1.0; ablation C opsional di akhir kalau ada waktu.
 
 ### 3.10 Lingkungan Implementasi
-- Hardware: workstation RTX 4080 (training), VPS (Docker deployment blueprint)
+- Hardware: workstation RTX 4080 (training), VPS/edge CPU (deployment)
 - Software stack: PyTorch 2.5.1+cu121, Ultralytics 8.4.51, **Opacus 1.5.4**
 - Per-sample gradient: Opacus `GradSampleModule` (functorch backend di PyTorch 2.5)
 - OS: Windows 11 + miniconda env `fedx`
+
+### 3.11 Deployment Inference (Docker blueprint)
+- **Cakupan**: containerization HANYA untuk menyajikan model akhir
+  (best.pt), bukan untuk training maupun arsitektur FL (lihat 3.1).
+- Artefak: `thesis_rebuild/deploy/` berisi `Dockerfile` (image CPU-only,
+  Torch CPU + Ultralytics) dan `predict.py` (inference batch + opsi
+  HTTP endpoint).
+- **Dockerfile sebagai blueprint reproducible**: menjamin model dapat
+  dijalankan ulang di lingkungan mana pun (edge/server) tanpa konflik
+  dependency — bukti *deployment-readiness*. Build & run aktual bersifat
+  opsional (nilai tambah), Dockerfile tetap valid sebagai cetak biru.
+- Justifikasi memilih image CPU-only: target deployment lapangan
+  (mini-PC pabrik, VPS murah) umumnya tanpa GPU; ukuran image jauh lebih
+  kecil; inferensi YOLOv11n cukup cepat di CPU untuk kebutuhan non-realtime.
 
 ---
 
