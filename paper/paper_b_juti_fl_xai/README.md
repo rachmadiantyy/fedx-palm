@@ -5,14 +5,15 @@ Draf artikel jurnal **kedua** dari proyek FedX-Palm, ditujukan ke
 
 ## Hubungan dengan Paper A (dan kenapa ini BUKAN self-plagiarism)
 
-| Aspek | Paper A (IEEE, `../fedx_palm_ieee.tex`) | Paper B (ini) |
+| Aspek | Paper A (`../fedx_palm_ieee.tex`, **target Scopus Q3**) | Paper B (ini, **SINTA 3 / JUTI ITS**) |
 |---|---|---|
-| **Pertanyaan riset** | *Kenapa* DP level-klien (DP-FedAvg) collapse pada detektor, dan bagaimana memitigasinya? | *Bisakah* FL menghasilkan deteksi sawit yang akurat **dan dapat dijelaskan/dipercaya** untuk pendukung keputusan panen? |
-| **Bintang utama** | Karakterisasi failure mode DP + mitigasi clip-norm | **Explainability** (Grad-CAM++): AD/FRR per-kelas, Insertion/Deletion, validasi agronomis |
+| **Pertanyaan riset** | *Kenapa* DP-FedAvg level-klien collapse, dan bukti bahwa **DP-SGD per-sampel** memberi trade-off privasi-utilitas yang sah? | *Bisakah* FL menghasilkan deteksi sawit yang akurat **dan dapat dijelaskan/dipercaya** untuk pendukung keputusan panen? |
+| **Bintang utama** | Mekanisme DP: collapse DP-FedAvg + keberhasilan DP-SGD per-sampel (full grid K×σ) | **Explainability** (Grad-CAM++): AD/FRR per-kelas, Insertion/Deletion, validasi agronomis |
+| **Sumber hasil** | Full grid DP-SGD baru (K×σ) | B2 federasi (no-DP) + analisis XAI per-kelas |
 | **Peran DP** | Sentral | Minor — disebut singkat, **dirujuk ke Paper A** untuk detail |
 | **Peran XAI** | Pendukung (1 angka AD/FRR global) | **Sentral & diperdalam** (per-kelas + metrik tambahan + interpretasi visual) |
-| **Sudut** | Sistem/privasi | Aplikasi pertanian + trustworthy AI |
-| **Data** | Lama (9.030/935, mAP 0.995) | Rebuild (9.094/769/951, anti-leakage bunch_id) |
+| **Sudut** | Sistem/privasi (internasional) | Aplikasi pertanian + trustworthy AI (nasional) |
+| **Data** | Rebuild (9.094/769/951, anti-leakage) | Rebuild (sama; tapi fokus model & analisis berbeda) |
 | **Audiens** | Venue ML/security | Informatika terapan / sistem informasi |
 
 **Prinsip anti-self-plagiarism yang dipakai di sini:**

@@ -265,9 +265,10 @@ Decentralized Data," in *AISTATS*, 2017.
 *Found. Trends Mach. Learn.*, 2021.
 [7] A. Chattopadhyay et al., "Grad-CAM++: Generalized Gradient-Based Visual
 Explanations for Deep CNNs," in *WACV*, 2018.
-[8] [Author], "FedX-Palm: An Explainable Federated Framework for Oil Palm
-Ripeness Detection — A Characterized Failure Mode and Mitigation for
-Client-Level Differential Privacy on YOLOv11," `{TBD: venue/status Paper A}`.
+[8] [Author], "FedX-Palm: Per-Sample DP-SGD versus Client-Level DP-FedAvg
+for Privacy-Preserving Oil Palm Ripeness Detection on YOLOv11,"
+`{TBD: venue Scopus Q3, status submitted/under review/to appear}`.
+(Paper A penulis — rujukan untuk seluruh detail Differential Privacy.)
 [9] T.-M. H. Hsu et al., "Measuring the Effects of Non-Identical Data
 Distribution for Federated Visual Classification," arXiv:1909.06335, 2019.
 [10] R. R. Selvaraju et al., "Grad-CAM: Visual Explanations from Deep Networks
