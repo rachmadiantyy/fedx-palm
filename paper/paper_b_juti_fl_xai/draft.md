@@ -173,14 +173,14 @@ Kualitas penjelasan diukur pada `{TBD: jumlah}` citra uji menggunakan:
   pada wilayah sorotan (semakin tepat → wilayah benar-benar penting).
 - **Faithfulness/Region Retention Rate (FRR)**: proporsi keyakinan yang
   dipertahankan saat hanya wilayah penting yang disisakan.
-- **Kurva Insertion/Deletion** [11]: AUC keyakinan terhadap fraksi piksel
-  penting yang ditambahkan (Insertion, tinggi=baik) / dihapus (Deletion,
-  rendah=baik).
-- **Validasi agronomis**: IoU antara wilayah sorotan *heatmap* (di atas ambang)
-  dengan *bounding box* buah, sebagai proksi apakah model "melihat" buah dan
-  bukan latar.
+- **Validasi agronomis (lewat FRR)**: karena FRR mengukur proporsi intensitas
+  *heatmap* yang jatuh di dalam *bounding box* buah, ia sekaligus menjadi proksi
+  apakah model "melihat" buah dan bukan latar.
+- **(Opsional, jika waktu memungkinkan)** kurva *Insertion/Deletion* [11]
+  sebagai metrik *faithfulness* tambahan.
 
-Metrik dihitung **per-kelas kematangan** untuk mengungkap kelas yang paling
+Metrik AD dan FRR dihitung **per-kelas kematangan** (script
+`thesis_rebuild/scripts/evaluate_xai.py`) untuk mengungkap kelas yang paling
 mudah/sulit dijelaskan.
 
 ## IV. HASIL DAN PEMBAHASAN

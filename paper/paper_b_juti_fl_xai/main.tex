@@ -1,0 +1,312 @@
+%==============================================================================
+% Paper B — JUTI ITS (SINTA 3)
+% FedX-Palm: aplikasi FL + Grad-CAM++ untuk deteksi kematangan sawit.
+%
+% CARA PAKAI DI OVERLEAF:
+%   1. New Project -> Upload Project -> unggah folder ini (main.tex + figures/).
+%   2. Compiler: pdfLaTeX. Klik Recompile.
+%   3. WAJIB ganti SEMUA \tbd{...} (muncul MERAH) dengan angka NYATA dari
+%      aggregate_results.py & evaluate_xai.py SEBELUM submit. Jangan upload
+%      kalau masih ada teks merah.
+%   4. Idealnya, pindahkan isi ke template resmi JUTI bila tersedia; berkas ini
+%      adalah manuskrip lengkap berformat jurnal dua-kolom yang setara.
+%==============================================================================
+\documentclass[10pt,twocolumn]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[bahasa,english]{babel}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{authblk}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+\usepackage{geometry}
+\geometry{a4paper,margin=2.2cm}
+
+% Placeholder hasil — tampil MERAH agar tidak terlewat sebelum submit.
+\newcommand{\tbd}[1]{\textcolor{red}{\textbf{[ISI: #1]}}}
+
+\title{\textbf{Deteksi Kematangan Tandan Buah Segar Kelapa Sawit Enam Kelas
+Berbasis \textit{Federated Learning} dengan Penjelasan Visual Grad-CAM++
+Tervalidasi untuk Pendukung Keputusan Panen}}
+
+\author[1]{Nama Penulis Pertama}
+\author[2]{Nama Pembimbing}
+\affil[1]{Program Studi ..., Fakultas ..., Universitas ...; \texttt{email@domain}}
+\affil[2]{Departemen ..., Institusi ...; \texttt{email@domain}}
+
+\date{}
+
+\begin{document}
+\maketitle
+
+%------------------------------------------------------------------ ABSTRAK ID
+\selectlanguage{bahasa}
+\begin{abstract}
+\noindent
+Penentuan waktu panen tandan buah segar (TBS) kelapa sawit yang tepat sangat
+menentukan rendemen dan mutu minyak, namun penilaian manual bersifat subjektif
+dan tidak konsisten. Otomasi berbasis visi komputer menjanjikan keseragaman,
+tetapi pengumpulan citra perkebunan secara terpusat terbentur kerahasiaan data
+operasional. Penelitian ini mengevaluasi apakah pendekatan \textit{Federated
+Learning} (FL)---yang melatih model bersama tanpa memindahkan citra mentah
+antar-kebun---dapat menghasilkan deteksi kematangan TBS enam kelas yang akurat
+sekaligus dapat dijelaskan, sehingga layak menjadi pendukung keputusan panen.
+Detektor YOLOv11n dilatih secara federasi (FedAvg) pada data Non-IID (partisi
+Dirichlet) hasil pembagian anti-kebocoran berbasis identitas tandan
+(\textit{bunch\_id}), lalu kualitas penjelasannya dievaluasi menggunakan
+Grad-CAM++ melalui metrik \textit{Average Drop} (AD) dan \textit{Focus
+Retention Rate} (FRR) per-kelas. Model federasi mencapai mAP@0,5 =
+\tbd{B2 mAP50} (pembanding tersentral 0,787), dengan AD = \tbd{AD global} dan
+FRR = \tbd{FRR global}. Analisis per-kelas menunjukkan \tbd{kelas termudah/
+tersulit dijelaskan}. Hasil ini mengindikasikan FL dapat menyediakan deteksi
+kematangan sawit yang menjaga privasi data antar-kebun tanpa mengorbankan
+keterjelasan keputusan model.
+
+\noindent\textbf{Kata kunci:} kelapa sawit, deteksi kematangan, \textit{federated
+learning}, YOLOv11, \textit{explainable AI}, Grad-CAM++, pertanian presisi.
+\end{abstract}
+
+%------------------------------------------------------------------ ABSTRACT EN
+\selectlanguage{english}
+\begin{abstract}
+\noindent\textit{Timely harvesting of oil palm fresh fruit bunches (FFB) is
+decisive for oil yield and quality, yet manual ripeness assessment is
+subjective. Computer-vision automation promises consistency, but centrally
+aggregating plantation imagery conflicts with operational-data
+confidentiality. This study evaluates whether Federated Learning (FL)---
+training a shared model without moving raw imagery across estates---can deliver
+six-class FFB ripeness detection that is both accurate and explainable. A
+YOLOv11n detector is trained federatively (FedAvg) on Non-IID (Dirichlet)
+partitions from a leakage-free bunch-identity split, and its explanation
+quality is assessed with Grad-CAM++ via Average Drop (AD) and Focus Retention
+Rate (FRR) per class. The federated model attains mAP@0.5 = }\tbd{B2 mAP50}
+\textit{ (centralized reference 0.787), with AD = }\tbd{AD}\textit{ and FRR = }
+\tbd{FRR}\textit{. The results indicate FL can provide privacy-preserving palm
+ripeness detection without sacrificing decision explainability.}
+
+\noindent\textit{\textbf{Keywords:} oil palm, ripeness detection, federated
+learning, YOLOv11, explainable AI, Grad-CAM++, precision agriculture.}
+\end{abstract}
+
+\selectlanguage{bahasa}
+
+%==============================================================================
+\section{Pendahuluan}
+%==============================================================================
+Industri kelapa sawit merupakan tulang punggung agribisnis Indonesia dan
+Malaysia yang bersama-sama menyumbang lebih dari 85\% produksi minyak sawit
+dunia~\cite{usda2024}. Pada tingkat operasional, keputusan paling menentukan
+rendemen adalah ketepatan waktu panen TBS: tandan yang dipanen terlalu dini
+berkadar minyak rendah, sedangkan yang terlambat meningkatkan kadar Asam Lemak
+Bebas dan menurunkan mutu \textit{Crude Palm Oil}~\cite{junos2022}. Penilaian
+manual oleh mandor bersifat subjektif dengan tingkat kesalahan 15--25\% pada
+pencahayaan suboptimal~\cite{sabri2017}, sehingga otomasi berbasis visi
+komputer menjadi kebutuhan nyata.
+
+Detektor objek modern seperti YOLOv11 mampu melokalisasi dan mengklasifikasi
+beberapa tandan dalam satu bingkai secara \textit{real-time}~\cite{yolov11},
+namun pelatihannya memerlukan banyak citra beragam. Pengumpulan terpusat
+terbentur kenyataan bahwa citra perkebunan adalah informasi bisnis sensitif
+yang enggan dibagikan antar-perusahaan. \textit{Federated Learning}
+(FL)~\cite{fedavg} menjawab kendala ini dengan melatih model bersama tanpa
+memindahkan data mentah; dalam taksonomi~\cite{kairouz2021}, skenario
+perkebunan termasuk \textit{cross-silo}.
+
+Namun, akurasi saja tidak cukup agar model dipercaya operator. Sistem pendukung
+keputusan pertanian memerlukan keterjelasan (\textit{explainability}): operator
+perlu memahami \emph{mengapa} model mengklasifikasikan suatu tandan. Metode
+\textit{Explainable AI} (XAI) seperti Grad-CAM++~\cite{gradcampp} menghasilkan
+peta panas yang menyoroti wilayah penentu prediksi, dan kualitasnya dapat
+diukur secara kuantitatif.
+
+Berbeda dengan studi pendahuluan penulis yang berfokus pada perilaku
+\textit{Differential Privacy} pada FL~\cite{paperA}, penelitian ini berfokus
+pada pertanyaan aplikatif: \emph{apakah deteksi kematangan TBS berbasis FL
+dapat sekaligus akurat dan dapat dijelaskan dengan andal sehingga layak menjadi
+pendukung keputusan panen?} Kontribusi penelitian ini: (1) evaluasi
+keterjelasan mendalam deteksi kematangan sawit federasi melalui analisis
+Grad-CAM++ \emph{per-kelas}; (2) protokol pembagian data anti-kebocoran
+berbasis \textit{bunch\_id}; dan (3) bukti empiris bahwa federasi tidak
+menurunkan kualitas penjelasan secara signifikan dibanding pelatihan tersentral.
+
+%==============================================================================
+\section{Tinjauan Pustaka}
+%==============================================================================
+\subsection{Deteksi Kematangan Kelapa Sawit}
+\tbd{1 paragraf: ringkas 3--4 studi deteksi/klasifikasi kematangan sawit
+terdahulu; tekankan mayoritas mengasumsikan pelatihan terpusat dan tidak
+mengevaluasi keterjelasan secara kuantitatif---celah yang diisi paper ini.}
+
+\subsection{Federated Learning}
+FedAvg~\cite{fedavg} mengagregasi pembaruan model lokal terbobot ukuran data;
+skenario \textit{cross-silo}~\cite{kairouz2021} cocok untuk konsorsium
+perkebunan. Heterogenitas antar-kebun disimulasikan dengan partisi
+Dirichlet~\cite{hsu2019}.
+
+\subsection{Explainable AI dan Metrik Faithfulness}
+Grad-CAM~\cite{gradcam} dan penyempurnaannya Grad-CAM++~\cite{gradcampp}, yang
+lebih akurat saat terdapat banyak instans objek sejenis---kondisi lazim pada
+citra TBS. Kualitas penjelasan diukur via \textit{Average Drop} dan \textit{Focus
+Retention Rate}.
+
+%==============================================================================
+\section{Metodologi}
+%==============================================================================
+\subsection{Dataset dan Pembagian Anti-Kebocoran}
+Dataset terdiri atas 10.814 citra dari 89 tandan unik dengan anotasi enam kelas:
+\textit{Abnormal}, \textit{Empty Bunch}, \textit{Overripe}, \textit{Ripe},
+\textit{Underripe}, \textit{Unripe}. Karena beberapa citra berasal dari tandan
+yang sama, pembagian acak biasa berisiko membocorkan tandan ke \textit{train}
+dan \textit{test} sekaligus. Penelitian ini menerapkan pembagian terstratifikasi
+berbasis \textit{bunch\_id} pada tingkat tandan (Tabel~\ref{tab:split}), dengan
+audit memastikan nol irisan tandan antar-split.
+
+\begin{table}[t]
+\centering
+\caption{Pembagian data anti-kebocoran berbasis \textit{bunch\_id}.}
+\label{tab:split}
+\begin{tabular}{lrr}
+\toprule
+Split & Citra & Tandan \\
+\midrule
+Train & 9.094 & 72 \\
+Valid & 769 & 8 \\
+Test  & 951 & 9 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Partisi Federasi dan Pelatihan}
+Data \textit{train} dipartisi ke \tbd{K, mis. 4} klien dengan distribusi
+Dirichlet~\cite{hsu2019}. Detektor YOLOv11n (\textasciitilde2,6 juta parameter)
+diinisialisasi dari bobot pra-latih COCO; seluruh BatchNorm dikonversi menjadi
+GroupNorm agar konsisten dengan jalur eksperimen privasi penulis~\cite{paperA}.
+Pelatihan federasi memakai FedAvg, lima ronde komunikasi, dua epoch lokal per
+ronde (SGD, \textit{lr}~0,01, batch~16, citra~640$\times$640). Pembanding
+tersentral dilatih 50 epoch. Aspek \textit{Differential Privacy} ditangani dan
+dianalisis pada publikasi pendahuluan penulis~\cite{paperA}, sehingga tidak
+diulang di sini.
+
+\subsection{Evaluasi Keterjelasan}
+Grad-CAM++ diterapkan pada lapisan konvolusi terakhir sebelum kepala deteksi.
+Pada $N=$\tbd{jumlah} citra uji dihitung, per-kelas dan global:
+\textit{Average Drop} (AD; makin rendah makin baik) dan \textit{Focus Retention
+Rate} (FRR; proporsi intensitas \textit{heatmap} di dalam \textit{bounding box}
+buah, sekaligus proksi kesesuaian agronomis).
+
+%==============================================================================
+\section{Hasil dan Pembahasan}
+%==============================================================================
+\subsection{Akurasi Deteksi}
+Tabel~\ref{tab:acc} menyajikan akurasi model federasi dibanding pembanding
+tersentral. \tbd{1 kalimat: berapa selisih/biaya FL, dan apakah masih berguna.}
+
+\begin{table}[t]
+\centering
+\caption{Akurasi deteksi pada himpunan uji.}
+\label{tab:acc}
+\begin{tabular}{lrrrr}
+\toprule
+Model & mAP@0,5 & mAP@0,5:0,95 & P & R \\
+\midrule
+Tersentral (acuan) & 0,787 & 0,672 & 0,815 & 0,833 \\
+Federasi (FedAvg) & \tbd{} & \tbd{} & \tbd{} & \tbd{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Kualitas Penjelasan Per-Kelas (Kontribusi Inti)}
+Tabel~\ref{tab:xai} memuat AD dan FRR per-kelas kematangan.
+\tbd{2 paragraf: kelas mana paling andal dijelaskan (mis. Ripe/Overripe karena
+isyarat warna kuat) vs paling lemah (mis. Abnormal/Empty Bunch); kaitkan dengan
+isyarat agronomis warna kulit, brondolan, tekstur; nilai aplikatif: operator
+lebih waspada pada kelas dengan penjelasan lemah.}
+
+\begin{table}[t]
+\centering
+\caption{Faithfulness Grad-CAM++ per-kelas (AD: \%, makin rendah makin baik;
+FRR: 0--1, makin tinggi makin baik).}
+\label{tab:xai}
+\begin{tabular}{lrr}
+\toprule
+Kelas & AD (\%) & FRR \\
+\midrule
+Unripe & \tbd{} & \tbd{} \\
+Underripe & \tbd{} & \tbd{} \\
+Ripe & \tbd{} & \tbd{} \\
+Overripe & \tbd{} & \tbd{} \\
+Empty Bunch & \tbd{} & \tbd{} \\
+Abnormal & \tbd{} & \tbd{} \\
+\midrule
+\textbf{Global} & \tbd{} & \tbd{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Pengaruh Federasi terhadap Keterjelasan}
+\tbd{1 paragraf: bandingkan AD/FRR federasi vs tersentral; jika selisih kecil
+maka federasi tidak merusak keterjelasan---temuan utama yang memperkuat
+kelayakan FL untuk pendukung keputusan.}
+
+\subsection{Analisis Kualitatif}
+Gambar~\ref{fig:xai} menampilkan \textit{heatmap} Grad-CAM++ representatif per
+kelas. \tbd{diskusi: sorotan jatuh pada permukaan buah/brondolan (benar) atau
+latar (salah).}
+
+\begin{figure}[t]
+\centering
+% Ganti dengan figures/xai_per_class.png hasil evaluate_xai / pembuatan figur.
+\fbox{\parbox[c][3.2cm][c]{0.9\linewidth}{\centering \tbd{sisipkan
+figures/xai\_per\_class.png}}}
+\caption{Penjelasan Grad-CAM++ per kelas kematangan TBS.}
+\label{fig:xai}
+\end{figure}
+
+%==============================================================================
+\section{Kesimpulan}
+%==============================================================================
+\tbd{1 paragraf} Penelitian ini menunjukkan deteksi kematangan TBS enam kelas
+berbasis \textit{Federated Learning} dapat mencapai akurasi \tbd{kategori}
+sekaligus mempertahankan keterjelasan yang \tbd{tinggi/memadai} menurut metrik
+\textit{faithfulness} Grad-CAM++. Analisis per-kelas mengungkap bahwa \tbd{}.
+Federasi \tbd{tidak/sedikit} menurunkan kualitas penjelasan dibanding pelatihan
+tersentral, sehingga FL layak menjadi fondasi pendukung keputusan panen yang
+menjaga privasi data antar-kebun. Penelitian lanjut mencakup integrasi DP-SGD
+penuh~\cite{paperA}, validasi multi-kebun nyata, dan \textit{deployment} edge.
+
+%==============================================================================
+\section*{Ucapan Terima Kasih}
+\tbd{opsional}
+
+%==============================================================================
+\begin{thebibliography}{99}
+\bibitem{usda2024} USDA FAS, \textit{Oilseeds: World Markets and Trade}, 2024.
+\bibitem{junos2022} M. H. Junos \textit{et al.}, ``Automatic detection of oil
+palm fruits from UAV images using an improved YOLO model,'' \textit{The Visual
+Computer}, vol.~38, 2022.
+\bibitem{sabri2017} N. Sabri \textit{et al.}, ``Palm oil FFB ripeness grading
+using color features,'' \textit{J. Fundam. Appl. Sci.}, 2017.
+\bibitem{yolov11} R. Khanam and M. Hussain, ``YOLOv11: An Overview of the Key
+Architectural Enhancements,'' arXiv:2410.17725, 2024.
+\bibitem{fedavg} B. McMahan \textit{et al.}, ``Communication-Efficient Learning
+of Deep Networks from Decentralized Data,'' in \textit{AISTATS}, 2017.
+\bibitem{kairouz2021} P. Kairouz \textit{et al.}, ``Advances and Open Problems
+in Federated Learning,'' \textit{Found. Trends Mach. Learn.}, 2021.
+\bibitem{hsu2019} T.-M. H. Hsu \textit{et al.}, ``Measuring the Effects of
+Non-Identical Data Distribution for Federated Visual Classification,''
+arXiv:1909.06335, 2019.
+\bibitem{gradcam} R. R. Selvaraju \textit{et al.}, ``Grad-CAM: Visual
+Explanations from Deep Networks via Gradient-based Localization,'' in
+\textit{ICCV}, 2017.
+\bibitem{gradcampp} A. Chattopadhyay \textit{et al.}, ``Grad-CAM++: Generalized
+Gradient-Based Visual Explanations for Deep CNNs,'' in \textit{WACV}, 2018.
+\bibitem{paperA} [Penulis], ``FedX-Palm: Per-Sample DP-SGD versus Client-Level
+DP-FedAvg for Privacy-Preserving Oil Palm Ripeness Detection on YOLOv11,''
+\tbd{venue Scopus Q3 / status}.
+\end{thebibliography}
+
+\end{document}
