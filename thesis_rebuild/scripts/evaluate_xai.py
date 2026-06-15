@@ -49,6 +49,25 @@ from xai.explainer import (  # noqa: E402
 CLASS_NAMES = ["Abnormal", "Empty Bunch", "Overripe", "Ripe", "Underripe", "Unripe"]
 
 
+def pick_target_layer(detection_model) -> str:
+    """Name of the last Conv2d that is NOT inside the Detect head.
+
+    YOLOv11 has a decoupled head: the box/DFL branch is separate from the
+    class branch. The absolute-last Conv2d lives in the box/DFL branch, so
+    the gradient of a CLASS score w.r.t. it is zero -> Grad-CAM++ produces an
+    all-zero heatmap (the FRR=0 / blank-map symptom). Hooking the last shared
+    neck conv (before the head) restores class-gradient flow.
+    """
+    import torch.nn as nn
+    seq = detection_model.model            # nn.Sequential of layers 0..N
+    head_prefix = f"model.{len(seq) - 1}"  # the final module = Detect head
+    last_name = None
+    for name, m in detection_model.named_modules():
+        if isinstance(m, nn.Conv2d) and not name.startswith(head_prefix):
+            last_name = name
+    return last_name
+
+
 def load_model(weights: str, device: str) -> YOLO:
     """Rebuild a GN YOLO from a federated checkpoint, or load B1 directly."""
     ckpt = torch.load(weights, map_location=device, weights_only=False)
@@ -157,7 +176,9 @@ def main() -> None:
     device = args.device if torch.cuda.is_available() else "cpu"
     yolo = load_model(args.weights, device)
 
-    cam = GradCAMPlusPlus(yolo)
+    target_name = pick_target_layer(yolo.model)
+    print(f"[xai] target layer (last shared conv before head): {target_name}")
+    cam = GradCAMPlusPlus(yolo, target_layer=target_name)
     ad_metric = AverageDrop(yolo)
     frr_metric = FocusRetentionRate()
 
