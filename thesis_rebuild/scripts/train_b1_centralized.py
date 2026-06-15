@@ -100,7 +100,7 @@ def main() -> None:
         seed=args.seed,
         plots=True,
         save=True,
-        exist_ok=False,
+        exist_ok=True,
     )
 
     print()
