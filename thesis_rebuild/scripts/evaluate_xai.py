@@ -249,7 +249,7 @@ def main() -> None:
         frr = frr_metric.compute_batch(heat_c, boxes_c)
         rows.append({
             "class_id": cls, "class": CLASS_NAMES[cls], "n": len(imgs_c),
-            "average_drop": round(ad.get("average_drop", float("nan")), 2),
+            "average_drop": round(ad.get("average_drop_pct", float("nan")), 2),
             "frr": round(frr.get("mean_frr", float("nan")), 4),
         })
         all_imgs += imgs_c; all_heat += heat_c; all_boxes += boxes_c
@@ -261,7 +261,7 @@ def main() -> None:
         frr_g = frr_metric.compute_batch(all_heat, all_boxes)
         rows.append({
             "class_id": -1, "class": "GLOBAL", "n": len(all_imgs),
-            "average_drop": round(ad_g.get("average_drop", float("nan")), 2),
+            "average_drop": round(ad_g.get("average_drop_pct", float("nan")), 2),
             "frr": round(frr_g.get("mean_frr", float("nan")), 4),
         })
 
