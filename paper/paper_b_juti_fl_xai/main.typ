@@ -82,7 +82,7 @@ Distinct from the authors' prior work that characterizes the behavior of differe
 
 == Vision-Based Oil Palm Ripeness Assessment
 
-Several studies have investigated automated palm ripeness assessment using deep learning. Color-feature classifiers @sabri2017 preceded modern CNN approaches. Junos et al. @junos2022 applied a YOLO variant on UAV imagery for fruit-level detection. #tbd("add 2-3 more recent studies with one-line summaries"). A common limitation across these works is the assumption of centralized training and the use of only a single mAP number for validation -- neither the trustworthiness of the visual explanation nor the privacy implications of centralized aggregation is examined. The present work addresses both gaps.
+Several studies have investigated automated palm ripeness assessment using deep learning. Color-feature classifiers @sabri2017 preceded modern CNN approaches. Junos et al. @junos2022 applied a YOLO variant on UAV imagery for fruit-level detection. Herman et al. @herman2021deep classified FFB ripeness with a DenseNet backbone, and Elwirehardja et al. @elwirehardja2021oil deployed lightweight deep models on mobile devices for in-field classification; more recently, Puttinaovarat et al. @puttinaovarat2024oil integrated FFB ripeness classification with a geospatial plantation-verification platform. A common limitation across these works is the assumption of centralized training and the use of only a single mAP or top-1 number for validation -- neither the trustworthiness of the visual explanation nor the privacy implications of centralized aggregation is examined. The present work addresses both gaps.
 
 == Federated Learning for Cross-Silo Scenarios
 
@@ -225,7 +225,7 @@ To isolate whether federation itself harms explanation quality, the identical Gr
 // quantitative FRR/AD results, so this refinement is optional.
 
 #figure(
-  image("figures/xai_per_class.png", width: 90%),
+  image("xai_per_class.png", width: 90%),
   caption: [Representative Grad-CAM++ heatmaps for the six ripeness classes. Highlight intensity (red = high) indicates the image regions most influential to the per-class prediction.],
 ) <img-xai>
 
@@ -249,7 +249,7 @@ The authors declare that they have no known competing financial interests or per
 
 = Acknowledgement
 
-#tbd("optional: funding/thanks, or remove this section")
+The authors thank the Department of #tbd("department name") at #tbd("Universitas ...") for computing resources used in this study. The first author thanks the thesis supervisors, #tbd("Favian's full name with title, e.g., Favian ... S.Kom., M.Kom.") and #tbd("Teddy's full name with title, e.g., Prof. Teddy ..., Ph.D."), for their guidance throughout the research.
 
 = Declaration of Generative AI and AI-assisted Technologies in the Writing Process
 
