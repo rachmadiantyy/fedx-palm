@@ -161,14 +161,21 @@ def main() -> None:
     ad_metric = AverageDrop(yolo)
     frr_metric = FocusRetentionRate()
 
-    images = list_test_images(args.data)[: args.n_images]
-    print(f"[data] scoring {len(images)} test images")
+    # Shuffle BEFORE truncating: the test set is grouped by bunch, so the
+    # first N images all belong to the same 1-2 bunches (same class). A seeded
+    # shuffle spreads the sample across all classes.
+    all_imgs_list = list_test_images(args.data)
+    import random
+    random.Random(42).shuffle(all_imgs_list)
+    images = all_imgs_list[: args.n_images]
+    print(f"[data] scoring {len(images)} of {len(all_imgs_list)} test images (shuffled)")
 
     # Accumulate per class: images, heatmaps, bbox lists
     per_cls_imgs: dict[int, list[np.ndarray]] = {}
     per_cls_heat: dict[int, list[np.ndarray]] = {}
     per_cls_boxes: dict[int, list[list[list[int]]]] = {}
     per_cls_repr: dict[int, tuple] = {}  # one (img, heatmap) per class for Fig. 1
+    dbg = 0
 
     for i, img_path in enumerate(images):
         img = cv2.imread(str(img_path))
@@ -188,6 +195,14 @@ def main() -> None:
                 continue
             if expl.heatmap is None:
                 continue
+            # Diagnostic for the first few: shows whether heatmaps are real
+            # (max>0) or degenerate (max==0 -> near-zero class score/gradient).
+            if dbg < 8:
+                conf = ad_metric._get_confidence(img, cls)
+                print(f"  dbg cls={CLASS_NAMES[cls]:<11} "
+                      f"heatmap_max={float(expl.heatmap.max()):.4f} "
+                      f"model_conf={conf:.4f}")
+                dbg += 1
             per_cls_imgs.setdefault(cls, []).append(img)
             per_cls_heat.setdefault(cls, []).append(expl.heatmap)
             per_cls_boxes.setdefault(cls, []).append(boxes)
