@@ -189,26 +189,6 @@ Test (held out)& 951     & 9 \\
 \subsection{Non-IID Federation Setup}
 The training partition is divided among $K = 4$ clients using a Dirichlet distribution with per-client concentration parameters spanning $\alpha = 0.1$ (highly skewed) to $\alpha = 0.8$ (near uniform), simulating realistic heterogeneity across estates~\cite{hsu2019, zhao2018noniid}. Validation and test partitions are kept global so that metrics are directly comparable across configurations.
 
-To substantiate the Non-IID claim quantitatively, we report two heterogeneity statistics on the per-client class distribution (Table~\ref{tab:noniid}): a Chi-Square test of independence on the $K \times C$ count matrix, and the mean pairwise Jensen--Shannon Divergence (JSD, base 2, range $[0,1]$). For our $K{=}4$ partition we obtain $\chi^2 = $~\fill{X.XX}, $\mathrm{df} = $~\fill{N}, $p < $~\fill{1e-X}, and mean JSD $= $~\fill{0.XXX}, confirming that class proportions differ significantly across clients.
-
-\begin{table}[!t]
-\centering
-\caption{Per-client class proportions for the $K=4$ Dirichlet partition. Run \texttt{quantify\_noniid.py --K 4} to populate.}
-\label{tab:noniid}
-\setlength{\tabcolsep}{3pt}
-\scriptsize
-\begin{tabular}{lcccccc}
-\toprule
-Client & Abn. & E.Bunch & Over. & Ripe & Under. & Unripe \\
-\midrule
-1 & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} \\
-2 & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} \\
-3 & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} \\
-4 & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
 \subsection{Detector and BN-to-GN Conversion}
 The base detector is YOLOv11n (approximately 2.6M parameters), initialized from COCO pre-trained weights~\cite{coco, yolov11}. YOLOv11 adopts a backbone--neck--head structure (Fig.~\ref{fig:yolov11}) built from C3k2 cross-stage-partial blocks, Spatial Pyramid Pooling-Fast (SPPF), and a decoupled detection head with separate branches for bounding-box regression (trained with CIoU~\cite{zheng2020diou} and Distribution Focal Loss~\cite{lin2017focalloss}) and classification.
 
