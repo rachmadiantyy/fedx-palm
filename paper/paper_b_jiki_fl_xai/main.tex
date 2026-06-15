@@ -1,0 +1,302 @@
+%%==============================================================================
+%% Paper B (JIKI version) -- Jurnal Ilmu Komputer dan Informasi, FASILKOM UI
+%%
+%% TARGET: JIKI UI (SINTA 2). Uses the official JIKI/IEEEtran template
+%% (mainTemplate_JIKI.tex). The companion .cls/.sty files (IEEEtran.cls,
+%% algorithm2e.sty, balance.sty, caption.sty, cite.sty, import.sty,
+%% IEEEabrv.bib, IEEEexample.bib) must sit next to this file --
+%% they're shipped in the JIKI Author Guideline zip.
+%%
+%% HOW TO COMPILE:
+%%   pdflatex main
+%%   bibtex   main
+%%   pdflatex main
+%%   pdflatex main
+%%
+%% FILL-IN CHECKLIST (search for FILL: in this file):
+%%   - author names + affiliations + emails
+%%   - section II.A: 2-3 recent palm papers are CITED but verify availability
+%%   - acknowledgement: supervisor full names (FILL: Favian, Teddy)
+%%   - section heading for Bahasa abstract (optional, currently commented out)
+%%==============================================================================
+\documentclass[conference, compsoc, twoside]{IEEEtran}
+
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[labelsep=period,labelfont=bf,justification=justified,font=small]{caption}
+\usepackage{balance}
+\usepackage{graphicx}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{algorithm2e}
+\usepackage{url}
+\usepackage{xcolor}
+
+% Placeholder marker for items the author still has to fill (renders RED).
+\newcommand{\fill}[1]{\textcolor{red}{\textbf{[FILL: #1]}}}
+
+\def\figurename{Fig.}%
+\def\tablename{Table}%
+
+\begin{document}
+
+\title{Cross-Silo Federated Learning with Per-Class Grad-CAM++ Faithfulness for Six-Class Oil Palm Ripeness Detection}
+
+\author{\IEEEauthorblockN{\fill{First Author}\textsuperscript{1}, \fill{Second Author}\textsuperscript{1}, \fill{Third Author}\textsuperscript{2}}
+\IEEEauthorblockA{%
+    \normalfont \textsuperscript{1} \fill{Department, Faculty, University, Address, City, Zip Code, Country}\\
+    \textsuperscript{2} \fill{Research Group, Institution, Address, City, Zip Code, Country}\\
+    \textit{Email:} \fill{first.author@address}, \fill{second.author@address}, \fill{third.author@address}
+} \\
+}
+
+\twocolumn[
+{\csname @twocolumnfalse\endcsname \maketitle}
+{\csname @twocolumnfalse\endcsname
+    \renewcommand{\abstractname}{Abstract}
+    \begin{abstract}
+        \noindent
+        \normalfont
+        Oil palm fresh fruit bunch (FFB) ripeness assessment is a high-value computer-vision task, but plantation imagery is commercially sensitive, blocking centralized aggregation. We study whether cross-silo federated learning (FL) can deliver six-class FFB ripeness detection that is simultaneously accurate and explainable enough for harvest decision support. A YOLOv11n detector is trained federatively with FedAvg over five communication rounds on Non-IID Dirichlet partitions of a leakage-free bunch-identity split (9{,}094 train / 769 val / 951 test images from 89 unique bunches). All BatchNorm layers are converted to GroupNorm for compatibility with per-sample gradient methods. Explanation quality is then measured via Grad-CAM++ using two complementary faithfulness metrics computed per class and globally: an occlusion-based Average Drop (AD) and a Focus Retention Rate (FRR) that doubles as agronomic alignment. The federated model attains mAP\@0.5 = 0.738 (centralized reference 0.787, FL cost $\approx 6\%$); global AD = 15.9\% and FRR = 0.281, both exceeding the centralized references (AD = 4.95\%, FRR = 0.182). Per-class analysis reveals colour-driven classes are best localized on the fruit, whereas the Abnormal class consistently has the lowest faithfulness and warrants manual review. The results indicate that federation does not degrade explanation quality on this task.
+        \\\\
+        \noindent
+        \textbf{Keywords}: \textit{federated learning, Grad-CAM++, explainable AI, oil palm ripeness, YOLOv11}
+        \\\\
+    \end{abstract}
+
+    %\renewcommand{\abstractname}{Abstrak}
+    %\begin{abstract}
+    %  \noindent
+    %  \normalfont
+    %  \fill{Optional: Bahasa Indonesia abstract (200 words). Hapus blok ini bila tidak dipakai.}
+    %  \\\\
+    %  \noindent
+    %  \textbf{Kata Kunci}: \textit{pembelajaran federasi, Grad-CAM++, XAI, kematangan sawit, YOLOv11}
+    %  \\\\
+    %\end{abstract}
+}
+]
+
+\IEEEpeerreviewmaketitle
+\thispagestyle{firststyle}
+
+%==============================================================================
+\section{Introduction}
+%==============================================================================
+The oil palm industry is a cornerstone of Indonesian and Malaysian agribusiness, jointly contributing over 85\% of global palm oil supply~\cite{usda2024}. At the operational level, the timing of fresh fruit bunch (FFB) harvest is the single most influential decision: bunches harvested too early contain insufficient mesocarp oil, whereas late-harvested bunches accumulate Free Fatty Acid (FFA), degrading Crude Palm Oil (CPO) quality. Industry practice distinguishes six commercially relevant ripeness classes: \emph{Unripe}, \emph{Underripe}, \emph{Ripe}, \emph{Overripe}, \emph{Empty Bunch}, and \emph{Abnormal}~\cite{junos2022}. Manual assessment by harvest foremen has reported misclassification rates of 15--25\% under suboptimal lighting~\cite{sabri2017}.
+
+Modern object detectors from the YOLO family~\cite{yolo_redmon, yolov11} can localize and classify multiple bunches per frame in real time, but training competitive detectors requires diverse imagery across seasons, lighting, and geographies. Centralizing such imagery clashes with a practical reality: plantation images are commercially sensitive---revealing block locations, production volumes, and operational practices---and estates are reluctant to ship raw data to a shared server.
+
+Federated learning (FL)~\cite{fedavg, li2020federated} addresses this constraint architecturally. Multiple estates collaboratively learn a shared global model $w$ by exchanging only parameter updates with an aggregator, leaving raw imagery on local infrastructure. In the taxonomy of Kairouz \emph{et al.}~\cite{kairouz2021}, a plantation consortium fits the \emph{cross-silo} regime: few clients ($K$ small), each with large data, with stable availability.
+
+Accuracy alone, however, is not sufficient for field adoption. An agricultural decision-support system must be \emph{trustworthy}: an operator needs to understand \emph{why} the model labels a bunch as ripe or overripe. Without auditable visual explanations, predictions risk being either rejected outright or trusted uncritically---both failure modes carry direct economic cost. Explainable-AI (XAI) methods such as Grad-CAM~\cite{gradcam} and its detector-friendly extension Grad-CAM++~\cite{gradcampp} produce class-discriminative heatmaps, and the quality of such heatmaps can be quantified through perturbation-based \emph{faithfulness} metrics~\cite{petsiuk2018}.
+
+Distinct from our prior work that characterizes the behaviour of Differential Privacy on this detector~\cite{paperA}, the present study addresses an application-oriented question: \emph{can cross-silo FL deliver oil palm ripeness detection that is simultaneously accurate and explainable enough to serve as a credible harvest decision-support tool?} The contributions are:
+\begin{enumerate}
+\item A formal cross-silo FL pipeline for YOLOv11n on six-class FFB ripeness, with all BatchNorm layers converted to GroupNorm~\cite{groupnorm} for compatibility with per-sample gradient methods (Section~\ref{sec:method}).
+\item A leakage-free \emph{bunch-identity}-stratified data split protocol that prevents per-bunch leakage typical of FFB datasets (Section~\ref{sec:dataset}).
+\item A per-class Grad-CAM++ faithfulness evaluation using two complementary metrics (occlusion-based AD and FRR), together with a direct centralized-vs-federated comparison showing that federation does not degrade explanation quality on this task (Section~\ref{sec:results}).
+\end{enumerate}
+
+%==============================================================================
+\section{Related Work}
+%==============================================================================
+
+\subsection{Vision-Based Oil Palm Ripeness Assessment}
+Color-feature classifiers~\cite{sabri2017} preceded modern CNN approaches. Junos \emph{et al.}~\cite{junos2022} applied an improved YOLO variant on UAV imagery for fruit-level detection. Herman \emph{et al.}~\cite{herman2021deep} classified FFB ripeness with a DenseNet backbone, and Elwirehardja \emph{et al.}~\cite{elwirehardja2021oil} deployed lightweight deep models on mobile devices for in-field classification. More recently, Puttinaovarat \emph{et al.}~\cite{puttinaovarat2024oil} integrated FFB ripeness classification with a geospatial plantation-verification platform. A common limitation across these works is the assumption of centralized training and the use of a single mAP or top-1 number for validation; neither the trustworthiness of visual explanations nor the privacy implications of centralized aggregation is examined. The present work closes both gaps.
+
+\subsection{Federated Learning for Cross-Silo Scenarios}
+McMahan \emph{et al.}~\cite{fedavg} introduced the canonical FedAvg algorithm: clients perform local stochastic gradient descent (SGD) and the server aggregates updates by data-size-weighted averaging. The cross-silo FL regime characterized by Kairouz \emph{et al.}~\cite{kairouz2021} and surveyed by Li \emph{et al.}~\cite{li2020federated} is exactly the plantation-consortium setting: few clients with stable participation and large local data. Data heterogeneity across sites is commonly simulated via Dirichlet partitioning~\cite{hsu2019}, where a per-client concentration parameter $\alpha$ controls class imbalance. Formal privacy guarantees can be layered on top via differentially-private SGD~\cite{abadi2016}, which we treat in detail in our companion paper~\cite{paperA}.
+
+\subsection{Explainable AI and Faithfulness Metrics}
+Grad-CAM~\cite{gradcam} weights each feature-map channel by the spatially-averaged gradient of the target-class score, producing a class activation heatmap. Grad-CAM++~\cite{gradcampp} refines this by using a weighted combination of \emph{positive} partial derivatives, producing sharper localization when multiple instances of the same class appear in a frame---a condition routinely met in FFB imagery containing several bunches. Faithfulness of an explanation is typically assessed via perturbation-based protocols~\cite{petsiuk2018}: occlude or retain the highlighted region, then measure the change in the model's confidence. Two such metrics---Average Drop (AD) and Focus Retention Rate (FRR)---are formalized in Section~\ref{sec:metrics}.
+
+%==============================================================================
+\section{Methodology}
+\label{sec:method}
+%==============================================================================
+
+\subsection{Cross-Silo Federated Learning Formulation}
+We instantiate the cross-silo FL setting~\cite{kairouz2021}. Let $K$ clients each hold a disjoint local shard $\mathcal{D}_k$ of size $n_k$, with total $n = \sum_{k=1}^K n_k$. Denote by $F_k(w) = \frac{1}{n_k}\sum_{(x,y)\in \mathcal{D}_k} \ell(w; x, y)$ the local empirical risk under detector loss $\ell$. The global objective is the data-size-weighted average:
+\begin{equation}
+\min_{w \in \mathbb{R}^d} \; f(w) \;=\; \sum_{k=1}^{K} \frac{n_k}{n}\, F_k(w).
+\label{eq:fl-objective}
+\end{equation}
+
+The system operates in synchronous rounds. In each round $t \in \{1,\dots,T\}$, the server broadcasts the current global parameters $w_t$. Each client $k$ runs $E$ local epochs of mini-batch SGD on $\mathcal{D}_k$, producing local parameters $w_t^{(k)}$. The server then aggregates via FedAvg~\cite{fedavg}:
+\begin{equation}
+w_{t+1} \;=\; \sum_{k=1}^{K} \frac{n_k}{n}\, w_t^{(k)}.
+\label{eq:fedavg}
+\end{equation}
+Only model parameters traverse the network; raw imagery never leaves any client. Formal differential-privacy guarantees on the parameter exchange are out of scope here and are studied in our companion work~\cite{paperA, abadi2016}.
+
+\subsection{Dataset and Leakage-Free Split}
+\label{sec:dataset}
+The dataset is the palm-fruit-ripeness-detection collection (Roboflow, v2), comprising 10{,}814 images from 89 unique bunches with bounding-box annotations across the six ripeness classes listed above. Many frames in such collections originate from the \emph{same} bunch (different angles/distances). A naive random split risks assigning frames of one bunch to both training and test partitions, allowing the model to recognize the bunch rather than learn generalizable ripeness cues. We apply a \emph{stratified group split keyed by bunch\_id}: each bunch is assigned entirely to one partition; stratification preserves class balance. Table~\ref{tab:split} reports the resulting split. A leakage audit confirmed zero bunch-identity overlap between any two partitions.
+
+\begin{table}[!t]
+\centering
+\caption{Leakage-free dataset partition by bunch identity.}
+\label{tab:split}
+\begin{tabular}{lrr}
+\toprule
+Partition & Images & Unique bunches \\
+\midrule
+Train          & 9{,}094  & 72 \\
+Validation     & 769     & 8 \\
+Test (held out)& 951     & 9 \\
+\midrule
+\textbf{Total} & \textbf{10{,}814} & \textbf{89} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Non-IID Federation Setup}
+The training partition is divided among $K = 4$ clients using a Dirichlet distribution with per-client concentration parameters spanning $\alpha = 0.1$ (highly skewed) to $\alpha = 0.8$ (near uniform), simulating realistic heterogeneity across estates. Validation and test partitions are kept global so that metrics are directly comparable across configurations.
+
+\subsection{Detector and BN-to-GN Conversion}
+The base detector is YOLOv11n (approximately 2.6M parameters), initialized from COCO pre-trained weights~\cite{coco, yolov11}. All 81 BatchNorm layers are converted in place to GroupNorm~\cite{groupnorm} with eight groups per layer (auto-reduced when eight does not divide the channel count); the affine $(\gamma, \beta)$ parameters of each BatchNorm are copied to the corresponding GroupNorm to preserve the benefit of pre-trained initialization. This conversion is applied uniformly to both the federated model and the centralized reference, ensuring that any difference in measured quality is attributable to the federated optimization rather than to a normalization-layer mismatch. The conversion is also a prerequisite for the per-sample DP-SGD setup analyzed in our companion paper~\cite{paperA, abadi2016}, whose computation requires sample-independent normalization.
+
+\subsection{Federated Training Procedure}
+Training uses FedAvg~\eqref{eq:fedavg} over $T = 5$ communication rounds. Each round, every client performs $E = 2$ local epochs of SGD (learning rate $0.01$, momentum $0.937$, weight decay $5 \times 10^{-4}$, batch size 16, image size $640 \times 640$). The detector loss is the standard YOLOv11 composite of CIoU box regression (weight 7.5), classification (0.5), and Distribution Focal Loss (1.5). A centralized reference is trained for 50 epochs on the entire training partition under identical hyperparameters. The combined FL training and per-class faithfulness evaluation are summarized in Algorithm~\ref{alg:flxai}.
+
+\begin{algorithm}[!t]
+\small
+\caption{Federated training + per-class faithfulness evaluation}
+\label{alg:flxai}
+\KwIn{Client shards $\{\mathcal{D}_k\}_{k=1}^K$; test set $\mathcal{T}$; rounds $T$; local epochs $E$.}
+\KwOut{Global model $w_T$; per-class $(\mathrm{AD}_c, \mathrm{FRR}_c)$ and global $(\mathrm{AD}, \mathrm{FRR})$.}
+Initialize $w_0$ from COCO pre-trained weights; convert all BN $\rightarrow$ GN\;
+\For{$t = 1, \dots, T$}{
+    \ForEach{client $k = 1, \dots, K$ in parallel}{
+        $w_t^{(k)} \leftarrow \text{SGD}(w_{t-1}; \mathcal{D}_k, E\text{ epochs})$\;
+    }
+    $w_t \leftarrow \sum_{k=1}^K (n_k / n)\, w_t^{(k)}$ \tcp*{FedAvg}
+}
+\ForEach{class $c$ and image $i \in \mathcal{T}$ with class $c$}{
+    Compute Grad-CAM++ heatmap $H_i^c$ on the last shared conv before the detection head\;
+    Compute confidences $Y_i^c$ (original) and $O_i^c$ (with heatmap region $\geq 0.5$ occluded by mean pixel)\;
+}
+$\mathrm{AD}_c \leftarrow$ mean of $\max(0, Y_i^c - O_i^c)/Y_i^c \times 100\%$ over class-$c$ samples\;
+$\mathrm{FRR}_c \leftarrow$ mean of $\sum_{p \in \mathrm{ROI}} H_i^c(p) / \sum_{p} H_i^c(p)$\;
+\Return{$w_T$, $\{\mathrm{AD}_c, \mathrm{FRR}_c\}$, $\mathrm{AD}, \mathrm{FRR}$}\;
+\end{algorithm}
+
+\subsection{Grad-CAM++ Recap}
+For a target class $c$, let $A^k \in \mathbb{R}^{H \times W}$ be the activation of the $k$-th channel of the chosen feature map and let $Y^c$ be the (pre-softmax) class score. Grad-CAM++~\cite{gradcampp} weights each channel by
+\begin{equation}
+w_k^c \;=\; \sum_{i,j} \alpha_{ij}^{kc}\, \mathrm{ReLU}\!\left(\frac{\partial Y^c}{\partial A^k_{ij}}\right),
+\label{eq:gradcampp-weights}
+\end{equation}
+where the pixel-wise importance coefficients $\alpha_{ij}^{kc}$ derive from second- and third-order derivatives and emphasize regions of \emph{positive} contribution. The class activation map is then $L^c = \mathrm{ReLU}\!\left(\sum_k w_k^c\, A^k\right)$. We hook the last shared convolutional layer immediately before the decoupled detection head, so that class-score gradients propagate through the hooked feature map (hooking inside the box/DFL branch yields all-zero class gradients on YOLOv11's decoupled head).
+
+\subsection{Faithfulness Metrics}
+\label{sec:metrics}
+We compute two complementary metrics on $N = 200$ randomly sampled test images, globally and per class. We adopt an occlusion-based Average Drop in which the salient region (heatmap $\geq 0.5$) is replaced with the per-image mean pixel value and the resulting confidence change is measured; \emph{higher AD therefore indicates a more faithful explanation}:
+\begin{equation}
+\mathrm{AD} \;=\; \frac{1}{N} \sum_{i=1}^{N} \frac{\max(0, Y_i^c - O_i^c)}{Y_i^c} \times 100\%.
+\label{eq:ad}
+\end{equation}
+
+Focus Retention Rate (FRR) is the fraction of total heatmap intensity that falls inside the ground-truth fruit bounding boxes (higher is better):
+\begin{equation}
+\mathrm{FRR} \;=\; \frac{\sum_{p \in \mathrm{ROI}} H(p)}{\sum_{p \in \mathrm{Image}} H(p)},
+\label{eq:frr}
+\end{equation}
+where $H(p)$ is heatmap intensity at pixel $p$ and ROI is the union of ground-truth boxes for the target class. FRR thus measures both faithfulness and \emph{agronomic alignment}: does the model attend to the fruit, or to the background?
+
+%==============================================================================
+\section{Results and Discussion}
+\label{sec:results}
+%==============================================================================
+
+\subsection{Detection Accuracy}
+Table~\ref{tab:acc} compares the federated model ($K=4$) against the centralized reference on the held-out test set. The federated detector reaches mAP\@0.5 = 0.738, only $0.049$ ($\approx 6\%$) below the centralized upper bound of $0.787$. Both models sit in the \emph{acceptable} operating range for downstream decision support.
+
+\begin{table}[!t]
+\centering
+\caption{Detection performance on the held-out test set. FL cost = centralized $-$ federated.}
+\label{tab:acc}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccc}
+\toprule
+Model & mAP\@0.5 & mAP\@0.5:0.95 & P & R \\
+\midrule
+Centralized (ref.)     & 0.787 & 0.672 & 0.815 & 0.833 \\
+Federated (FedAvg, $K{=}4$) & 0.738 & 0.584 & 0.626 & 0.727 \\
+FL cost (abs.)         & 0.049 & 0.088 & 0.189 & 0.106 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Per-Class Faithfulness}
+Table~\ref{tab:xai} reports AD and FRR per ripeness class plus the global average over 344 class-instances across 200 images. The two metrics agree on the extremes. \emph{Unripe} and \emph{Empty Bunch} exhibit the highest FRR ($\approx 0.46$), meaning their heatmaps are tightly localized on the fruit; \emph{Ripe} and \emph{Underripe} show the highest occlusion sensitivity (AD $\approx 26\%$), meaning the highlighted region is highly decisive for those predictions. The weakest class on \emph{both} metrics is \emph{Abnormal} (AD = 7.45\%, FRR = 0.093): occluding the salient region barely changes the prediction, and most heatmap intensity falls outside the fruit boxes. This is agronomically plausible---\emph{Abnormal} bunches lack a single consistent localized cue and exhibit high intra-class visual variation, so the model's attention disperses onto the background. Operationally, \emph{Abnormal} predictions therefore warrant manual review, whereas the colour-driven ripeness classes can be acted on with higher automation confidence.
+
+\begin{table}[!t]
+\centering
+\caption{Per-class Grad-CAM++ faithfulness on the federated model. AD (occlusion-based): higher-is-better (\%). FRR: higher-is-better (0--1). $n$: class-instances scored.}
+\label{tab:xai}
+\begin{tabular}{lrrr}
+\toprule
+Class & $n$ & AD (\%) & FRR \\
+\midrule
+Abnormal    & 72  & 7.45  & 0.093 \\
+Empty Bunch & 20  & 20.90 & 0.462 \\
+Overripe    & 45  & 18.93 & 0.343 \\
+Ripe        & 124 & 26.29 & 0.292 \\
+Underripe   & 49  & 26.68 & 0.270 \\
+Unripe      & 34  & 15.71 & 0.463 \\
+\midrule
+\textbf{Global} & \textbf{344} & \textbf{15.90} & \textbf{0.281} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Federation vs. Centralized Faithfulness}
+To isolate whether federation itself harms explanation quality, the identical Grad-CAM++ protocol was applied to the centralized reference model on the same 200 test images. Table~\ref{tab:fedvscen} reports the global comparison. The federated model is \emph{not} degraded relative to the centralized one: its global occlusion-based AD is 15.9\% versus 4.95\%, and its global FRR is 0.281 versus 0.182. The higher federated AD means that federated predictions depend more decisively on a localized region; the higher FRR means that region lies more often on the fruit. Critically, both training regimes \emph{agree} on the hardest case: \emph{Abnormal} has the lowest FRR under either regime (0.093 federated, 0.078 centralized), confirming that this difficulty is intrinsic to the class rather than an artefact of federation. We therefore find no evidence that communication-constrained federation compromises explanation faithfulness, supporting the practical adoption of FL where raw-data sharing is constrained.
+
+\begin{table}[!t]
+\centering
+\caption{Global Grad-CAM++ faithfulness: centralized reference vs.\ federated model (same 200 test images). Federation does not degrade explanation quality.}
+\label{tab:fedvscen}
+\begin{tabular}{lcc}
+\toprule
+Global metric & Centralized & Federated \\
+\midrule
+AD (\%), higher better      & 4.95  & 15.90 \\
+FRR (0--1), higher better   & 0.182 & 0.281 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Qualitative Analysis}
+Fig.~\ref{fig:xai} shows representative Grad-CAM++ heatmaps, one per ripeness class. The qualitative maps corroborate the quantitative findings: for the colour-driven classes (e.g., Unripe and Empty Bunch), the high-intensity region concentrates on the fruit surface, mirroring their high FRR; for the Abnormal class, the activation is more diffuse and partly spills onto the surrounding canopy, consistent with its low FRR and AD.
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\linewidth]{xai_per_class.png}
+\caption{Representative Grad-CAM++ heatmaps for the six ripeness classes (panels (a)--(f)). Highlight intensity (red = high) indicates the image regions most influential to the per-class prediction.}
+\label{fig:xai}
+\end{figure}
+
+\subsection{Threats to Validity}
+A single dataset source bounds generalization; multi-estate validation across cultivars and climates is left to future work. Heatmap faithfulness is one operationalization of trustworthiness; complementary user studies with harvest foremen would strengthen the agronomic claim. FRR rewards heatmaps concentrated inside ground-truth boxes and may under-credit explanations that correctly attend to nearby cues such as fallen fruitlets; the per-class AD provides a complementary signal. Finally, the five-round FL budget reflects a \emph{communication-constrained} setting realistic for inter-estate consortia; lifting this constraint would reduce the FL cost reported in Table~\ref{tab:acc} but does not alter the relative explanation-quality finding.
+
+%==============================================================================
+\section{Conclusion}
+%==============================================================================
+We investigated whether cross-silo federated learning can deliver six-class oil palm ripeness detection that is simultaneously accurate and explainable enough to serve as a trustworthy harvest decision-support tool. On a leakage-free bunch-identity split, a federated YOLOv11n--GroupNorm detector trained with FedAvg attains mAP\@0.5 = 0.738, only $0.049$ below the centralized reference (0.787). The per-class Grad-CAM++ evaluation yields global AD = 15.9\% and FRR = 0.281, with the colour-driven ripeness classes the most faithfully explained and the \emph{Abnormal} class the least faithful on both metrics. Federation does not degrade explanation quality relative to the centralized reference, supporting the practical viability of privacy-preserving collaborative training for plantation consortia. Future work includes integration of per-sample differential privacy~\cite{paperA, abadi2016}, multi-estate validation, and edge-deployment benchmarks for in-field inference.
+
+%==============================================================================
+\section*{Acknowledgement}
+%==============================================================================
+The authors thank the \fill{Department of ..., Faculty of ..., Universitas ...} for providing computing resources used in this study. The first author thanks the thesis supervisors, \fill{Favian (full name with title)} and \fill{Teddy (full name with title)}, for their guidance throughout the research.
+
+\balance
+
+%==============================================================================
+% References
+%==============================================================================
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
