@@ -30,6 +30,8 @@
 \usepackage{algorithm2e}
 \usepackage{url}
 \usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, calc}
 
 % Placeholder marker for items the author still has to fill (renders RED).
 \newcommand{\fill}[1]{\textcolor{red}{\textbf{[FILL: #1]}}}
@@ -105,7 +107,7 @@ Distinct from our prior work that characterizes the behaviour of Differential Pr
 Color-feature classifiers~\cite{sabri2017} preceded modern CNN approaches. Junos \emph{et al.}~\cite{junos2022} applied an improved YOLO variant on UAV imagery for fruit-level detection. Herman \emph{et al.}~\cite{herman2021deep} classified FFB ripeness with a DenseNet backbone, and Elwirehardja \emph{et al.}~\cite{elwirehardja2021oil} deployed lightweight deep models on mobile devices for in-field classification. More recently, Puttinaovarat \emph{et al.}~\cite{puttinaovarat2024oil} integrated FFB ripeness classification with a geospatial plantation-verification platform. A common limitation across these works is the assumption of centralized training and the use of a single mAP or top-1 number for validation; neither the trustworthiness of visual explanations nor the privacy implications of centralized aggregation is examined. The present work closes both gaps.
 
 \subsection{Federated Learning for Cross-Silo Scenarios}
-McMahan \emph{et al.}~\cite{fedavg} introduced the canonical FedAvg algorithm: clients perform local stochastic gradient descent (SGD) and the server aggregates updates by data-size-weighted averaging. The cross-silo FL regime characterized by Kairouz \emph{et al.}~\cite{kairouz2021} and surveyed by Li \emph{et al.}~\cite{li2020federated} is exactly the plantation-consortium setting: few clients with stable participation and large local data. Data heterogeneity across sites is commonly simulated via Dirichlet partitioning~\cite{hsu2019}, where a per-client concentration parameter $\alpha$ controls class imbalance. Formal privacy guarantees can be layered on top via differentially-private SGD~\cite{abadi2016}, which we treat in detail in our companion paper~\cite{paperA}.
+McMahan \emph{et al.}~\cite{fedavg} introduced the canonical FedAvg algorithm: clients perform local stochastic gradient descent (SGD) and the server aggregates updates by data-size-weighted averaging. The cross-silo FL regime characterized by Kairouz \emph{et al.}~\cite{kairouz2021} and surveyed by Li \emph{et al.}~\cite{li2020federated} is exactly the plantation-consortium setting: few clients with stable participation and large local data. Data heterogeneity across sites is commonly simulated via Dirichlet partitioning~\cite{hsu2019}, where a per-client concentration parameter $\alpha$ controls class imbalance; Zhao \emph{et al.}~\cite{zhao2018noniid} document the resulting accuracy degradation. Beyond vanilla FedAvg, methods such as FedProx~\cite{li2020fedprox} and SCAFFOLD~\cite{karimireddy2020scaffold} mitigate client drift on highly non-IID data; we adopt vanilla FedAvg here because the focus is the per-class \emph{explainability} of the federated model rather than a horse race among aggregation schemes. Formal privacy guarantees can be layered on top via differentially-private SGD~\cite{abadi2016}, which we treat in detail in our companion paper~\cite{paperA}.
 
 \subsection{Explainable AI and Faithfulness Metrics}
 Grad-CAM~\cite{gradcam} weights each feature-map channel by the spatially-averaged gradient of the target-class score, producing a class activation heatmap. Grad-CAM++~\cite{gradcampp} refines this by using a weighted combination of \emph{positive} partial derivatives, producing sharper localization when multiple instances of the same class appear in a frame---a condition routinely met in FFB imagery containing several bunches. Faithfulness of an explanation is typically assessed via perturbation-based protocols~\cite{petsiuk2018}: occlude or retain the highlighted region, then measure the change in the model's confidence. Two such metrics---Average Drop (AD) and Focus Retention Rate (FRR)---are formalized in Section~\ref{sec:metrics}.
@@ -114,6 +116,40 @@ Grad-CAM~\cite{gradcam} weights each feature-map channel by the spatially-averag
 \section{Methodology}
 \label{sec:method}
 %==============================================================================
+
+Fig.~\ref{fig:flow} summarizes the end-to-end pipeline: the dataset is split by bunch identity to prevent leakage, partitioned into $K$ heterogeneous clients via Dirichlet sampling, used to train a YOLOv11n--GroupNorm detector federatively with FedAvg, and finally evaluated for per-class Grad-CAM++ faithfulness on the held-out test set. The detector's architectural change (BN $\rightarrow$ GN) is illustrated in Fig.~\ref{fig:yolov11}.
+
+\begin{figure}[!t]
+\centering
+\scriptsize
+\begin{tikzpicture}[
+  node distance=4pt and 6pt,
+  every node/.style={font=\scriptsize},
+  box/.style={draw, rounded corners=2pt, align=center, minimum height=6mm, inner sep=2pt, fill=blue!5},
+  data/.style={draw, rounded corners=2pt, align=center, minimum height=6mm, inner sep=2pt, fill=orange!10},
+  out/.style={draw, rounded corners=2pt, align=center, minimum height=6mm, inner sep=2pt, fill=green!10},
+  ->, >={Stealth[length=4pt]},
+]
+\node[data] (ds)  {Roboflow palm\\ 10{,}814 imgs, 89 bunches};
+\node[box, right=of ds] (split) {Bunch\_id\\ stratified split};
+\node[data, right=of split] (parts) {Train 9094 \\ Val 769 / Test 951};
+\node[box, below=of split] (dir) {Dirichlet($\alpha$)\\ $K$ clients};
+\node[box, below=of dir] (gn) {YOLOv11n + BN$\rightarrow$GN};
+\node[box, right=of gn] (fed) {FedAvg\\ $T{=}5$, $E{=}2$};
+\node[out, right=of fed] (model) {Global\\ best.pt};
+\node[box, below=of gn] (cam) {Grad-CAM++\\ last shared conv};
+\node[out, right=of cam] (eval) {Per-class\\ AD / FRR};
+\draw (ds) -- (split); \draw (split) -- (parts);
+\draw (split) -- (dir);
+\draw (dir) -- (gn);
+\draw (gn) -- (fed);
+\draw (fed) -- (model);
+\draw (model) |- (cam);
+\draw (cam) -- (eval);
+\end{tikzpicture}
+\caption{End-to-end research flow. Plantation imagery never leaves the client; only model parameters are aggregated.}
+\label{fig:flow}
+\end{figure}
 
 \subsection{Cross-Silo Federated Learning Formulation}
 We instantiate the cross-silo FL setting~\cite{kairouz2021}. Let $K$ clients each hold a disjoint local shard $\mathcal{D}_k$ of size $n_k$, with total $n = \sum_{k=1}^K n_k$. Denote by $F_k(w) = \frac{1}{n_k}\sum_{(x,y)\in \mathcal{D}_k} \ell(w; x, y)$ the local empirical risk under detector loss $\ell$. The global objective is the data-size-weighted average:
@@ -151,10 +187,80 @@ Test (held out)& 951     & 9 \\
 \end{table}
 
 \subsection{Non-IID Federation Setup}
-The training partition is divided among $K = 4$ clients using a Dirichlet distribution with per-client concentration parameters spanning $\alpha = 0.1$ (highly skewed) to $\alpha = 0.8$ (near uniform), simulating realistic heterogeneity across estates. Validation and test partitions are kept global so that metrics are directly comparable across configurations.
+The training partition is divided among $K = 4$ clients using a Dirichlet distribution with per-client concentration parameters spanning $\alpha = 0.1$ (highly skewed) to $\alpha = 0.8$ (near uniform), simulating realistic heterogeneity across estates~\cite{hsu2019, zhao2018noniid}. Validation and test partitions are kept global so that metrics are directly comparable across configurations.
+
+To substantiate the Non-IID claim quantitatively, we report two heterogeneity statistics on the per-client class distribution (Table~\ref{tab:noniid}): a Chi-Square test of independence on the $K \times C$ count matrix, and the mean pairwise Jensen--Shannon Divergence (JSD, base 2, range $[0,1]$). For our $K{=}4$ partition we obtain $\chi^2 = $~\fill{X.XX}, $\mathrm{df} = $~\fill{N}, $p < $~\fill{1e-X}, and mean JSD $= $~\fill{0.XXX}, confirming that class proportions differ significantly across clients.
+
+\begin{table}[!t]
+\centering
+\caption{Per-client class proportions for the $K=4$ Dirichlet partition. Run \texttt{quantify\_noniid.py --K 4} to populate.}
+\label{tab:noniid}
+\setlength{\tabcolsep}{3pt}
+\scriptsize
+\begin{tabular}{lcccccc}
+\toprule
+Client & Abn. & E.Bunch & Over. & Ripe & Under. & Unripe \\
+\midrule
+1 & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} \\
+2 & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} \\
+3 & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} \\
+4 & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} & \fill{} \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Detector and BN-to-GN Conversion}
-The base detector is YOLOv11n (approximately 2.6M parameters), initialized from COCO pre-trained weights~\cite{coco, yolov11}. All 81 BatchNorm layers are converted in place to GroupNorm~\cite{groupnorm} with eight groups per layer (auto-reduced when eight does not divide the channel count); the affine $(\gamma, \beta)$ parameters of each BatchNorm are copied to the corresponding GroupNorm to preserve the benefit of pre-trained initialization. This conversion is applied uniformly to both the federated model and the centralized reference, ensuring that any difference in measured quality is attributable to the federated optimization rather than to a normalization-layer mismatch. The conversion is also a prerequisite for the per-sample DP-SGD setup analyzed in our companion paper~\cite{paperA, abadi2016}, whose computation requires sample-independent normalization.
+The base detector is YOLOv11n (approximately 2.6M parameters), initialized from COCO pre-trained weights~\cite{coco, yolov11}. YOLOv11 adopts a backbone--neck--head structure (Fig.~\ref{fig:yolov11}) built from C3k2 cross-stage-partial blocks, Spatial Pyramid Pooling-Fast (SPPF), and a decoupled detection head with separate branches for bounding-box regression (trained with CIoU~\cite{zheng2020diou} and Distribution Focal Loss~\cite{lin2017focalloss}) and classification.
+
+\begin{figure}[!t]
+\centering
+\scriptsize
+\begin{tikzpicture}[
+  every node/.style={font=\scriptsize},
+  blk/.style={draw, rounded corners=2pt, minimum width=12mm, minimum height=5mm, align=center, inner sep=1.5pt},
+  bbb/.style={blk, fill=blue!8},
+  nck/.style={blk, fill=orange!10},
+  hed/.style={blk, fill=green!10},
+  bn/.style={blk, fill=red!18, font=\scriptsize\bfseries},
+  node distance=2pt and 3pt,
+]
+% backbone column
+\node[bbb] (b1) {Conv};
+\node[bbb, below=of b1] (b2) {C3k2};
+\node[bbb, below=of b2] (b3) {C3k2};
+\node[bbb, below=of b3] (b4) {SPPF};
+% normalization annotation
+\node[bn, right=8mm of b2.east] (bnnote) {81$\times$ BN\\ $\rightarrow$ GroupNorm};
+\draw[->,red,thick] (bnnote.west) -- (b2.east);
+\draw[->,red,thick,dashed] (bnnote.south west) -- (b3.east);
+% neck column
+\node[nck, right=18mm of b1] (n1) {Concat};
+\node[nck, below=of n1] (n2) {C3k2};
+\node[nck, below=of n2] (n3) {C2PSA};
+\node[nck, below=of n3] (n4) {Upsample};
+% head column
+\node[hed, right=of n1] (h1) {DFL+CIoU\\ box branch};
+\node[hed, below=of h1] (h2) {Cls branch};
+\node[hed, below=of h2] (h3) {Multi-scale\\ detections};
+% labels
+\node[above=2pt of b1, font=\scriptsize\bfseries] {Backbone};
+\node[above=2pt of n1, font=\scriptsize\bfseries] {Neck};
+\node[above=2pt of h1, font=\scriptsize\bfseries] {Head (decoupled)};
+% connectors (sketched)
+\draw[->] (b4) -- (n4);
+\draw[->] (n4) -- (n3);
+\draw[->] (n3) -- (n2);
+\draw[->] (n2) -- (n1);
+\draw[->] (n1.east) -- (h1.west);
+\draw[->] (n1.east) -- (h2.west);
+\draw[->] (h2) -- (h3);
+\draw[->] (h1) -- (h3);
+\end{tikzpicture}
+\caption{YOLOv11n backbone--neck--head schematic. Every BatchNorm in the network ($n{=}81$) is replaced in-place by GroupNorm to make per-sample gradients well-defined for the DP companion work~\cite{paperA} and to remove any normalization mismatch between centralized and federated runs.}
+\label{fig:yolov11}
+\end{figure}
+
+All 81 BatchNorm layers are converted in place to GroupNorm~\cite{groupnorm, li2021fedbn} with eight groups per layer (auto-reduced when eight does not divide the channel count); the affine $(\gamma, \beta)$ parameters of each BatchNorm are copied to the corresponding GroupNorm to preserve the benefit of pre-trained initialization. This conversion is applied uniformly to both the federated model and the centralized reference, ensuring that any difference in measured quality is attributable to the federated optimization rather than to a normalization-layer mismatch. The conversion is also a prerequisite for the per-sample DP-SGD setup analyzed in our companion paper~\cite{paperA, abadi2016}, whose computation requires sample-independent normalization.
 
 \subsection{Federated Training Procedure}
 Training uses FedAvg~\eqref{eq:fedavg} over $T = 5$ communication rounds. Each round, every client performs $E = 2$ local epochs of SGD (learning rate $0.01$, momentum $0.937$, weight decay $5 \times 10^{-4}$, batch size 16, image size $640 \times 640$). The detector loss is the standard YOLOv11 composite of CIoU box regression (weight 7.5), classification (0.5), and Distribution Focal Loss (1.5). A centralized reference is trained for 50 epochs on the entire training partition under identical hyperparameters. The combined FL training and per-class faithfulness evaluation are summarized in Algorithm~\ref{alg:flxai}.

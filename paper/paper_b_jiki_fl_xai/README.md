@@ -62,8 +62,33 @@ beserta semua `.cls`/`.sty` dari zip JIKI. Compiler **pdfLaTeX**.
 ## Daftar `\fill{...}` yang HARUS diisi sebelum submit
 
 1. **Author block** (3 author): nama, institusi, email.
+   *(Untuk first submission JIKI, biarkan anonim sesuai template.)*
 2. **Acknowledgement**: nama departemen + universitas; nama lengkap dua
    pembimbing tesis (Pak Favian dan Prof. Teddy, dari cover tesis).
+3. **Section 3.3 Non-IID statistics** (Chi-square + JSD + Tabel I) -- isi
+   dari output script:
 
-Setelah dua hal di atas, semua `\fill{}` lain di paper sudah terisi data
-nyata dari eksperimen 15-jam grid + XAI runs.
+   ```bash
+   python thesis_rebuild/scripts/quantify_noniid.py --K 4 \
+       --out thesis_rebuild/tables/noniid_K4.md
+   ```
+
+   Script melaporkan $\chi^2$, df, p, mean pairwise JSD, dan tabel
+   distribusi kelas per-klien -- semua angka yang dibutuhkan paper.
+
+## Apa yang ditambahkan vs versi awal JIKI
+
+Setelah memeriksa dua paper acuan JIKI (Riyadi 2026 untuk FL+IoT;
+Permana 2025 untuk YOLOv11+waste), ditambahkan empat hal untuk
+mencocokkan ekspektasi JIKI:
+
+- **Fig. 1 (TikZ flow diagram)** -- end-to-end pipeline alur: data
+  split -> Dirichlet partition -> BN$\rightarrow$GN -> FedAvg -> Grad-CAM++ ->
+  per-class AD/FRR. Visual sistem seperti Permana Fig. 2.
+- **Fig. 2 (TikZ YOLOv11 schematic)** -- backbone/neck/head dengan
+  highlight 81 BN $\rightarrow$ GroupNorm. Memperjelas arsitektur seperti
+  Permana Fig. 1.
+- **Section 3.3 quantification block** -- Chi-Square + JSD untuk
+  partisi $K=4$, mirip protokol Riyadi (Chi^2=240k, JSD>0.5).
+- **5 referensi tambahan**: FedBN, FedProx, SCAFFOLD, DIoU, Zhao
+  non-IID. References total ~21.
