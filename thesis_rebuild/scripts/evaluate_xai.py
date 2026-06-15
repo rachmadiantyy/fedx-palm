@@ -40,6 +40,9 @@ from ultralytics import YOLO  # noqa: E402
 from ultralytics.data.utils import check_det_dataset  # noqa: E402
 
 from thesis_rebuild.scripts.utils.fl_dp_loop import build_gn_yolo  # noqa: E402
+from thesis_rebuild.scripts.utils.gn_convert import (  # noqa: E402
+    disable_inplace_activations,
+)
 from xai.explainer import (  # noqa: E402
     GradCAMPlusPlus,
     AverageDrop,
@@ -84,6 +87,12 @@ def load_model(weights: str, device: str) -> YOLO:
     else:
         yolo = YOLO(weights)
         print(f"[model] loaded Ultralytics ckpt {weights}")
+    # Grad-CAM backward needs in-place ops OFF (in-place SiLU breaks the hook
+    # gradients); val/predict needs Conv+BN fusion neutralized (GroupNorm has
+    # no running stats). build_gn_yolo already does both for the federated
+    # branch; apply them here so the B1/Ultralytics branch is gradcam-safe too.
+    disable_inplace_activations(yolo.model)
+    yolo.model.fuse = lambda verbose=True: yolo.model
     yolo.model.to(device).eval()
     return yolo
 
