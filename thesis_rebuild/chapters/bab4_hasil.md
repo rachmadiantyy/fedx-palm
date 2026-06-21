@@ -71,35 +71,34 @@ hilir (Bagian 4.8).
 
 | $K$ | Ronde | mAP@0.5 | mAP@0.5:0.95 | *Precision* | *Recall* | $\Delta_\text{FL}$ | Status |
 |---|---|---|---|---|---|---|---|
-| 2  | 5  | 0,542 | 0,431 | 0,391 | 0,660 | 0,245 | *degraded* |
-| 4  | 5  | †     | †     | †     | †     | †     | †          |
+| 2  | 5  | 0,542     | 0,431 | 0,391 | 0,660 | 0,245     | *degraded*   |
+| 4  | 5  | 0,445     | 0,354 | 0,355 | 0,520 | 0,342     | *degraded*   |
 | 4  | 25 | **0,738** | 0,593 | 0,676 | 0,680 | **0,049** | *acceptable* |
-| 8  | 5  | 0,246 | 0,187 | 0,218 | 0,565 | 0,541 | *degraded* |
-| 12 | 5  | 0,248 | 0,187 | 0,191 | 0,703 | 0,539 | *degraded* |
-| 16 | 5  | 0,231 | 0,169 | 0,199 | 0,825 | 0,556 | *degraded* |
+| 8  | 5  | 0,246     | 0,187 | 0,218 | 0,565 | 0,541     | *degraded*   |
+| 12 | 5  | 0,248     | 0,187 | 0,191 | 0,703 | 0,539     | *degraded*   |
+| 16 | 5  | 0,231     | 0,169 | 0,199 | 0,825 | 0,556     | *degraded*   |
 
-> † Nilai 5-ronde untuk $K=4$ ter-*overwrite* oleh *run* 25-ronde dan
-> tidak direkonstruksi karena $K=4$ pada 25 ronde berfungsi sebagai
-> *operating point* terpisah, bukan titik kurva-$K$.
 > Sumber angka: `tables/b2_grid_map50.md` dan `tables/runs_master.csv`
-> (baris `exp=B2`).
+> (baris `exp=B2`). Nilai $K=4$ ronde 5 direkonstruksi dari `rounds.csv`
+> di folder `b2_fl_K4_seed42/` (ronde 1–5 saja, sebelum perpanjangan
+> menjadi 25 ronde).
 
 ### 4.2.2 Pembahasan B2
 
 Tiga observasi utama muncul dari Tabel 4.2.1.
 
 **Pertama**, pada anggaran komputasi yang sama (5 ronde × 2 *epoch* lokal
-= 10 *epoch* ekuivalen — seperlima dari B1), $K = 2$ mencapai mAP@0.5 =
-0,542 yang sudah jauh lebih baik daripada $K \ge 8$ yang stagnan di
-kisaran 0,23–0,25. Pola menurun monoton seiring $K$ membesar ini
+= 10 *epoch* ekuivalen — seperlima dari B1), kurva-$K$ memperlihatkan
+penurunan monoton yang jelas: $K = 2$ mencapai mAP@0.5 = 0,542; $K = 4$
+turun ke 0,445; lalu $K \ge 8$ stagnan di kisaran 0,23–0,25. Pola ini
 sejalan dengan literatur FL Non-IID [Hsu et al., 2019]: partisi
 Dirichlet yang lebih halus memperburuk *client drift*, memperlambat
 konvergensi global, dan menurunkan kontribusi efektif tiap pembaruan
 ke arah optimum sentralized.
 
 **Kedua**, dengan menambah jumlah ronde komunikasi dari 5 menjadi 25
-pada $K = 4$, utilitas meningkat dramatis dari (perkiraan) ~0,30–0,40
-menjadi **0,738**. Hal ini menunjukkan bahwa **kerugian utilitas FL
+pada $K = 4$, utilitas meningkat dramatis dari 0,445 menjadi **0,738**
+— kenaikan absolut 0,293 mAP@0.5. Hal ini menunjukkan bahwa **kerugian utilitas FL
 bukan barrier fundamental, melainkan masalah anggaran komunikasi**:
 dengan ronde yang memadai, gap antara federated dan sentralized dapat
 ditekan ke level *acceptable*. $\Delta_\text{FL}$ pada *operating
