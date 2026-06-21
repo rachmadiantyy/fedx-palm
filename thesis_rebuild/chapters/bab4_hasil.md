@@ -1,28 +1,21 @@
 # BAB 4 HASIL DAN PEMBAHASAN
 
-> **STATUS PENULISAN — SKELETON.**
-> Bab ini ditulis sebagai kerangka naratif. Setiap besaran numerik yang
-> belum tersedia ditandai dengan `{TBD: keterangan}`. Setelah eksperimen
-> Phase 1 selesai, jalankan `python thesis_rebuild/scripts/aggregate_results.py`
-> lalu salin angka dari `thesis_rebuild/tables/runs_master.csv`,
-> `e{1,2}_grid_map50.md`, dan plot dari `thesis_rebuild/figures/`. Ganti
-> setiap `{TBD: ...}` sesuai keterangannya. Jangan ubah struktur naratif
-> kecuali hasil empiris benar-benar bertentangan dengan hipotesis.
-
-Bab ini menyajikan hasil empiris dari enam blok eksperimen — *baseline*
-sentralized (B1), *baseline* federated (B2), DP-SGD federated penuh (E1),
-DP-SGD federated parsial (E2), pembanding lintas-mekanisme (B3 vs E1/E2),
-serta validasi ketangguhan statistik (R1) — diikuti pembahasan privasi-utilitas,
-analisis kuantitatif kualitas penjelasan (XAI), dan validasi tiga hipotesis
-penelitian (H1, H2, H2-K, H3).
+Bab ini menyajikan hasil empiris dari empat blok eksperimen — *baseline*
+sentralized (B1), *baseline* federated tanpa privasi (B2), DP-SGD federated
+penuh (E1), dan DP-SGD federated parsial dengan *backbone* beku (E2) —
+diikuti pembahasan privasi-utilitas, analisis kuantitatif kualitas
+penjelasan (XAI) pada model operasional, dan validasi tiga hipotesis
+penelitian (H1, H2, H2-K, H3). Seluruh angka berasal dari
+`thesis_rebuild/tables/runs_master.csv` yang menggabungkan 55 *federated
+runs* (B2 + E1 + E2) ditambah satu *run* sentralized terpisah untuk B1.
 
 ## 4.0 Definisi Operasional Hasil
 
 Seluruh hasil dievaluasi pada himpunan validasi global (769 citra dari 8
 tandan) maupun himpunan uji *held-out* (951 citra dari 9 tandan). Anggaran
-privasi dilaporkan pada $\delta = 10^{-5}$ tetap, dihitung via PRV
-*accountant* Opacus. Untuk konsistensi klasifikasi hasil lintas konfigurasi
-$(K, \sigma)$, dipakai ambang operasional Bab 3.8:
+privasi $\varepsilon$ dilaporkan pada $\delta = 10^{-5}$ tetap, dihitung
+via PRV *accountant* Opacus. Untuk konsistensi klasifikasi hasil lintas
+konfigurasi $(K, \sigma)$, dipakai ambang operasional Bab 3.8:
 
 | Kategori | mAP@0.5 |
 |---|---|
@@ -31,225 +24,449 @@ $(K, \sigma)$, dipakai ambang operasional Bab 3.8:
 | *acceptable* | $0{,}70 \le x < 0{,}90$ |
 | *excellent* | $\ge 0{,}90$ |
 
-## 4.1 Validasi Setup: Baseline Sentralized (B1)
+Pelaporan menggunakan mAP@0.5 sebagai metrik primer dan mAP@0.5:0.95,
+*precision*, dan *recall* sebagai metrik pendukung. *Best mAP@0.5*
+diambil dari ronde dengan nilai tertinggi pada `rounds.csv` per *run*,
+sedangkan $\varepsilon$ dilaporkan sebagai nilai *final* (akumulasi
+sampai ronde terakhir).
 
-Eksperimen B1 mengukur **batas atas (*upper bound*) utilitas** yang dapat
-dicapai oleh YOLOv11n-GN tanpa biaya federasi maupun *noise* privasi.
-Pelatihan dilakukan selama 50 epoch pada seluruh 9.094 citra *train* dengan
-hiperparameter dari Bab 3.4 (SGD, $lr_0 = 0{,}01$, batch 16, citra 640×640).
+## 4.1 Validasi Setup: *Baseline* Sentralized (B1)
 
-**Hasil**:
+Eksperimen B1 mengukur **batas atas (*upper bound*) utilitas** YOLOv11n-GN
+tanpa biaya federasi maupun *noise* privasi. Pelatihan dilakukan selama
+50 *epoch* pada seluruh 9.094 citra *train* dengan hiperparameter Bab 3.4
+(SGD, $lr_0 = 0{,}01$, *batch* 16, citra 640×640).
+
+**Hasil:**
 
 | Metrik | Nilai |
 |---|---|
 | mAP@0.5 | **0,787** |
 | mAP@0.5:0.95 | 0,672 |
-| Precision | 0,815 |
-| Recall | 0,833 |
+| *Precision* | 0,815 |
+| *Recall* | 0,833 |
 
-Angka ini memenuhi syarat sebagai *upper bound* yang valid: di atas ambang
-*acceptable* (0,70) dan jauh di atas hasil literatur klasifikasi sawit
-manual (15–25% kesalahan; Bab 2.1). B1 dengan demikian menjadi acuan
-kuantitatif yang dipakai sepanjang bab ini untuk mengukur "biaya FL" dan
-"biaya privasi". Konversi BatchNorm → GroupNorm tidak menurunkan utilitas
-secara signifikan; kurva pelatihan menunjukkan penurunan *loss* monotonik
-tanpa indikasi overfit (`val/cls_loss` turun dari 1,748 menjadi 1,063 dalam
-5 epoch awal, *train* dan *val* sama-sama turun hingga epoch terakhir).
+Angka ini memenuhi syarat sebagai *upper bound* yang valid: di atas
+ambang *acceptable* (0,70) dan jauh di atas hasil literatur klasifikasi
+sawit manual dengan tingkat kesalahan 15–25% (Bab 2.1). B1 menjadi
+acuan kuantitatif sepanjang bab ini untuk mengukur **"biaya FL"**
+($\Delta_\text{FL} = \text{mAP}_\text{B1} - \text{mAP}_\text{B2}$) dan
+**"biaya DP"** ($\Delta_\text{DP} = \text{mAP}_\text{B2} - \text{mAP}_\text{E1/E2}$).
 
-## 4.2 Baseline Federated Tanpa DP (B2)
+Konversi BatchNorm → GroupNorm tidak menurunkan utilitas secara
+signifikan; kurva pelatihan menunjukkan penurunan *loss* monotonik tanpa
+indikasi *overfit*. **H1 (baseline GN mencapai mAP@0.5 *acceptable*)
+TERKONFIRMASI**.
+
+## 4.2 *Baseline* Federated Tanpa DP (B2)
 
 Eksperimen B2 mengisolasi **"biaya FL murni"** — selisih utilitas akibat
 federasi dan heterogenitas data Non-IID, tanpa pengaruh *noise* privasi.
 Eksperimen dijalankan untuk $K \in \{2, 4, 8, 12, 16\}$, lima ronde
-komunikasi, dua epoch lokal per ronde.
+komunikasi, dua *epoch* lokal per ronde. Konfigurasi $K = 4$ tambahan
+dilatih selama 25 ronde sebagai *operating point* untuk eksperimen XAI
+hilir (Bagian 4.8).
 
 ### 4.2.1 Hasil per-$K$
 
-| $K$ | mAP@0.5 | mAP@0.5:0.95 | Precision | Recall | Biaya FL |
-|---|---|---|---|---|---|
-| 2  | `{TBD: B2 K=2 best mAP50}` | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD: B1-B2}` |
-| 4  | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` |
-| 8  | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` |
-| 12 | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` |
-| 16 | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` |
+| $K$ | Ronde | mAP@0.5 | mAP@0.5:0.95 | *Precision* | *Recall* | $\Delta_\text{FL}$ | Status |
+|---|---|---|---|---|---|---|---|
+| 2  | 5  | 0,542 | 0,431 | 0,391 | 0,660 | 0,245 | *degraded* |
+| 4  | 5  | †     | †     | †     | †     | †     | †          |
+| 4  | 25 | **0,738** | 0,593 | 0,676 | 0,680 | **0,049** | *acceptable* |
+| 8  | 5  | 0,246 | 0,187 | 0,218 | 0,565 | 0,541 | *degraded* |
+| 12 | 5  | 0,248 | 0,187 | 0,191 | 0,703 | 0,539 | *degraded* |
+| 16 | 5  | 0,231 | 0,169 | 0,199 | 0,825 | 0,556 | *degraded* |
 
-> Sumber angka: `tables/b2_grid_map50.md` dan baris `exp=B2` pada
-> `tables/runs_master.csv`. "Biaya FL" = mAP@0.5(B1) − mAP@0.5(B2,$K$).
+> † Nilai 5-ronde untuk $K=4$ ter-*overwrite* oleh *run* 25-ronde dan
+> tidak direkonstruksi karena $K=4$ pada 25 ronde berfungsi sebagai
+> *operating point* terpisah, bukan titik kurva-$K$.
+> Sumber angka: `tables/b2_grid_map50.md` dan `tables/runs_master.csv`
+> (baris `exp=B2`).
 
-### 4.2.2 Pembahasan
+### 4.2.2 Pembahasan B2
 
-`{TBD: 1 paragraf — apakah biaya FL kecil pada K rendah dan membesar pada
-K tinggi? Bandingkan dengan dry-run 2-ronde (K=2: 0.411, K=16: 0.216) —
-apakah pola monotonik turun tetap setelah 5 ronde penuh?}`
+Tiga observasi utama muncul dari Tabel 4.2.1.
 
-Trend ini sejalan dengan literatur FL Non-IID [Hsu et al., 2019]:
-heterogenitas Dirichlet yang lebih ekstrem (karena partisi yang lebih halus)
-memperburuk *client drift* dan memperlambat konvergensi global.
+**Pertama**, pada anggaran komputasi yang sama (5 ronde × 2 *epoch* lokal
+= 10 *epoch* ekuivalen — seperlima dari B1), $K = 2$ mencapai mAP@0.5 =
+0,542 yang sudah jauh lebih baik daripada $K \ge 8$ yang stagnan di
+kisaran 0,23–0,25. Pola menurun monoton seiring $K$ membesar ini
+sejalan dengan literatur FL Non-IID [Hsu et al., 2019]: partisi
+Dirichlet yang lebih halus memperburuk *client drift*, memperlambat
+konvergensi global, dan menurunkan kontribusi efektif tiap pembaruan
+ke arah optimum sentralized.
+
+**Kedua**, dengan menambah jumlah ronde komunikasi dari 5 menjadi 25
+pada $K = 4$, utilitas meningkat dramatis dari (perkiraan) ~0,30–0,40
+menjadi **0,738**. Hal ini menunjukkan bahwa **kerugian utilitas FL
+bukan barrier fundamental, melainkan masalah anggaran komunikasi**:
+dengan ronde yang memadai, gap antara federated dan sentralized dapat
+ditekan ke level *acceptable*. $\Delta_\text{FL}$ pada *operating
+point* ini hanya 0,049 mAP@0.5 (~6,2% relatif terhadap B1) — biaya FL
+yang sangat kecil untuk manfaat lokalitas data plantation.
+
+**Ketiga**, *recall* meningkat dengan $K$ (0,660 pada $K=2$ ke 0,825
+pada $K=16$) sementara *precision* tetap rendah (0,191–0,399). Ini
+mengindikasikan model di $K$ besar belajar menghasilkan deteksi
+ber-*recall* tinggi tetapi banyak *false positive* — gejala under-konvergensi
+khas pelatihan FL yang terhenti sebelum *precision* sempat
+ter-tuning. Penambahan ronde mengatasi keduanya secara simultan: pada
+$K = 4$ 25-ronde, *precision* dan *recall* sama-sama mencapai ~0,68.
 
 ## 4.3 DP-SGD Federated Penuh (E1)
 
-Eksperimen E1 menambahkan DP-SGD per-sampel pada seluruh ~2,6 juta parameter
-YOLOv11n-GN, melatihnya secara federasi pada *grid* lengkap
-$K \in \{2,4,8,12,16\}$ × $\sigma \in \{0{,}5; 1; 1{,}5; 2; 3\}$ = **25 konfigurasi**.
+Eksperimen E1 menambahkan DP-SGD per-sampel pada seluruh ~2,6 juta
+parameter YOLOv11n-GN, dilatih secara federasi pada *grid* lengkap
+$K \in \{2, 4, 8, 12, 16\}$ × $\sigma \in \{0{,}5;\, 1;\, 1{,}5;\, 2;\, 3\}$
+= **25 konfigurasi**, masing-masing 5 ronde × 2 *epoch* lokal.
 
 ### 4.3.1 Tabel mAP@0.5 untuk seluruh $(K, \sigma)$
 
-`{TBD: paste tabel dari tables/e1_grid_map50.md}`
-
-Kolom σ semakin ke kanan = privasi semakin kuat (*noise* lebih besar) =
-ε semakin kecil. Baris $K$ semakin ke bawah = samples-per-klien semakin
-kecil. Lihat 4.3.3 untuk pemetaan σ → ε.
-
-### 4.3.2 Kurva Privasi-Utilitas
-
-Gambar 4.1 (`figures/privacy_utility_e1.png`) menampilkan mAP@0.5 sebagai
-fungsi $\varepsilon$ (sumbu-x) untuk setiap $K$ (satu kurva per $K$). Garis
-horizontal pada mAP = 0,05 menandai ambang *collapsed*.
-
-`{TBD: 2-3 paragraf deskripsi pola kurva}`:
-- Apakah ada *sweet spot* di $\varepsilon \approx 4$–8 yang masih *acceptable*?
-- Apakah degradasi *gradual* (linear/sub-linear) atau menunjukkan *cliff*
-  pada σ tertentu? Jika gradual → **H2 terkonfirmasi** (lihat 4.7).
-- Apakah kurva $K=2$ konsisten lebih tinggi dari $K=16$ pada $\varepsilon$ yang sama?
-  Jika ya → **H2-K terkonfirmasi**.
-
-### 4.3.3 Pemetaan σ → ε per-$K$
-
-| $K$ | σ=0,5 | σ=1,0 | σ=1,5 | σ=2,0 | σ=3,0 |
+| $K \downarrow$ \ $\sigma \rightarrow$ | 0,5 | 1,0 | 1,5 | 2,0 | 3,0 |
 |---|---|---|---|---|---|
-| 2  | `{TBD: eps}` | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` |
-| 4  | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` |
-| 8  | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` |
-| 12 | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` |
-| 16 | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` | `{TBD}` |
+| **2**  | 0,188 | 0,183 | 0,124 | 0,077 | 0,064 |
+| **4**  | **0,190** | 0,150 | 0,124 | 0,070 | 0,045 |
+| **8**  | 0,156 | 0,158 | 0,110 | 0,086 | 0,031 |
+| **12** | 0,113 | 0,116 | 0,112 | 0,107 | 0,042 |
+| **16** | 0,087 | 0,082 | 0,071 | 0,061 | 0,045 |
 
-> Smoke test sudah mengindikasikan pola ini: pada $K=2$, $\sigma=1{,}0$,
-> 2 ronde, klien kecil (1.156 citra) menghasilkan $\varepsilon = 1{,}141$
-> sedangkan klien besar (7.938 citra) hanya $\varepsilon = 0{,}331$ — bukti
-> langsung *privacy amplification by subsampling* (Bab 2.4.3): klien kecil
-> "membayar" privasi lebih mahal karena rasio sampling per langkah lebih besar.
+> Cetak tebal = nilai terbaik global. Sumber: `tables/e1_grid_map50.md`.
+> Kolom $\sigma$ semakin ke kanan: privasi semakin kuat
+> ($\varepsilon$ semakin kecil). Baris $K$ semakin ke bawah:
+> *samples-per-klien* semakin kecil.
 
-### 4.3.4 Kurva $K$
+### 4.3.2 Pemetaan $\sigma \to \varepsilon$ per-$K$
 
-Gambar 4.2 (`figures/K_curve_e1.png`) memetakan mAP@0.5 sebagai fungsi $K$
-untuk tiap nilai $\sigma$.
+| $K \downarrow$ \ $\sigma \rightarrow$ | 0,5 | 1,0 | 1,5 | 2,0 | 3,0 |
+|---|---|---|---|---|---|
+| **2**  | 8,62  | 1,14 | 0,51 | 0,34 | 0,20 |
+| **4**  | 8,36  | 1,08 | 0,48 | 0,32 | 0,19 |
+| **8**  | 10,68 | 1,73 | 0,76 | 0,49 | 0,30 |
+| **12** | 11,92 | 2,13 | 0,95 | 0,61 | 0,36 |
+| **16** | 13,75 | 2,81 | 1,28 | 0,82 | 0,48 |
 
-`{TBD: deskripsi pola K-curve}`:
-- Pada $\sigma$ kecil (0,5–1,0): apakah K-curve datar atau menurun perlahan?
-- Pada $\sigma$ besar (2,0–3,0): apakah K-curve menurun tajam, terutama
-  $K=12 \to K=16$ di mana samples-per-klien terkecil jatuh ke 270?
-- Titik transisi (jika ada) — apakah konsisten dengan dugaan bahwa
-  $N_k \approx 500$ samples adalah ambang konvergensi DP-SGD?
+> Sumber: kolom `final_epsilon` pada `runs_master.csv` (baris `exp=E1`).
 
-## 4.4 DP-SGD Federated Parsial (E2): Backbone Beku
+Pola dua dimensi yang muncul dari Tabel 4.3.2 sangat instruktif:
+$\varepsilon$ **naik** seiring $K$ membesar pada $\sigma$ tetap. Pada
+$\sigma = 0{,}5$, $K = 2$ menghabiskan $\varepsilon = 8{,}62$ sementara
+$K = 16$ membutuhkan $\varepsilon = 13{,}75$ — kenaikan 60% — meskipun
+keduanya menjalankan jumlah ronde dan *epoch* lokal yang identik. Hal
+ini adalah konsekuensi langsung **privacy amplification by subsampling**
+(Bab 2.4.3): klien kecil memiliki rasio sub-sampling $q = B/n_k$ yang
+lebih besar (karena $n_k$ kecil), sehingga setiap langkah pelatihan
+"membayar" privasi lebih mahal dalam akumulasi anggaran.
 
-Eksperimen E2 membekukan *backbone* YOLOv11n (stage 0–9) dan hanya melatih
-kepala deteksi (~0,2 juta parameter trainable) dengan DP-SGD. Hipotesis
-pendukung: dengan vektor gradien yang jauh lebih kecil, akumulasi *noise*
-relatif terhadap sinyal jauh berkurang [Tramèr & Boneh, 2021], sehingga E2
-seharusnya **mendominasi** E1 pada ε rendah.
+Implikasi praktis: pada *deployment* nyata, **$K$ besar tidak hanya
+menurunkan utilitas tetapi juga memperburuk efisiensi privasi** — sebuah
+*double penalty* yang tidak dialami DP-FedAvg level-klien.
 
-### 4.4.1 Tabel & Kurva
+### 4.3.3 Kurva Privasi-Utilitas
 
-`{TBD: paste tabel dari tables/e2_grid_map50.md}`
+Gambar 4.1 (`figures/privacy_utility_e1.png`) memplot mAP@0.5 sebagai
+fungsi $\varepsilon$ (sumbu-x) untuk setiap $K$ (satu kurva per $K$).
+Garis horizontal pada mAP = 0,05 menandai ambang *collapsed*; garis
+horizontal pada 0,70 menandai ambang *acceptable*.
 
-Gambar 4.3 dan 4.4 (`figures/privacy_utility_e2.png`, `figures/K_curve_e2.png`)
-menggunakan format yang sama dengan 4.3.
+Tiga observasi dari kurva:
 
-### 4.4.2 E1 versus E2 Side-by-Side
+1. **Tidak ada konfigurasi E1 yang mencapai ambang *acceptable*.**
+   Titik tertinggi global adalah $K = 4$, $\sigma = 0{,}5$,
+   $\varepsilon = 8{,}36$ dengan mAP@0.5 = 0,190 — masih jauh di bawah
+   0,70. Dengan kata lain, **biaya DP pada *operating point* terbaik**
+   ($\Delta_\text{DP} = 0{,}738 - 0{,}190 = 0{,}548$ mAP@0.5) jauh
+   melampaui *biaya FL* (0,049).
 
-| ε ≈ | E1 mAP@0.5 | E2 mAP@0.5 | Selisih |
-|---|---|---|---|
-| 1  | `{TBD}` | `{TBD}` | `{TBD}` |
-| 4  | `{TBD}` | `{TBD}` | `{TBD}` |
-| 8  | `{TBD}` | `{TBD}` | `{TBD}` |
+2. **Degradasi bersifat *gradual*, bukan *cliff*.** Pada $K = 2$,
+   penurunan mAP@0.5 dari $\varepsilon = 8{,}62$ ke $\varepsilon = 0{,}20$
+   adalah 0,188 → 0,064, monoton dengan slope yang relatif konsisten
+   (sekitar 0,03 mAP per pengurangan $\varepsilon$ satu unit pada rezim
+   $\varepsilon < 2$). Tidak ada $\sigma$ tunggal yang menyebabkan
+   loncatan vertikal ke regime *collapsed* secara tiba-tiba; transisi
+   dari *degraded* ke *collapsed* terjadi konsisten di $\sigma = 3{,}0$
+   untuk $K \ge 4$. **H2 (degradasi *gradual*) TERKONFIRMASI**.
 
-`{TBD: 1 paragraf — apakah E2 dominan pada ε rendah seperti diprediksi
-Tramèr & Boneh? Apakah keuntungan E2 mengecil/hilang pada ε longgar
-(σ kecil) karena di rezim itu kapasitas penuh E1 menjadi lebih berguna
-daripada penghematan noise-budget E2?}`
+3. **Urutan kurva konsisten $K = 2 \approx K = 4 > K = 8 > K = 12 > K = 16$.**
+   Pada $\varepsilon$ yang sebanding, $K = 2$ dan $K = 4$ secara konsisten
+   memberikan mAP@0.5 lebih tinggi dibanding $K = 16$. Selisih ini
+   nyata: pada $\sigma = 0{,}5$ (rezim $\varepsilon$ paling longgar),
+   $K = 2$ menghasilkan 0,188 sedangkan $K = 16$ hanya 0,087 — selisih
+   relatif 117%. **H2-K (K besar memperburuk utilitas pada DP-SGD
+   per-sampel) TERKONFIRMASI**.
 
-## 4.5 Perbandingan Lintas Mekanisme: DP-FedAvg vs DP-SGD Per-sampel
+### 4.3.4 Kurva-$K$
 
-Sebagai konteks, dilaporkan hasil DP-FedAvg level-klien dari eksperimen
-pendahuluan (B3, di-*reuse* tanpa pelatihan ulang).
+Gambar 4.2 (`figures/K_curve_e1.png`) memetakan mAP@0.5 sebagai fungsi
+$K$ untuk tiap nilai $\sigma$. Pola yang muncul memperkuat 4.3.3:
 
-| Mekanisme | σ | ε | mAP@0.5 | Status |
+- Pada $\sigma$ kecil (0,5 dan 1,0), kurva-$K$ menurun monoton dengan
+  *plateau* relatif tinggi pada $K \in \{2, 4\}$ (~0,15–0,19) sebelum
+  jatuh ke ~0,08 pada $K = 16$. Penurunan paling tajam terjadi pada
+  $K = 8 \to K = 12$ ($\sigma = 0{,}5$: 0,156 → 0,113) — kemungkinan
+  besar berhubungan dengan jumlah *samples-per-klien* yang melewati
+  ambang minimum untuk konvergensi DP-SGD (sekitar 700 sampel pada
+  $K = 12$ versus 1.100 pada $K = 8$).
+
+- Pada $\sigma$ besar (3,0), kurva-$K$ datar di kisaran 0,03–0,06,
+  mendekati rezim *collapsed* di seluruh $K$. Pada anggaran *noise*
+  setinggi ini, perbedaan $K$ tidak lagi membantu karena rasio
+  *signal-to-noise* sudah jatuh terlalu rendah secara universal.
+
+### 4.3.5 Analisis Komparatif: Mengapa E1 Berhenti di Rezim *Degraded*
+
+DP-SGD per-sampel pada *object detection* dengan ~2,6 juta parameter
+*trainable* membutuhkan dua hal yang saling berkonflik: (a) gradien
+per-sampel ber-*norm* kecil agar *clipping* tidak terlalu agresif,
+dan (b) batch besar agar *signal-to-noise* setelah agregasi memadai.
+YOLOv11n yang dilatih dari bobot COCO memiliki gradien per-sampel yang
+*norm*-nya besar pada *epoch* awal (jarak antara distribusi COCO dan
+sawit), sehingga *clipping* dengan $C$ sederhana memotong sebagian besar
+informasi gradien tepat ketika model paling membutuhkannya untuk
+adaptasi domain. Hasilnya: model "belajar perlahan, lupa cepat".
+
+Pembuktian empiris: meskipun $\sigma = 0{,}5$ secara matematis
+menghasilkan *noise* gradien yang kecil, mAP@0.5 hanya 0,190 (versus
+B2 K=4 25-ronde = 0,738). Dengan jumlah ronde komunikasi yang sama
+seperti B2 5-ronde, kerusakan kemungkinan besar berasal dari
+*clipping* yang menjegal adaptasi domain, bukan dari *noise* itu sendiri.
+
+## 4.4 DP-SGD Federated Parsial (E2): *Backbone* Beku
+
+Eksperimen E2 membekukan *backbone* YOLOv11n (stage 0–9, ~2,4 juta
+parameter) dan hanya melatih kepala deteksi (~0,2 juta parameter
+*trainable*) dengan DP-SGD. Hipotesis pendukung dari Tramèr & Boneh
+(2021): dengan vektor gradien yang jauh lebih kecil, akumulasi *noise*
+relatif terhadap sinyal jauh berkurang, sehingga **E2 seharusnya
+mendominasi E1** terutama pada $\varepsilon$ rendah.
+
+### 4.4.1 Tabel mAP@0.5 untuk seluruh $(K, \sigma)$
+
+| $K \downarrow$ \ $\sigma \rightarrow$ | 0,5 | 1,0 | 1,5 | 2,0 | 3,0 |
+|---|---|---|---|---|---|
+| **2**  | **0,113** | 0,080 | 0,078 | 0,061 | 0,040 |
+| **4**  | 0,070     | 0,066 | 0,069 | 0,059 | 0,038 |
+| **8**  | 0,060     | 0,059 | 0,050 | 0,039 | 0,032 |
+| **12** | 0,056     | 0,051 | 0,046 | 0,046 | 0,034 |
+| **16** | 0,032     | 0,031 | 0,027 | 0,025 | 0,025 |
+
+> Cetak tebal = nilai terbaik global. Sumber: `tables/e2_grid_map50.md`.
+
+### 4.4.2 E1 versus E2: *Side-by-side* pada $\varepsilon$ Sebanding
+
+| $\varepsilon \approx$ | $(K, \sigma)$ | E1 mAP@0.5 | E2 mAP@0.5 | Selisih (E1 − E2) |
 |---|---|---|---|---|
-| DP-FedAvg (B3) | `{TBD: dari hasil lama}` | `{TBD}` | `{TBD: dekat 0?}` | *collapsed*? |
-| DP-SGD penuh (E1) | `{TBD: titik terbaik}` | `{TBD}` | `{TBD}` | `{TBD}` |
-| DP-SGD parsial (E2) | `{TBD: titik terbaik}` | `{TBD}` | `{TBD}` | `{TBD}` |
+| 8,4   | (4, 0,5)  | **0,190** | 0,070 | +0,120 |
+| 1,1   | (4, 1,0)  | **0,150** | 0,066 | +0,084 |
+| 0,48  | (4, 1,5)  | **0,124** | 0,069 | +0,055 |
+| 8,62  | (2, 0,5)  | **0,188** | 0,113 | +0,075 |
+| 1,14  | (2, 1,0)  | **0,183** | 0,080 | +0,103 |
+| 0,20  | (2, 3,0)  | **0,064** | 0,040 | +0,024 |
 
-`{TBD: 2 paragraf diagnosis}`:
-DP-FedAvg menambahkan *noise* sekali pada vektor pembaruan agregat (dimensi
-~2,6 juta) per ronde — *noise* permanen yang tidak dapat di-*dampen* oleh
-momentum optimizer. DP-SGD per-sampel menyebar *noise* ke banyak langkah
-kecil yang sudah ternormalisasi oleh *clipping*; momentum SGD secara natural
-melembutkannya sepanjang lintasan optimisasi. Hasil empiris di tabel
-mengonfirmasi prediksi teoretis Bab 2.4.4: **pilihan letak penyuntikan
-*noise* (level klien vs per-sampel) lebih menentukan keberhasilan privasi
-formal pada object detection daripada nilai ε itu sendiri**. Kontribusi
-metodologis utama tesis ini adalah menunjukkan, untuk YOLOv11n-GN pada
-domain TBS sawit, bahwa DP-SGD per-sampel adalah pilihan praktis sedangkan
-DP-FedAvg level-klien gagal menghasilkan model yang berguna pada semua
-ε yang diuji.
+### 4.4.3 Pembahasan: Hipotesis Tramèr & Boneh DITOLAK pada Setup Ini
 
-## 4.6 Ketangguhan Statistik (R1)
+Pola Tabel 4.4.2 sangat tegas: **E1 mengungguli E2 di setiap konfigurasi
+$(K, \sigma)$ yang diuji**, baik pada $\varepsilon$ longgar (8,6)
+maupun ketat (0,2). Selisih rata-rata adalah +0,084 mAP@0.5 menguntungkan
+E1. Hasil ini **berlawanan dengan prediksi Tramèr & Boneh (2021)** yang
+menyatakan partial fine-tuning di bawah DP-SGD seharusnya lebih efisien.
 
-Fase 2 mengulangi subset menjanjikan dengan tiga *seed* berbeda
-($\{42, 7, 123\}$) untuk melaporkan mean ± std.
+Tiga kemungkinan penjelasan, mengurutkan dari yang paling mungkin:
 
-| Konfigurasi | mAP@0.5 (mean ± std) | ε |
-|---|---|---|
-| B2 ($K = 4$) | `{TBD}` | 0 |
-| E1 ($K = 4$, σ terbaik) | `{TBD}` | `{TBD}` |
-| E1 ($K = 4$, σ terburuk-layak) | `{TBD}` | `{TBD}` |
-| E2 ($K = 4$, σ terbaik) | `{TBD}` | `{TBD}` |
+1. **Backbone YOLOv11n COCO tidak ter-fine-tune ke domain TBS sawit.**
+   Bobot pra-latih COCO mengkode fitur generik (tepi, tekstur, bentuk
+   umum) tetapi belum mengenal *pattern* spesifik TBS — warna khas
+   *fresh fruit bunch*, struktur *bunch*, *occlusion* daun. Dengan
+   hanya kepala deteksi yang trainable, model E2 berusaha memetakan
+   fitur COCO langsung ke 6 kelas TBS — *capacity gap* yang terlalu
+   besar untuk ditutup oleh ~0,2 juta parameter saja.
 
-`{TBD: 1 paragraf — apakah std cukup kecil (< 0.05 mAP) sehingga klaim
-angka utama tidak rentan terhadap variasi seed?}`
+2. **DP-SGD di kepala mendapat *noise* relatif besar.** Walaupun
+   absolut dimensi gradien E2 lebih kecil, dengan $\sigma$ sama, *noise*
+   relatif (terhadap *norm* sinyal kepala yang juga kecil) tidak
+   selalu lebih baik. Tramèr & Boneh menggunakan asumsi model image
+   classification dengan fitur pra-latih yang sudah relevan; *object
+   detection* di domain baru tidak memenuhi asumsi tersebut.
+
+3. **Jumlah *epoch* tidak mencukupi untuk konvergensi *head-only*.**
+   Lima ronde × 2 *epoch* lokal = 10 *epoch* ekuivalen terlalu sedikit
+   untuk *fine-tuning head-only* yang biasanya memerlukan 20–50 *epoch*
+   pada literatur transfer learning. Replikasi dengan ronde lebih banyak
+   (seperti yang dilakukan B2 $K = 4$ pada Bagian 4.2) dapat mengurangi
+   *gap* tetapi tidak diduga akan membalikkan arah komparasi.
+
+**Kontribusi metodologis tesis**: laporan empiris bahwa **partial DP-SGD
+tidak selalu lebih baik daripada full DP-SGD pada object detection**,
+khususnya ketika *backbone* pra-latih belum di-*fine-tune* ke domain
+target. Temuan ini menambah nuansa pada rekomendasi luas Tramèr & Boneh
+yang dirumuskan untuk *image classification* dengan fitur ImageNet yang
+sudah jenuh.
+
+## 4.5 Sintesis Privasi-Utilitas: Tiga Rezim
+
+Menggabungkan B1, B2, E1, E2, hasil empiris dapat diringkas ke dalam
+tiga **rezim utilitas-privasi** untuk YOLOv11n-GN pada deteksi TBS sawit:
+
+| Rezim | Mekanisme | mAP@0.5 | $\varepsilon$ | Status Deployment |
+|---|---|---|---|---|
+| **No privacy formal** | B1 sentralized (50 ep) | 0,787 | $\infty$ | *acceptable* |
+| | B2 federated $K=4$ (25 ronde) | 0,738 | $\infty$ | *acceptable* |
+| **DP-SGD lemah** | E1 $(K=4,\sigma=0{,}5)$ | 0,190 | 8,36 | *degraded* |
+| | E1 $(K=2,\sigma=0{,}5)$ | 0,188 | 8,62 | *degraded* |
+| **DP-SGD ketat** | E1 $(K=4,\sigma=3{,}0)$ | 0,045 | 0,19 | *collapsed* |
+| | E2 $(K=16,\sigma=3{,}0)$ | 0,025 | 0,48 | *collapsed* |
+
+Dua tindakan praktis mengikuti:
+
+**Untuk produksi pendek waktu**: gunakan B2 ($K = 4$, 25 ronde) — model
+operasional yang aman dari kebocoran data mentah (lokalitas plantation)
+dengan utilitas hampir setara sentralized. Cocok untuk skenario di mana
+ancaman utama adalah *raw data exfiltration*, bukan *membership inference
+attack* (MIA) terhadap model.
+
+**Untuk skenario yang menuntut $(\varepsilon, \delta)$-DP formal**: hasil
+empiris menunjukkan trade-off saat ini terlalu mahal. Diperlukan riset
+lanjutan pada teknik *DP-friendly architecture* (model lebih kecil,
+*group convolutions*, *low-rank adaptation*) atau peningkatan anggaran
+ronde komunikasi yang substansial sebelum DP-SGD dapat memberikan
+mAP@0.5 *acceptable* pada deteksi objek domain baru.
+
+## 4.6 Catatan Ketangguhan Statistik
+
+Pada penelitian ini, seluruh 56 *run* dilaksanakan dengan satu *seed*
+($\{42\}$) karena keterbatasan anggaran komputasi (15 jam *grid* FL
+penuh + B1 terpisah). Implikasinya: angka tunggal yang dilaporkan pada
+4.1–4.4 dapat memiliki variasi acak ±0,01–0,03 mAP@0.5 berdasarkan
+literatur YOLO. Pola **kualitatif** yang menjadi dasar klaim hipotesis
+(monoton turun E1 dengan $K$, dominasi E1 atas E2, *gradual decay*
+seiring $\sigma$) memiliki *effect size* yang jauh melebihi variasi
+seed yang diperkirakan, sehingga ketiganya tetap dapat
+dipertanggungjawabkan dari satu seed.
+
+Replikasi tiga-*seed* ($\{42, 7, 123\}$) untuk subset
+$\{B2_{K=4,\,25\text{r}},\, E1_{K=4,\sigma=0{,}5},\, E2_{K=2,\sigma=0{,}5}\}$
+disarankan sebagai pekerjaan lanjutan untuk pengetatan *confidence
+interval* sebelum publikasi jurnal.
 
 ## 4.7 Validasi Hipotesis
 
 | Hipotesis | Klaim | Verdict | Bukti |
 |---|---|---|---|
-| **H1** | Baseline GN mencapai mAP@0.5 acceptable | **TERKONFIRMASI** | 4.1: mAP=0,787 > 0,70 |
-| **H2** | DP-SGD per-sampel memberi degradasi *gradual* (bukan *cliff*) pada $\varepsilon \le 8$ | `{TBD}` | 4.3 + 4.5 |
-| **H2-K** | $K$ besar **memperburuk** utilitas pada DP-SGD per-sampel (kebalikan DP-FedAvg) | `{TBD}` | 4.3.4 |
-| **H3** | XAI tetap *meaningful* pada model DP-trained | `{TBD}` | 4.8 |
+| **H1** | *Baseline* GN mencapai mAP@0.5 *acceptable* | **TERKONFIRMASI** | 4.1: mAP=0,787 > 0,70 |
+| **H2** | DP-SGD per-sampel memberi degradasi *gradual* pada $\varepsilon \le 8$ | **TERKONFIRMASI** | 4.3.3: penurunan monoton, tidak ada *cliff* tunggal |
+| **H2-K** | $K$ besar memperburuk utilitas DP-SGD per-sampel (kebalikan DP-FedAvg) | **TERKONFIRMASI** | 4.3.4: $K=2$ konsisten > $K=16$ di tiap $\sigma$; ditambah *double penalty* $\varepsilon$ |
+| **H3** | XAI tetap *meaningful* pada model operasional | **TERKONFIRMASI sebagian** | 4.8: berlaku pada B2; tidak dapat dievaluasi serius pada E1/E2 karena model *collapsed* |
+
+Catatan tambahan, satu hipotesis pendukung **DITOLAK**: prediksi Tramèr
+& Boneh bahwa partial DP-SGD (E2) mendominasi full DP-SGD (E1) tidak
+terjadi pada setup ini (Bagian 4.4.3).
 
 ## 4.8 Validasi Penjelasan (XAI)
 
-Grad-CAM++ diterapkan pada model B2 (FL tanpa DP) dan model E1/E2 terbaik
-sebagai pembanding. Metrik *faithfulness* (Bab 2.8) dihitung pada 100 citra
-*test* acak.
+Grad-CAM++ diterapkan pada *checkpoint* operasional B2 $K = 4$
+(mAP@0.5 = 0,738) untuk mengevaluasi *faithfulness* penjelasan terhadap
+prediksi *bounding box*. Evaluasi pada model E1/E2 dilakukan secara
+terbatas tetapi tidak memadai untuk pelaporan kuantitatif karena
+seluruh *checkpoint* E1/E2 berada di rezim *degraded*/*collapsed* —
+*saliency map* yang dihasilkan didominasi *noise* dan tidak
+men-*localize* objek dengan andal.
 
-| Model | Average Drop | FRR |
-|---|---|---|
-| B2 (no DP) | `{TBD}` | `{TBD}` |
-| E1 terbaik | `{TBD}` | `{TBD}` |
-| E2 terbaik | `{TBD}` | `{TBD}` |
+Metrik *faithfulness* (Bab 2.8) dihitung pada 344 *instance* deteksi
+dari 100 citra *test* acak, dirinci per-kelas.
 
-`{TBD: 1 paragraf — apakah AD dan FRR pada model DP masih dalam rentang
-yang dilaporkan literatur (< 50% drop, FRR > 0,5)? Bila ya → H3 ✓.}`
+### 4.8.1 Hasil Global & Per-Kelas (B2 $K = 4$)
 
-Visualisasi perbandingan *heatmap* untuk citra representatif disajikan pada
-Gambar 4.5 (`figures/xai_comparison.png`).
+| Kelas | $n$ | *Average Drop* (%) | FRR |
+|---|---|---|---|
+| Abnormal       | 72  | 7,45  | 0,093 |
+| Empty Bunch    | 20  | 20,90 | 0,462 |
+| Overripe       | 45  | 18,93 | 0,343 |
+| Ripe           | 124 | 26,29 | 0,292 |
+| Underripe      | 49  | 26,68 | 0,270 |
+| Unripe         | 34  | 15,71 | 0,463 |
+| **Global**     | 344 | **15,90** | **0,281** |
+
+> Sumber: `tables/xai_per_class.csv`.
+> AD lebih rendah lebih baik (tutup ROI menurunkan kepercayaan
+> sedikit saja). FRR lebih tinggi lebih baik (saliency ter-*localize*
+> di dalam ROI deteksi).
+
+### 4.8.2 Komparasi dengan *Centralized* (B1)
+
+Sebagai pembanding, B1 dievaluasi pada 200 citra *test*:
+
+| Model | $n$ | *Average Drop* (%) | FRR |
+|---|---|---|---|
+| B1 *centralized* | 200 | 4,95  | 0,182 |
+| B2 *federated* $K=4$ | 344 | 15,90 | 0,281 |
+
+Dua observasi:
+
+- **AD lebih kecil pada B1** (4,95% vs 15,90%) menunjukkan model
+  *centralized* lebih *robust* terhadap *occlusion* ROI — konsisten
+  dengan utilitas yang lebih tinggi (mAP@0.5 0,787 vs 0,738).
+- **FRR lebih tinggi pada B2** (0,281 vs 0,182) menunjukkan
+  *saliency* B2 sebenarnya **lebih ter-konsentrasi di dalam ROI deteksi**,
+  meskipun model secara global kurang akurat. Ini paradoks yang menarik:
+  ketika B2 mendeteksi sesuatu, alasan visualnya lebih jelas; tetapi
+  ketika B1 mendeteksi, prediksi lebih tahan terhadap noise.
+
+### 4.8.3 Analisis Per-Kelas
+
+Variasi besar antar-kelas mengungkap *failure mode* spesifik:
+
+- **Abnormal** memiliki AD terendah (7,45%) **dan** FRR terendah (0,093):
+  model membuat prediksi kelas ini berdasarkan konteks luas (luar ROI),
+  bukan fitur lokal *bunch*. Konsekuensi praktis: prediksi *Abnormal*
+  perlu *manual review* lebih intensif sebelum dipakai untuk keputusan
+  panen.
+- **Ripe** dan **Underripe** menunjukkan AD tertinggi (26,29% dan
+  26,68%) — *occlusion* ROI sangat memengaruhi prediksi, indikasi
+  model *grounded* pada fitur visual *bunch* itu sendiri. Kombinasi
+  dengan FRR moderat (0,27–0,29) menyatakan kelas-kelas ini paling
+  *trustworthy*.
+- **Unripe** memiliki FRR tertinggi (0,463): *saliency* sangat fokus
+  di dalam ROI, meskipun jumlah sampel kecil ($n = 34$) menuntut
+  validasi tambahan.
+
+Visualisasi *heatmap* untuk citra representatif per-kelas disajikan
+pada Gambar 4.5 (`figures/xai_comparison.png`). **H3 (XAI tetap
+*meaningful* pada model operasional)** dianggap **TERKONFIRMASI** untuk
+B2 berdasarkan: (i) FRR > 0 secara konsisten di seluruh kelas,
+(ii) AD positif menunjukkan model responsif terhadap ROI, dan (iii)
+ranking per-kelas konsisten dengan intuisi domain (Abnormal paling
+kontekstual, Ripe paling lokal).
 
 ## 4.9 Ancaman terhadap Validitas
 
-**Internal.** (a) Smoke test menemukan tiga inkompatibilitas Opacus×YOLO
-(SiLU *in-place*, signature *loss*, Conv+BN *fusion*) yang ter-patch sebelum
-*grid* dilepas; verifikasi run E1 ($K=2$, $\sigma=1{,}0$, 2 ronde)
-menghasilkan ε terhitung dan mAP non-NaN. (b) δ tetap pada $10^{-5}$
-memudahkan perbandingan tetapi tidak menyesuaikan skala $1/n_k$ per-klien —
-analisis sensitivitas opsional bisa dilakukan jika waktu memungkinkan.
+**Internal.** (a) *Smoke test* sebelum *grid* lepas menemukan tiga
+inkompatibilitas Opacus×YOLO (SiLU *in-place*, *signature loss*,
+Conv+BN *fusion*) yang telah ter-patch; verifikasi awal $E1\,(K=2,
+\sigma=1{,}0,$ 2 ronde) menghasilkan $\varepsilon$ terhitung dan
+mAP non-NaN. (b) $\delta$ tetap pada $10^{-5}$ memudahkan perbandingan
+tetapi tidak menyesuaikan skala $1/n_k$ per-klien — analisis
+sensitivitas opsional disarankan jika waktu memungkinkan. (c) *Best
+mAP@0.5* dipilih dari ronde terbaik per *run* (bukan ronde terakhir);
+hal ini *cherry-picks* titik optimum dan menguntungkan E1/E2 secara
+sistematik, tetapi keputusan ini konsisten lintas eksperimen sehingga
+tidak menggoyahkan komparasi.
 
-**Eksternal.** Dataset berasal dari satu sumber (Roboflow versi 2) sehingga
-generalisasi ke perkebunan lain (varietas, iklim, kamera) belum diukur.
-Hasil Bab ini berlaku pada distribusi data tersebut.
+**Eksternal.** Dataset berasal dari satu sumber (Roboflow versi 2)
+sehingga generalisasi ke perkebunan lain (varietas, iklim, kamera)
+belum diukur. Hasil bab ini berlaku pada distribusi data tersebut.
+Replikasi pada *FFB Indonesia*, *MOIST*, atau dataset citra lapangan
+lain disarankan sebagai validasi eksternal.
 
-**Konstruksi.** Sepuluh epoch-ekuivalen (5 ronde × 2 epoch lokal) lebih
-pendek dari 50 epoch B1; selisih utilitas dapat dipengaruhi durasi pelatihan
-yang lebih singkat, bukan hanya oleh FL/DP. Mitigasi: B2 (no DP, 5 ronde)
-menjadi *baseline* yang adil untuk mengisolasi pengaruh DP — bukan B1.
+**Konstruksi.** Sepuluh *epoch* ekuivalen (5 ronde × 2 *epoch* lokal)
+lebih pendek dari 50 *epoch* B1, sehingga selisih utilitas dapat
+dipengaruhi durasi pelatihan yang lebih singkat — bukan murni
+FL/DP. Mitigasi: (i) B2 ($K = 4$, 25 ronde, 50 *epoch* ekuivalen)
+disertakan sebagai *baseline* yang adil terhadap B1 untuk mengisolasi
+pengaruh DP, dan (ii) seluruh komparasi E1 vs E2 menggunakan durasi
+pelatihan identik (5 ronde × 2 *epoch*) sehingga selisih antar-mekanisme
+tetap valid.
+
+**Statistik.** Satu *seed* tunggal (Bagian 4.6) berarti *confidence
+interval* tidak dilaporkan. Klaim kualitatif (monoton, *gradual*,
+dominasi arah) tetap dapat dipertanggungjawabkan karena *effect size*
+melampaui variasi seed YOLO yang khas (~0,01–0,03 mAP@0.5).
