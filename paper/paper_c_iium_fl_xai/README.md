@@ -72,11 +72,32 @@ tambah figure kurva-K.)
 
 ## Sebelum submit — checklist
 
-- [ ] Copy 2 gambar ke `figures/`.
+- [ ] Copy 2 gambar ke `figures/` (`privacy_utility_e1.png`, `xai_per_class.png`).
 - [ ] **Review ABSTRAK Melayu** oleh Prof. Teddy (draft sudah ada).
 - [ ] Isi tanggal Received/Accepted/Published + Vol/No di running head.
-- [ ] Update ref [—] paper companion DP begitu venue-nya pasti.
-- [ ] Kalau IIUMEJ minta DOCX persis, konversi via pandoc/Word di tahap akhir.
+- [ ] **Konversi LaTeX → DOCX** (template IIUMEJ resmi, via pandoc/Word).
+- [ ] **Ethical Agreement Form** (lampiran IIUMEJ) ditandatangani semua author.
+- [ ] **Dua proposed reviewers** independen (di luar Telkom & IIUM).
+- [ ] **Cover letter dengan deklarasi COI** — lihat di bawah.
+- [ ] (Opsional, untuk Q-class rigour) tambah 1 seed untuk B2 K=4 25-ronde dan
+      E1 best (K=4, σ=0.5), laporkan mean ± SD.
+
+## Conflict-of-interest (COI) — penting
+
+Co-author **Prof. Teddy Surya Gunawan** terdaftar sebagai *Principal Contact*
+IIUMEJ. Ini bukan blocker (banyak editor mempublikasikan di jurnal sendiri),
+tetapi **wajib dideklarasikan eksplisit** di cover letter dan handling editor
+harus dialihkan ke editor lain agar tidak ada konflik penanganan.
+
+### Draft kalimat cover letter
+
+> *We wish to disclose that one of the authors, Prof. Teddy Surya Gunawan, is
+> listed as Principal Contact of IIUM Engineering Journal. We respectfully
+> request that the editorial handling of this submission be assigned to an
+> independent editor with no co-authorship, supervisory, or collaborative
+> relationship with the authors, and that the peer-review process proceed
+> single-blind to the authors without involvement of Prof. Gunawan in any
+> editorial decision concerning this manuscript.*
 
 ## Angka kunci (sumber kebenaran — sinkron tesis Bab 4)
 
