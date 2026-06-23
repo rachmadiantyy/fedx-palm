@@ -1,12 +1,18 @@
 # Paper C — IIUM Engineering Journal (IIUMEJ)
 
 **Paper payung untuk SELURUH tesis** "FedX-Palm: A Federated Explainable
-Framework for Privacy-Preserving Palm Fruit Ripeness". Beda fokus dengan JUTI:
+Framework for Privacy-Preserving Palm Fruit Ripeness". Beda fokus dengan
+JIKI (paper companion XAI):
 
-| Paper | Fokus |
-|---|---|
-| JUTI (`../paper_b_juti_fl_xai/`) | **XAI / Grad-CAM++ faithfulness** (FL tanpa DP) |
-| **IIUM (ini)** | **Framework lengkap** — HFL + **DP-SGD privacy-utility** (inti) + YOLOv11 + XAI |
+| Paper | Venue | Fokus |
+|---|---|---|
+| JIKI (`../paper_b_jiki_fl_xai/`) | JIKI UI, SINTA 2 | **XAI / Grad-CAM++ faithfulness** (FL tanpa DP) |
+| **IIUM (ini)** | IIUM Engineering Journal | **Framework lengkap** — HFL + **DP-SGD privacy-utility** (inti) + YOLOv11 + XAI |
+
+> Catatan: versi JUTI (`../paper_b_juti_fl_xai/`) sebelumnya ditolak karena
+> dianggap "terlalu fokus ML/FL". Paper XAI sekarang diarahkan ke **JIKI UI**
+> yang scope-nya eksplisit mencakup machine learning, federated learning, dan
+> computer vision. Folder JUTI dipertahankan sebagai arsip saja.
 
 Co-author Prof. Teddy Surya Gunawan adalah dosen IIUM (tsgunawan@iium.edu.my),
 jadi venue ini natural fit untuk paper utama tesis.
