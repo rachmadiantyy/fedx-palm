@@ -118,9 +118,12 @@ new-domain setting. Three operating regimes emerge -- no-formal-privacy,
 weak-DP, and strict-DP -- with the federated no-DP model the only deployable
 point at present. Grad-CAM++ faithfulness on that operating model gives global
 Focus Retention Rate (FRR) = 0.281 versus 0.182 centralized, so federation
-does not degrade explanation quality. The results delineate where federated
-FFB detection is practical today and where formal DP remains a research target
-rather than a deployable option.
+does not degrade explanation quality. The deployable checkpoint is packaged
+into a Docker image and demonstrated as a CPU-only inference service on a
+Virtual Private Server, returning bounding boxes, Grad-CAM++ heatmaps, and
+per-detection summaries at roughly two seconds per image. The results
+delineate where federated FFB detection is practical today and where formal DP
+remains a research target rather than a deployable option.
 
 \vspace{0.4em}
 % --- ABSTRAK (Malay) — REQUIRED by IIUMEJ
@@ -684,6 +687,51 @@ explanations attending to nearby cues such as fallen fruitlets; per-class OCD
 is a complementary signal that mostly agrees with FRR on the ranking.
 
 %==============================================================================
+\section{Deployment Demonstration}
+\label{sec:deployment}
+%==============================================================================
+To establish operational viability beyond simulation, the deployable operating
+checkpoint (B2 federated $K{=}4$, 25 rounds, mAP@0.5 = 0.738) is packaged into
+a Docker image and served from a CPU-only Virtual Private Server (VPS). The
+service exposes a Flask \texttt{/predict} endpoint and a lightweight web
+front-end through which an operator uploads a plantation image and receives
+three artefacts simultaneously: bounding boxes with class labels and
+confidences, the per-image Grad-CAM++ heatmap, and a tabular summary of
+detections (Fig.~\ref{fig:vps}).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/docker_ui.png}
+\caption{FedX-Palm inference service running on a CPU-only VPS: upload
+interface and aggregate model metrics shown to the operator as decision
+context.}
+\label{fig:vps-ui}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/result_heatmap.png}
+\caption{Live inference output: YOLOv11n bounding-box predictions and
+Grad-CAM++ overlay for an unseen test image. Each prediction is accompanied
+by a visual justification that the operator can audit.}
+\label{fig:vps}
+\end{figure}
+
+Operationally, the demonstration validates three architectural commitments of
+FedX-Palm. \emph{First}, separation of training and inference: while federated
+training requires per-client GPU resources, inference runs comfortably on a
+commodity CPU at roughly two seconds per image (1.2~s YOLOv11n forward pass
+plus 0.8~s Grad-CAM++), keeping production infrastructure costs low.
+\emph{Second}, instantiation of zero-trust data flow: only the FedAvg-aggregated
+model weights leave the client estates; no raw imagery is stored on the
+inference VPS, mirroring the privacy architecture analyzed throughout the
+paper. \emph{Third}, end-user trust support through XAI: by surfacing the
+Grad-CAM++ heatmap alongside each detection, the service lets field operators
+visually verify whether a ``ripe'' or ``overripe'' label is grounded in the
+fruit region or, as flagged for the \emph{Abnormal} class in
+Sec.~4.6, in surrounding context warranting manual confirmation.
+
+%==============================================================================
 \section{Conclusion}
 %==============================================================================
 FedX-Palm integrates horizontal federated learning, per-sample differential
@@ -698,7 +746,9 @@ accountant, the best full-DP point reaches mAP@0.5 = 0.190 at $\varepsilon =
 hurts (a per-sample-DP penalty), and partial DP does not help. Grad-CAM++
 faithfulness on the deployable model is preserved under federation (global FRR
 = 0.281 vs 0.182 centralized; complementary OCD signal in agreement), with the
-Abnormal class flagged for manual oversight.
+Abnormal class flagged for manual oversight. A Docker-packaged inference
+service on a commodity CPU VPS demonstrates that the federated operating model
+runs end-to-end with visual XAI in roughly two seconds per image.
 These results both demonstrate a working privacy-aware, explainable palm
 ripeness system and delineate the boundary at which formal DP becomes
 impractical -- motivating DP-friendly architectures and larger communication

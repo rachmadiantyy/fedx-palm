@@ -44,13 +44,15 @@ Overleaf: New Project → Upload → folder ini → Compiler **pdfLaTeX**.
 
 ## Gambar yang dibutuhkan (folder `figures/`)
 
-| File | Sumber |
-|---|---|
-| `privacy_utility_e1.png` | `thesis_rebuild/figures/privacy_utility_e1.png` (Fig. 1) |
-| `xai_per_class.png` | `evaluate_xai.py --fig-out figures/xai_per_class.png`, atau copy `pic/xai_comparison.png` (Fig. 2, full-width) |
+| # | File | Sumber |
+|---|---|---|
+| Fig. 1 | `privacy_utility_e1.png` | copy dari `thesis_rebuild/figures/privacy_utility_e1.png` |
+| Fig. 2 | `xai_per_class.png` | copy dari `pic/xai_comparison.png` (rename) |
+| Fig. 3 | `docker_ui.png` | screenshot halaman utama layanan VPS (port 8080) |
+| Fig. 4 | `result_heatmap.png` | screenshot hasil deteksi + heatmap pada citra uji |
 
-Tanpa kedua file ini compile gagal. (Opsional: `K_curve_e1.png` kalau mau
-tambah figure kurva-K.)
+Tanpa keempat file ini compile gagal di `\includegraphics`. Fig. 3-4 untuk
+section *Deployment Demonstration*.
 
 ## Struktur paper
 
