@@ -1,0 +1,17 @@
+# Keep the build context small.
+**/.git
+**/__pycache__
+**/*.pyc
+**/.ipynb_checkpoints
+**/.DS_Store
+**/.venv
+**/.env
+thesis/
+thesis_rebuild/runs/
+thesis_rebuild/figures/
+paper/
+pic/
+data/
+runs/
+*.pt
+*.onnx
