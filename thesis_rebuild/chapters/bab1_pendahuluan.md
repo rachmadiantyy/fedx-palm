@@ -131,7 +131,7 @@ training dan privasi tercapai?
 **RQ3** Bagaimana visualisasi Grad-CAM++ dapat memvalidasi bahwa
 model yang dilatih dengan DP-SGD tetap memfokuskan perhatian pada
 area buah yang relevan secara semantik, diukur menggunakan metrik
-*Average Drop* dan *Faithfulness Ranking Rate*?
+*Average Drop* dan *Focus Retention Rate*?
 
 
 ## 1.3 Tujuan Penelitian
@@ -143,7 +143,7 @@ dijabarkan sebagai berikut:
 
 1. **Merancang dan mengimplementasikan arsitektur federated learning
    ter-Dockerisasi** dengan satu server agregator dan K klien
-   (K ∈ {2, 4, 8, 16}) yang masing-masing memuat shard data Non-IID
+   (K ∈ {2, 4, 8, 12, 16}) yang masing-masing memuat shard data Non-IID
    hasil partisi Dirichlet.
 
 2. **Mengonversi backbone YOLOv11n** dari BatchNorm ke GroupNorm agar
@@ -158,7 +158,7 @@ dijabarkan sebagai berikut:
 
 4. **Mengkuantifikasi trade-off privacy-utility** melalui sweep
    noise multiplier σ ∈ {0.5, 1.0, 1.5, 2.0, 3.0} dan jumlah klien
-   K ∈ {2, 4, 8, 16}, dengan ε dihitung menggunakan *Privacy Random
+   K ∈ {2, 4, 8, 12, 16}, dengan ε dihitung menggunakan *Privacy Random
    Variable* (PRV) accountant pada δ = 1×10⁻⁵.
 
 5. **Membandingkan secara empiris** mekanisme DP-SGD per-sampel
@@ -168,7 +168,7 @@ dijabarkan sebagai berikut:
 
 6. **Mengevaluasi interpretabilitas** model terdistribusi-terenkripsi
    menggunakan Grad-CAM++ dengan metrik kuantitatif Average Drop dan
-   Faithfulness Ranking Rate pada subset validasi.
+   Focus Retention Rate pada subset validasi.
 
 7. **Menyusun blueprint deployment** berbasis Docker untuk replikasi
    sistem oleh kelompok riset atau perusahaan perkebunan tanpa
@@ -187,7 +187,7 @@ Untuk menjaga fokus dan reproducibility, penelitian ini dibatasi pada:
 2. **Backbone**: YOLOv11n (varian nano) dengan GroupNorm sebagai
    pengganti BatchNorm. Varian YOLOv11 lain (s/m/l/x) di luar cakupan.
 
-3. **Jumlah klien**: K ∈ {2, 4, 8, 16} dalam mode *cross-silo*.
+3. **Jumlah klien**: K ∈ {2, 4, 8, 12, 16} dalam mode *cross-silo*.
    Skenario *cross-device* dengan ribuan klien dan ketersediaan
    intermiten tidak diteliti.
 
@@ -218,14 +218,14 @@ Metodologi mengikuti delapan tahap yang dijelaskan rinci di Bab 3:
 2. **Perancangan arsitektur** server-klien ter-Dockerisasi.
 3. **Persiapan dataset** yang reproducible: download dari Roboflow,
    re-split berbasis *bunch_id* untuk anti-leakage, partisi Dirichlet
-   per K ∈ {2,4,8,16}.
+   per K ∈ {2, 4, 8, 12, 16}.
 4. **Modifikasi backbone** YOLOv11n: BatchNorm → GroupNorm in-place.
 5. **Pelatihan lokal** per klien dengan SGD-momentum, dan opsional
    pembungkusan Opacus PrivacyEngine untuk DP-SGD.
 6. **Agregasi** FedAvg ter-bobot jumlah sampel per klien.
 7. **Eksplanasi XAI** Grad-CAM++ pada model akhir.
 8. **Evaluasi** dengan mAP@0.5, mAP@0.5:0.95, Precision, Recall, ε,
-   Average Drop, dan Faithfulness Ranking Rate.
+   Average Drop, dan Focus Retention Rate.
 
 Eksperimen dirancang sebagai grid penuh: dua baseline (B1 centralized,
 B2 federated tanpa DP), dan dua varian DP-SGD (E1 full, E2 partial)
@@ -234,34 +234,42 @@ masing-masing di-sweep atas K × σ.
 
 ## 1.6 Hipotesis
 
-**H1** *Federated learning HFL-YOLOv11 dengan FedAvg tanpa DP*
-mencapai mAP@0.5 ≥ 0.90 pada set validasi global, dengan FL-cost
-(B1 − B2) tidak melebihi 0.05.
+Penelitian ini menguji **empat hipotesis utama** (H1, H2, H2-K, H3),
+ditambah satu **hipotesis pendukung** yang diadopsi dari literatur untuk
+diuji secara empiris. Verifikasi seluruh hipotesis disajikan pada Bab 4.8.
 
-**H2** *DP-SGD per-sampel menghasilkan trade-off privacy-utility
-yang gradual*: terdapat setting σ ∈ {0.5, 1.0, 1.5} yang menjaga
-mAP@0.5 dalam kategori *acceptable* (≥ 0.70) pada ε ≤ 8, dengan
-degradasi yang monotonik terhadap σ (bukan *cliff* / *collapse*
-seperti pada DP-FedAvg level-klien yang sudah didokumentasikan pada
-eksperimen pendahuluan). Ambang operasional *collapse*: mAP@0.5 < 0.05.
+**H1 (kelayakan baseline).** *Baseline* YOLOv11n dengan BatchNorm yang
+dikonversi menjadi GroupNorm — prasyarat agar gradien per-sampel
+terdefinisi — mencapai mAP@0.5 pada kategori *acceptable* (≥ 0,70) di set
+validasi global anti-kebocoran, sehingga sah dijadikan *upper bound*
+utilitas. Biaya federasi (FL-cost = mAP B1 − mAP B2) diharapkan kecil
+(≤ 0,05) pada anggaran ronde komunikasi yang memadai.
 
-**H2-K** *Arah pengaruh K pada DP-SGD per-sampel berkebalikan dari
-DP-FedAvg level-klien*: pada DP-SGD per-sampel, K besar berarti
-samples-per-klien kecil sehingga noise mendominasi sinyal lokal
-sebelum agregasi global; mAP diharapkan **menurun** seiring K naik
-pada σ tetap. K = 16 dilaporkan sebagai *limit study* karena
-samples-per-klien (~450) berada di ambang batas konvergensi DP-SGD.
+**H2 (degradasi gradual).** *DP-SGD per-sampel menghasilkan trade-off
+privasi-utilitas yang gradual*: penurunan mAP@0.5 bersifat monotonik
+terhadap σ, bukan *cliff* / *collapse* mendadak seperti yang teramati
+pada DP-FedAvg level-klien di eksperimen pendahuluan. Ambang operasional
+*collapse*: mAP@0.5 < 0,05.
 
-**H3** *Strategi partial DP-SGD mendominasi full DP-SGD pada regime
-ε rendah*: untuk ε ≤ 4, mAP@0.5 dari E2 (head only, ~0.2M params
-trainable) lebih tinggi atau setara dengan E1 (semua ~2.6M params
-trainable), sesuai prediksi Tramer & Boneh [2021] bahwa
-dimensionalitas trainable mempengaruhi sensitivitas DP-SGD.
+**H2-K (arah K terbalik).** *Arah pengaruh jumlah klien K pada DP-SGD
+per-sampel berkebalikan dari DP-FedAvg level-klien*: K besar berarti
+samples-per-klien kecil sehingga *noise* mendominasi sinyal lokal sebelum
+agregasi global; mAP@0.5 diharapkan **menurun** seiring K naik pada σ
+tetap. K = 16 dilaporkan sebagai *limit study* karena samples-per-klien
+berada di ambang batas konvergensi DP-SGD.
 
-**H4** *Grad-CAM++ tetap valid pada model DP-trained*: untuk model
-E1 atau E2 terbaik, Average Drop > 80% dan Faithfulness Ranking Rate
-> 0.8 pada subset validasi, mengindikasikan bahwa proteksi privasi
-tidak menghancurkan struktur atensi model.
+**H3 (XAI tetap bermakna).** *Penjelasan Grad-CAM++ pada model operasional
+tetap faithful secara kuantitatif*: Average Drop (penurunan kepercayaan
+saat region salien ditutup, makin tinggi makin baik) dan Focus Retention
+Rate menunjukkan atensi model terkonsentrasi pada region buah (ROI), bukan
+latar, sehingga prediksi dapat diaudit secara visual.
+
+**Hipotesis pendukung (Tramèr & Boneh, 2021).** Strategi *partial* DP-SGD
+(hanya kepala deteksi yang dilatih, E2, ~0,2 juta parameter) diuji terhadap
+*full* DP-SGD (E1, ~2,6 juta parameter): literatur memprediksi E2 lebih
+efisien pada ε rendah karena dimensi gradien yang lebih kecil. Penelitian
+ini menguji apakah prediksi tersebut berlaku pada deteksi objek di domain
+baru (TBS sawit). Verdict empiris dilaporkan pada Bab 4.5.
 
 
 ## 1.7 Sistematika Penulisan

@@ -2,8 +2,8 @@
 Per-class XAI evaluation: Grad-CAM++ faithfulness on the test set.
 
 Computes, PER ripeness class and globally:
-  - Average Drop (AD %): lower = explanation highlights regions the model
-    actually relies on.
+  - Average Drop (AD %): higher = explanation highlights regions the model
+    actually relies on (masking the salient region drops confidence more).
   - Focus Retention Rate (FRR, 0-1): fraction of heatmap intensity that
     falls inside the fruit bounding boxes — doubles as the agronomic
     "does the model look at the fruit, not the background" check.

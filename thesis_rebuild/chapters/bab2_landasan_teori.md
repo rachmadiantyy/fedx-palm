@@ -336,11 +336,14 @@ Kualitas penjelasan dievaluasi secara kuantitatif melalui metrik *faithfulness*
 (kesetiaan penjelasan terhadap perilaku model sesungguhnya):
 
 - **Average Drop (AD)** mengukur rata-rata penurunan keyakinan model ketika
-  citra masukan dibatasi hanya pada wilayah yang disorot *heatmap*. Nilai yang
-  tepat menunjukkan bahwa wilayah sorotan memang penting bagi prediksi.
-- **Faithfulness/Region Retention (FRR)** mengukur sejauh mana keyakinan model
-  dipertahankan ketika hanya wilayah penting yang disisakan, sebagai indikator
-  bahwa penjelasan menangkap bukti yang relevan.
+  wilayah yang disorot *heatmap* (intensitas di atas ambang) **ditutup** dari
+  citra masukan. Nilai AD yang **lebih tinggi lebih baik**: menutup wilayah
+  sorotan menjatuhkan kepercayaan model secara berarti, membuktikan wilayah
+  itu memang menjadi dasar prediksi (penjelasan *faithful*).
+- **Focus Retention Rate (FRR)** mengukur fraksi total intensitas *heatmap*
+  Grad-CAM++ yang jatuh **di dalam kotak pembatas (ROI) deteksi**. FRR yang
+  lebih tinggi menandakan atensi model terkonsentrasi pada objek (buah),
+  bukan pada latar belakang.
 
 Dalam penelitian ini, metrik XAI dipakai untuk memverifikasi bahwa penerapan
 DP-SGD tidak hanya memengaruhi akurasi numerik tetapi juga *kualitas alasan*

@@ -178,7 +178,7 @@ $K \in \{2, 4, 8, 12, 16\}$ × $\sigma \in \{0{,}5;\, 1;\, 1{,}5;\, 2;\, 3\}$
 
 > Sumber: kolom `final_epsilon` pada `runs_master.csv` (baris `exp=E1`).
 
-Pola dua dimensi yang muncul dari Tabel 4.3.2 sangat instruktif:
+Pola dua dimensi yang muncul dari Tabel 4.4.2 sangat instruktif:
 $\varepsilon$ **naik** seiring $K$ membesar pada $\sigma$ tetap. Pada
 $\sigma = 0{,}5$, $K = 2$ menghabiskan $\varepsilon = 8{,}62$ sementara
 $K = 16$ membutuhkan $\varepsilon = 13{,}75$ — kenaikan 60% — meskipun
@@ -228,7 +228,7 @@ Tiga observasi dari kurva:
 ### 4.4.4 Kurva-$K$
 
 Gambar 4.2 (`figures/K_curve_e1.png`) memetakan mAP@0.5 sebagai fungsi
-$K$ untuk tiap nilai $\sigma$. Pola yang muncul memperkuat 4.3.3:
+$K$ untuk tiap nilai $\sigma$. Pola yang muncul memperkuat 4.4.3:
 
 - Pada $\sigma$ kecil (0,5 dan 1,0), kurva-$K$ menurun monoton dengan
   *plateau* relatif tinggi pada $K \in \{2, 4\}$ (~0,15–0,19) sebelum
@@ -295,7 +295,7 @@ mendominasi E1** terutama pada $\varepsilon$ rendah.
 
 ### 4.5.3 Pembahasan: Hipotesis Tramèr & Boneh DITOLAK pada Setup Ini
 
-Pola Tabel 4.4.2 sangat tegas: **E1 mengungguli E2 di setiap konfigurasi
+Pola Tabel 4.5.2 sangat tegas: **E1 mengungguli E2 di setiap konfigurasi
 $(K, \sigma)$ yang diuji**, baik pada $\varepsilon$ longgar (8,6)
 maupun ketat (0,2). Selisih rata-rata adalah +0,084 mAP@0.5 menguntungkan
 E1. Hasil ini **berlawanan dengan prediksi Tramèr & Boneh (2021)** yang
@@ -383,9 +383,9 @@ interval* sebelum publikasi jurnal.
 | Hipotesis | Klaim | Verdict | Bukti |
 |---|---|---|---|
 | **H1** | *Baseline* GN mencapai mAP@0.5 *acceptable* | **TERKONFIRMASI** | 4.1: mAP=0,787 > 0,70 |
-| **H2** | DP-SGD per-sampel memberi degradasi *gradual* pada $\varepsilon \le 8$ | **TERKONFIRMASI** | 4.3.3: penurunan monoton, tidak ada *cliff* tunggal |
-| **H2-K** | $K$ besar memperburuk utilitas DP-SGD per-sampel (kebalikan DP-FedAvg) | **TERKONFIRMASI** | 4.3.4: $K=2$ konsisten > $K=16$ di tiap $\sigma$; ditambah *double penalty* $\varepsilon$ |
-| **H3** | XAI tetap *meaningful* pada model operasional | **TERKONFIRMASI sebagian** | 4.8: berlaku pada B2; tidak dapat dievaluasi serius pada E1/E2 karena model *collapsed* |
+| **H2** | DP-SGD per-sampel memberi degradasi *gradual* pada $\varepsilon \le 8$ | **TERKONFIRMASI** | 4.4.3: penurunan monoton, tidak ada *cliff* tunggal |
+| **H2-K** | $K$ besar memperburuk utilitas DP-SGD per-sampel (kebalikan DP-FedAvg) | **TERKONFIRMASI** | 4.4.4: $K=2$ konsisten > $K=16$ di tiap $\sigma$; ditambah *double penalty* $\varepsilon$ |
+| **H3** | XAI tetap *meaningful* pada model operasional | **TERKONFIRMASI sebagian** | 4.9: berlaku pada B2; tidak dapat dievaluasi serius pada E1/E2 karena model *collapsed* |
 
 Catatan tambahan, satu hipotesis pendukung **DITOLAK**: prediksi Tramèr
 & Boneh bahwa partial DP-SGD (E2) mendominasi full DP-SGD (E1) tidak
@@ -417,9 +417,11 @@ dari 100 citra *test* acak, dirinci per-kelas.
 | **Global**     | 344 | **15,90** | **0,281** |
 
 > Sumber: `tables/xai_per_class.csv`.
-> AD lebih rendah lebih baik (tutup ROI menurunkan kepercayaan
-> sedikit saja). FRR lebih tinggi lebih baik (saliency ter-*localize*
-> di dalam ROI deteksi).
+> AD lebih **tinggi** lebih baik: *Average Drop* mengukur penurunan
+> kepercayaan ketika wilayah *salient* (heatmap di atas ambang) ditutup
+> (Bab 2.6.2, Pers. 2.7) — drop yang besar berarti model benar-benar
+> bergantung pada ROI yang disorot. FRR lebih tinggi lebih baik
+> (*saliency* ter-*localize* di dalam ROI deteksi).
 
 ### 4.9.2 Komparasi dengan *Centralized* (B1)
 
@@ -430,16 +432,20 @@ Sebagai pembanding, B1 dievaluasi pada 200 citra *test*:
 | B1 *centralized* | 200 | 4,95  | 0,182 |
 | B2 *federated* $K=4$ | 344 | 15,90 | 0,281 |
 
-Dua observasi:
+Dua observasi yang saling menguatkan:
 
-- **AD lebih kecil pada B1** (4,95% vs 15,90%) menunjukkan model
-  *centralized* lebih *robust* terhadap *occlusion* ROI — konsisten
-  dengan utilitas yang lebih tinggi (mAP@0.5 0,787 vs 0,738).
-- **FRR lebih tinggi pada B2** (0,281 vs 0,182) menunjukkan
-  *saliency* B2 sebenarnya **lebih ter-konsentrasi di dalam ROI deteksi**,
-  meskipun model secara global kurang akurat. Ini paradoks yang menarik:
-  ketika B2 mendeteksi sesuatu, alasan visualnya lebih jelas; tetapi
-  ketika B1 mendeteksi, prediksi lebih tahan terhadap noise.
+- **AD lebih tinggi pada B2** (15,90% vs 4,95%) menunjukkan prediksi B2
+  lebih *grounded* pada ROI: menutup wilayah *salient* menjatuhkan
+  kepercayaan jauh lebih besar dibanding pada B1. Sebaliknya, pada B1
+  menutup ROI hampir tidak mengubah kepercayaan (AD 4,95%), indikasi
+  model *centralized* lebih banyak bersandar pada konteks global di luar
+  ROI ketika memutuskan.
+- **FRR lebih tinggi pada B2** (0,281 vs 0,182) menunjukkan *saliency*
+  B2 **lebih ter-konsentrasi di dalam ROI deteksi**. Kedua metrik
+  searah: meskipun B2 sedikit kurang akurat secara mAP@0.5 (0,738 vs
+  0,787), penjelasan visualnya justru lebih *faithful* — ketika B2
+  mendeteksi sesuatu, keputusannya benar-benar didasarkan pada area
+  buah, bukan pada latar.
 
 ### 4.9.3 Analisis Per-Kelas
 
@@ -488,7 +494,7 @@ Pemilihan arsitektur CPU-only disengaja untuk menunjukkan bahwa **biaya *deploym
 
 ### 4.10.2 Antarmuka Layanan
 
-Gambar 4.6 (`pic/docker ui.png`) menampilkan halaman utama layanan yang berjalan pada *port* 8080. Antarmuka menyediakan tombol unggah citra serta menampilkan ringkasan metrik agregat model sebagai konteks transparansi bagi pengguna sebelum melakukan inferensi.
+Gambar 4.6 (`pic/docker_ui.png`) menampilkan halaman utama layanan yang berjalan pada *port* 8080. Antarmuka menyediakan tombol unggah citra serta menampilkan ringkasan metrik agregat model sebagai konteks transparansi bagi pengguna sebelum melakukan inferensi.
 
 Metrik agregat yang ditampilkan (mAP@0.5 = 0,738; AD = 15,90%; FRR = 0,281) berasal langsung dari hasil eksperimen Bagian 4.2 dan 4.9 — bukan angka pemasaran. Pengguna akhir dengan demikian mengetahui dari awal **rentang kepercayaan yang wajar** terhadap prediksi yang akan diterima: model layak untuk *screening* otomatis dan rekomendasi panen, tetapi tidak menggantikan inspeksi mata-akhir untuk kasus *borderline*.
 

@@ -223,11 +223,12 @@ memuat representasi semantik paling kaya. *Heatmap* yang dihasilkan menyoroti
 wilayah citra yang paling memengaruhi prediksi. Kualitas penjelasan diukur
 secara kuantitatif melalui:
 
-- **Average Drop (AD)**: rata-rata penurunan keyakinan model ketika masukan
-  dibatasi pada wilayah sorotan; nilai yang tepat menandakan wilayah tersebut
-  memang penting.
-- **Faithfulness/Region Retention (FRR)**: seberapa besar keyakinan
-  dipertahankan ketika hanya wilayah penting yang disisakan.
+- **Average Drop (AD)**: rata-rata penurunan keyakinan model ketika wilayah
+  sorotan *heatmap* **ditutup** dari masukan; nilai **lebih tinggi lebih baik**,
+  menandakan wilayah tersebut memang menjadi dasar prediksi.
+- **Focus Retention Rate (FRR)**: fraksi intensitas *heatmap* yang berada
+  **di dalam kotak pembatas deteksi (ROI)**; nilai lebih tinggi berarti atensi
+  model terfokus pada objek, bukan latar.
 
 Perbandingan metrik XAI antara model *baseline* dan model DP-SGD menunjukkan
 apakah model privat tetap "melihat" buah pada lokasi yang benar.
@@ -283,7 +284,7 @@ Fase 2 mengonfirmasi konfigurasi menjanjikan dengan tiga *seed* (mean ± std).
 
 | ID | Setup | Tujuan |
 |---|---|---|
-| **R1** | 3 *seed* × subset menjanjikan (B2, E1/E2 pada $\sigma$ terbaik & terburuk-layak) | Robustness statistik |
+| **R1** | 3 *seed* × subset menjanjikan (B2, E1/E2 pada $\sigma$ terbaik & terburuk-layak) | Robustness statistik — *direncanakan, namun ditangguhkan ke pekerjaan lanjutan karena anggaran komputasi; seluruh hasil Bab 4 dilaporkan pada satu seed (42), lihat Bab 4.7* |
 
 Rentang $\sigma$ dipilih untuk meng-*cover* $\varepsilon$ bermakna dari sekitar
 1 (privasi ketat) hingga 10+ (longgar), dengan target *sweet spot*
