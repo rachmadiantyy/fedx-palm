@@ -41,12 +41,17 @@ from xai.explainer import GradCAMPlusPlus  # noqa: E402
 
 # The deployed checkpoint is a GroupNorm YOLOv11 (BatchNorm was replaced for
 # DP-SGD compatibility). GroupNorm has no running statistics, so Ultralytics'
-# Conv+BN fusion crashes on it. Fusion is a BN-only inference speed-up that is
-# numerically identical for a GN model, so neutralize it to a no-op at the
-# class level BEFORE any model is loaded (covers both load-time and predict-time
-# fuse calls).
-from ultralytics.nn.tasks import DetectionModel  # noqa: E402
+# Conv+BN fusion crashes with "'GroupNorm' object has no attribute 'running_var'".
+# Fusion is a BN-only inference speed-up that is numerically identical for a GN
+# model, so neutralize it to a no-op. The fuse() method is defined on BaseModel
+# (DetectionModel inherits it) AND AutoBackend calls model.fuse() at predict
+# time, so we patch BaseModel.fuse at the class level BEFORE any model is loaded
+# to cover every code path (load, val, and predict via AutoBackend). is_fused()
+# is also forced True so AutoBackend skips fusion entirely.
+from ultralytics.nn.tasks import BaseModel, DetectionModel  # noqa: E402
+BaseModel.fuse = lambda self, verbose=True: self
 DetectionModel.fuse = lambda self, verbose=True: self
+BaseModel.is_fused = lambda self, thresh=10: True
 
 # -----------------------------------------------------------------------------
 # Constants & configuration
