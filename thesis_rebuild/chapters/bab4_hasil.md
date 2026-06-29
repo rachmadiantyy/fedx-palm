@@ -1,10 +1,10 @@
 # BAB 4 HASIL DAN PEMBAHASAN
 
-Bab ini menyajikan hasil empiris dari empat blok eksperimen — *baseline*
+Bab ini menyajikan hasil empiris dari lima blok eksperimen (termasuk satu pendahuluan) — *baseline*
 sentralized (B1), *baseline* federated tanpa privasi (B2), DP-SGD federated
 penuh (E1), dan DP-SGD federated parsial dengan *backbone* beku (E2) —
 diikuti pembahasan privasi-utilitas, analisis kuantitatif kualitas
-penjelasan (XAI) pada model operasional, dan validasi tiga hipotesis
+penjelasan (XAI) pada model operasional, dan validasi empat hipotesis
 penelitian (H1, H2, H2-K, H3). Seluruh angka berasal dari
 `thesis_rebuild/tables/runs_master.csv` yang menggabungkan 55 *federated
 runs* (B2 + E1 + E2) ditambah satu *run* sentralized terpisah untuk B1.
@@ -65,7 +65,7 @@ federasi dan heterogenitas data Non-IID, tanpa pengaruh *noise* privasi.
 Eksperimen dijalankan untuk $K \in \{2, 4, 8, 12, 16\}$, lima ronde
 komunikasi, dua *epoch* lokal per ronde. Konfigurasi $K = 4$ tambahan
 dilatih selama 25 ronde sebagai *operating point* untuk eksperimen XAI
-hilir (Bagian 4.8).
+hilir (Bagian 4.9).
 
 ### 4.2.1 Hasil per-$K$
 
@@ -113,14 +113,45 @@ khas pelatihan FL yang terhenti sebelum *precision* sempat
 ter-tuning. Penambahan ronde mengatasi keduanya secara simultan: pada
 $K = 4$ 25-ronde, *precision* dan *recall* sama-sama mencapai ~0,68.
 
-## 4.3 DP-SGD Federated Penuh (E1)
+## 4.3 Eksperimen Pendahuluan: DP-FedAvg Level-Klien
+
+Sebelum menetapkan DP-SGD per-sampel sebagai mekanisme privasi utama,
+penelitian ini lebih dulu menguji pendekatan yang lebih sederhana — penyuntikan
+*noise* Gaussian pada *delta* bobot teragregasi di sisi server (*client-level*
+DP-FedAvg). Pada seluruh tingkat perturbasi yang diuji, pendekatan ini
+menghasilkan **collapse deteksi total** (mAP@0.5 → 0): model kehilangan
+kemampuan menghasilkan *bounding box* valid, sehingga tidak ada utilitas yang
+dapat dilaporkan maupun dievaluasi XAI-nya.
+
+Alih-alih menyimpulkan DP-FedAvg fundamental tidak layak, penelitian ini
+mengidentifikasi **dua confound** pada eksperimen pendahuluan tersebut:
+
+1. **Inkompatibilitas BatchNorm dengan akuntansi per-sampel.** Arsitektur
+   YOLOv11 awal sarat lapisan BatchNorm yang statistiknya bergantung
+   antar-sampel, bertentangan dengan prinsip privasi per-sampel dan ditolak
+   *ModuleValidator* Opacus.
+2. **Pemetaan ε tidak andal.** Anggaran privasi pendahuluan tidak diturunkan
+   dari *privacy accountant* formal, sehingga ε yang dilaporkan tidak dapat
+   dipertanggungjawabkan.
+
+Kedua confound ini memotivasi perombakan desain yang menjadi inti penelitian:
+(a) konversi seluruh BatchNorm → GroupNorm agar gradien per-sampel terdefinisi,
+(b) peralihan ke DP-SGD per-sampel yang menyebarkan *noise* ke banyak langkah
+kecil ternormalisasi alih-alih satu suntikan agregat, dan (c) perhitungan ε
+via PRV *accountant* (Opacus) pada δ = 10⁻⁵. Studi utama (Bagian 4.4–4.5)
+karenanya berfokus pada DP-SGD per-sampel, dengan DP-FedAvg sebagai **pembanding
+pendahuluan** yang menjelaskan *mengapa* jalur per-sampel dipilih. Karena kedua
+confound di atas, *collapse* DP-FedAvg **tidak** diklaim sebagai sifat
+fundamental, melainkan hasil spesifik pada konfigurasi pipeline pendahuluan.
+
+## 4.4 DP-SGD Federated Penuh (E1)
 
 Eksperimen E1 menambahkan DP-SGD per-sampel pada seluruh ~2,6 juta
 parameter YOLOv11n-GN, dilatih secara federasi pada *grid* lengkap
 $K \in \{2, 4, 8, 12, 16\}$ × $\sigma \in \{0{,}5;\, 1;\, 1{,}5;\, 2;\, 3\}$
 = **25 konfigurasi**, masing-masing 5 ronde × 2 *epoch* lokal.
 
-### 4.3.1 Tabel mAP@0.5 untuk seluruh $(K, \sigma)$
+### 4.4.1 Tabel mAP@0.5 untuk seluruh $(K, \sigma)$
 
 | $K \downarrow$ \ $\sigma \rightarrow$ | 0,5 | 1,0 | 1,5 | 2,0 | 3,0 |
 |---|---|---|---|---|---|
@@ -135,7 +166,7 @@ $K \in \{2, 4, 8, 12, 16\}$ × $\sigma \in \{0{,}5;\, 1;\, 1{,}5;\, 2;\, 3\}$
 > ($\varepsilon$ semakin kecil). Baris $K$ semakin ke bawah:
 > *samples-per-klien* semakin kecil.
 
-### 4.3.2 Pemetaan $\sigma \to \varepsilon$ per-$K$
+### 4.4.2 Pemetaan $\sigma \to \varepsilon$ per-$K$
 
 | $K \downarrow$ \ $\sigma \rightarrow$ | 0,5 | 1,0 | 1,5 | 2,0 | 3,0 |
 |---|---|---|---|---|---|
@@ -161,7 +192,7 @@ Implikasi praktis: pada *deployment* nyata, **$K$ besar tidak hanya
 menurunkan utilitas tetapi juga memperburuk efisiensi privasi** — sebuah
 *double penalty* yang tidak dialami DP-FedAvg level-klien.
 
-### 4.3.3 Kurva Privasi-Utilitas
+### 4.4.3 Kurva Privasi-Utilitas
 
 Gambar 4.1 (`figures/privacy_utility_e1.png`) memplot mAP@0.5 sebagai
 fungsi $\varepsilon$ (sumbu-x) untuk setiap $K$ (satu kurva per $K$).
@@ -194,7 +225,7 @@ Tiga observasi dari kurva:
    relatif 117%. **H2-K (K besar memperburuk utilitas pada DP-SGD
    per-sampel) TERKONFIRMASI**.
 
-### 4.3.4 Kurva-$K$
+### 4.4.4 Kurva-$K$
 
 Gambar 4.2 (`figures/K_curve_e1.png`) memetakan mAP@0.5 sebagai fungsi
 $K$ untuk tiap nilai $\sigma$. Pola yang muncul memperkuat 4.3.3:
@@ -212,7 +243,7 @@ $K$ untuk tiap nilai $\sigma$. Pola yang muncul memperkuat 4.3.3:
   setinggi ini, perbedaan $K$ tidak lagi membantu karena rasio
   *signal-to-noise* sudah jatuh terlalu rendah secara universal.
 
-### 4.3.5 Analisis Komparatif: Mengapa E1 Berhenti di Rezim *Degraded*
+### 4.4.5 Analisis Komparatif: Mengapa E1 Berhenti di Rezim *Degraded*
 
 DP-SGD per-sampel pada *object detection* dengan ~2,6 juta parameter
 *trainable* membutuhkan dua hal yang saling berkonflik: (a) gradien
@@ -230,7 +261,7 @@ B2 K=4 25-ronde = 0,738). Dengan jumlah ronde komunikasi yang sama
 seperti B2 5-ronde, kerusakan kemungkinan besar berasal dari
 *clipping* yang menjegal adaptasi domain, bukan dari *noise* itu sendiri.
 
-## 4.4 DP-SGD Federated Parsial (E2): *Backbone* Beku
+## 4.5 DP-SGD Federated Parsial (E2): *Backbone* Beku
 
 Eksperimen E2 membekukan *backbone* YOLOv11n (stage 0–9, ~2,4 juta
 parameter) dan hanya melatih kepala deteksi (~0,2 juta parameter
@@ -239,7 +270,7 @@ parameter) dan hanya melatih kepala deteksi (~0,2 juta parameter
 relatif terhadap sinyal jauh berkurang, sehingga **E2 seharusnya
 mendominasi E1** terutama pada $\varepsilon$ rendah.
 
-### 4.4.1 Tabel mAP@0.5 untuk seluruh $(K, \sigma)$
+### 4.5.1 Tabel mAP@0.5 untuk seluruh $(K, \sigma)$
 
 | $K \downarrow$ \ $\sigma \rightarrow$ | 0,5 | 1,0 | 1,5 | 2,0 | 3,0 |
 |---|---|---|---|---|---|
@@ -251,7 +282,7 @@ mendominasi E1** terutama pada $\varepsilon$ rendah.
 
 > Cetak tebal = nilai terbaik global. Sumber: `tables/e2_grid_map50.md`.
 
-### 4.4.2 E1 versus E2: *Side-by-side* pada $\varepsilon$ Sebanding
+### 4.5.2 E1 versus E2: *Side-by-side* pada $\varepsilon$ Sebanding
 
 | $\varepsilon \approx$ | $(K, \sigma)$ | E1 mAP@0.5 | E2 mAP@0.5 | Selisih (E1 − E2) |
 |---|---|---|---|---|
@@ -262,7 +293,7 @@ mendominasi E1** terutama pada $\varepsilon$ rendah.
 | 1,14  | (2, 1,0)  | **0,183** | 0,080 | +0,103 |
 | 0,20  | (2, 3,0)  | **0,064** | 0,040 | +0,024 |
 
-### 4.4.3 Pembahasan: Hipotesis Tramèr & Boneh DITOLAK pada Setup Ini
+### 4.5.3 Pembahasan: Hipotesis Tramèr & Boneh DITOLAK pada Setup Ini
 
 Pola Tabel 4.4.2 sangat tegas: **E1 mengungguli E2 di setiap konfigurasi
 $(K, \sigma)$ yang diuji**, baik pada $\varepsilon$ longgar (8,6)
@@ -301,7 +332,7 @@ target. Temuan ini menambah nuansa pada rekomendasi luas Tramèr & Boneh
 yang dirumuskan untuk *image classification* dengan fitur ImageNet yang
 sudah jenuh.
 
-## 4.5 Sintesis Privasi-Utilitas: Tiga Rezim
+## 4.6 Sintesis Privasi-Utilitas: Tiga Rezim
 
 Menggabungkan B1, B2, E1, E2, hasil empiris dapat diringkas ke dalam
 tiga **rezim utilitas-privasi** untuk YOLOv11n-GN pada deteksi TBS sawit:
@@ -330,7 +361,7 @@ lanjutan pada teknik *DP-friendly architecture* (model lebih kecil,
 ronde komunikasi yang substansial sebelum DP-SGD dapat memberikan
 mAP@0.5 *acceptable* pada deteksi objek domain baru.
 
-## 4.6 Catatan Ketangguhan Statistik
+## 4.7 Catatan Ketangguhan Statistik
 
 Pada penelitian ini, seluruh 56 *run* dilaksanakan dengan satu *seed*
 ($\{42\}$) karena keterbatasan anggaran komputasi (15 jam *grid* FL
@@ -347,7 +378,7 @@ $\{B2_{K=4,\,25\text{r}},\, E1_{K=4,\sigma=0{,}5},\, E2_{K=2,\sigma=0{,}5}\}$
 disarankan sebagai pekerjaan lanjutan untuk pengetatan *confidence
 interval* sebelum publikasi jurnal.
 
-## 4.7 Validasi Hipotesis
+## 4.8 Validasi Hipotesis
 
 | Hipotesis | Klaim | Verdict | Bukti |
 |---|---|---|---|
@@ -358,9 +389,9 @@ interval* sebelum publikasi jurnal.
 
 Catatan tambahan, satu hipotesis pendukung **DITOLAK**: prediksi Tramèr
 & Boneh bahwa partial DP-SGD (E2) mendominasi full DP-SGD (E1) tidak
-terjadi pada setup ini (Bagian 4.4.3).
+terjadi pada setup ini (Bagian 4.5.3).
 
-## 4.8 Validasi Penjelasan (XAI)
+## 4.9 Validasi Penjelasan (XAI)
 
 Grad-CAM++ diterapkan pada *checkpoint* operasional B2 $K = 4$
 (mAP@0.5 = 0,738) untuk mengevaluasi *faithfulness* penjelasan terhadap
@@ -373,7 +404,7 @@ men-*localize* objek dengan andal.
 Metrik *faithfulness* (Bab 2.8) dihitung pada 344 *instance* deteksi
 dari 100 citra *test* acak, dirinci per-kelas.
 
-### 4.8.1 Hasil Global & Per-Kelas (B2 $K = 4$)
+### 4.9.1 Hasil Global & Per-Kelas (B2 $K = 4$)
 
 | Kelas | $n$ | *Average Drop* (%) | FRR |
 |---|---|---|---|
@@ -390,7 +421,7 @@ dari 100 citra *test* acak, dirinci per-kelas.
 > sedikit saja). FRR lebih tinggi lebih baik (saliency ter-*localize*
 > di dalam ROI deteksi).
 
-### 4.8.2 Komparasi dengan *Centralized* (B1)
+### 4.9.2 Komparasi dengan *Centralized* (B1)
 
 Sebagai pembanding, B1 dievaluasi pada 200 citra *test*:
 
@@ -410,7 +441,7 @@ Dua observasi:
   ketika B2 mendeteksi sesuatu, alasan visualnya lebih jelas; tetapi
   ketika B1 mendeteksi, prediksi lebih tahan terhadap noise.
 
-### 4.8.3 Analisis Per-Kelas
+### 4.9.3 Analisis Per-Kelas
 
 Variasi besar antar-kelas mengungkap *failure mode* spesifik:
 
@@ -436,11 +467,11 @@ B2 berdasarkan: (i) FRR > 0 secara konsisten di seluruh kelas,
 ranking per-kelas konsisten dengan intuisi domain (Abnormal paling
 kontekstual, Ripe paling lokal).
 
-## 4.9 Demonstrasi Operasional: *Deployment* Layanan Inferensi
+## 4.10 Demonstrasi Operasional: *Deployment* Layanan Inferensi
 
-Untuk membuktikan bahwa kerangka FedX-Palm tidak terhenti sebagai simulasi laboratorium, *checkpoint* operasional **B2 $K = 4$ (25 ronde, mAP@0.5 = 0,738)** di-*deploy* ke sebuah *Virtual Private Server* (VPS) berbasis CPU sebagai layanan inferensi mandiri. *Checkpoint* ini dipilih karena merupakan model dengan utilitas tertinggi yang dihasilkan oleh pipeline federated tanpa privasi formal — sesuai dengan rekomendasi Bagian 4.5 untuk skenario produksi di mana ancaman utama adalah *raw data exfiltration*, bukan MIA terhadap bobot model.
+Untuk membuktikan bahwa kerangka FedX-Palm tidak terhenti sebagai simulasi laboratorium, *checkpoint* operasional **B2 $K = 4$ (25 ronde, mAP@0.5 = 0,738)** di-*deploy* ke sebuah *Virtual Private Server* (VPS) berbasis CPU sebagai layanan inferensi mandiri. *Checkpoint* ini dipilih karena merupakan model dengan utilitas tertinggi yang dihasilkan oleh pipeline federated tanpa privasi formal — sesuai dengan rekomendasi Bagian 4.6 untuk skenario produksi di mana ancaman utama adalah *raw data exfiltration*, bukan MIA terhadap bobot model.
 
-### 4.9.1 Arsitektur *Deployment*
+### 4.10.1 Arsitektur *Deployment*
 
 Layanan dikemas sebagai satu *image* Docker dengan komponen berikut:
 
@@ -453,15 +484,15 @@ Layanan dikemas sebagai satu *image* Docker dengan komponen berikut:
 | *Frontend* | Halaman HTML statis dengan tombol *upload* citra |
 | *Runtime* | VPS Linux CPU-only (tanpa GPU) |
 
-Pemilihan arsitektur CPU-only disengaja untuk menunjukkan bahwa **biaya *deployment* riil dapat ditekan jauh di bawah biaya pelatihan**: pelatihan menggunakan GPU NVIDIA T4 selama 15 jam, sedangkan inferensi cukup ditangani CPU komoditas dengan latensi sub-detik per citra.
+Pemilihan arsitektur CPU-only disengaja untuk menunjukkan bahwa **biaya *deployment* riil dapat ditekan jauh di bawah biaya pelatihan**: pelatihan menggunakan GPU NVIDIA RTX 4080 selama 15 jam, sedangkan inferensi cukup ditangani CPU komoditas dengan latensi sub-detik per citra.
 
-### 4.9.2 Antarmuka Layanan
+### 4.10.2 Antarmuka Layanan
 
 Gambar 4.6 (`pic/docker ui.png`) menampilkan halaman utama layanan yang berjalan pada *port* 8080. Antarmuka menyediakan tombol unggah citra serta menampilkan ringkasan metrik agregat model sebagai konteks transparansi bagi pengguna sebelum melakukan inferensi.
 
-Metrik agregat yang ditampilkan (mAP@0.5 = 0,738; AD = 15,90%; FRR = 0,281) berasal langsung dari hasil eksperimen Bagian 4.2 dan 4.8 — bukan angka pemasaran. Pengguna akhir dengan demikian mengetahui dari awal **rentang kepercayaan yang wajar** terhadap prediksi yang akan diterima: model layak untuk *screening* otomatis dan rekomendasi panen, tetapi tidak menggantikan inspeksi mata-akhir untuk kasus *borderline*.
+Metrik agregat yang ditampilkan (mAP@0.5 = 0,738; AD = 15,90%; FRR = 0,281) berasal langsung dari hasil eksperimen Bagian 4.2 dan 4.9 — bukan angka pemasaran. Pengguna akhir dengan demikian mengetahui dari awal **rentang kepercayaan yang wajar** terhadap prediksi yang akan diterima: model layak untuk *screening* otomatis dan rekomendasi panen, tetapi tidak menggantikan inspeksi mata-akhir untuk kasus *borderline*.
 
-### 4.9.3 Inferensi *Live* dan Visualisasi Grad-CAM++
+### 4.10.3 Inferensi *Live* dan Visualisasi Grad-CAM++
 
 Gambar 4.7 (`pic/result-heatmap.png`) memperlihatkan hasil inferensi *live* pada citra TBS sawit yang diunggah lewat antarmuka. Tiga elemen ditampilkan secara simultan:
 
@@ -471,13 +502,13 @@ Gambar 4.7 (`pic/result-heatmap.png`) memperlihatkan hasil inferensi *live* pada
 
 Pengujian dilakukan pada 50 citra dari himpunan *test* yang belum pernah dilihat model selama pelatihan. Latensi rata-rata pada VPS CPU 4-vCPU adalah **~1,2 detik per citra** (inference) ditambah **~0,8 detik** untuk komputasi *heatmap* Grad-CAM++ — total ~2 detik per citra, masih dalam rentang interaktif untuk *web upload* manual.
 
-### 4.9.4 Konsistensi Visual dengan Validasi Kuantitatif
+### 4.10.4 Konsistensi Visual dengan Validasi Kuantitatif
 
-Peta panas yang ditampilkan pada antarmuka **konsisten secara visual** dengan FRR = 0,281 yang dilaporkan pada Bagian 4.8.1: atensi model terkonsentrasi di area *bunch* untuk kelas dengan FRR tinggi (Unripe, Empty Bunch), sementara kelas dengan FRR rendah (Abnormal) menunjukkan *spread* atensi yang lebih luas ke konteks daun di sekitarnya — pola yang mengonfirmasi temuan analisis per-kelas pada 4.8.3.
+Peta panas yang ditampilkan pada antarmuka **konsisten secara visual** dengan FRR = 0,281 yang dilaporkan pada Bagian 4.9.1: atensi model terkonsentrasi di area *bunch* untuk kelas dengan FRR tinggi (Unripe, Empty Bunch), sementara kelas dengan FRR rendah (Abnormal) menunjukkan *spread* atensi yang lebih luas ke konteks daun di sekitarnya — pola yang mengonfirmasi temuan analisis per-kelas pada 4.9.3.
 
 Demonstrasi ini juga menjadi **konfirmasi operasional dari prinsip Zero-Trust Data Sharing** yang dirancang pada Bab 3.12: data mentah klien tidak pernah meninggalkan plantation; hanya bobot model yang ter-agregasi via FedAvg yang dikemas ke *image* Docker dan didistribusikan ke VPS inference. Tidak ada satu pun citra TBS *train* yang tersimpan pada *server* inferensi.
 
-### 4.9.5 Implikasi Kelayakan Praktis
+### 4.10.5 Implikasi Kelayakan Praktis
 
 Tiga implikasi dari demonstrasi *deployment* ini:
 
@@ -487,7 +518,7 @@ Tiga implikasi dari demonstrasi *deployment* ini:
 
 3. **Operating point yang realistis.** Model B2 ($K = 4$, 25 ronde) dengan mAP@0.5 = 0,738 berada di rezim *acceptable* (Bagian 4.0) dan terbukti operasional pada VPS produksi — bukan angka *benchmark* yang hanya bermakna di kertas. *Trade-off* antara mAP yang lebih tinggi (B1 sentralized 0,787) dan lokalitas data plantation (B2 federated 0,738) menghasilkan selisih hanya 0,049 mAP@0.5, yang dapat dipertanggungjawabkan untuk manfaat *privacy-by-design*.
 
-## 4.10 Ancaman terhadap Validitas
+## 4.11 Ancaman terhadap Validitas
 
 **Internal.** (a) *Smoke test* sebelum *grid* lepas menemukan tiga
 inkompatibilitas Opacus×YOLO (SiLU *in-place*, *signature loss*,
@@ -516,7 +547,7 @@ pengaruh DP, dan (ii) seluruh komparasi E1 vs E2 menggunakan durasi
 pelatihan identik (5 ronde × 2 *epoch*) sehingga selisih antar-mekanisme
 tetap valid.
 
-**Statistik.** Satu *seed* tunggal (Bagian 4.6) berarti *confidence
+**Statistik.** Satu *seed* tunggal (Bagian 4.7) berarti *confidence
 interval* tidak dilaporkan. Klaim kualitatif (monoton, *gradual*,
 dominasi arah) tetap dapat dipertanggungjawabkan karena *effect size*
 melampaui variasi seed YOLO yang khas (~0,01–0,03 mAP@0.5).
