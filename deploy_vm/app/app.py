@@ -39,6 +39,15 @@ from ultralytics import YOLO
 sys.path.insert(0, "/app")
 from xai.explainer import GradCAMPlusPlus  # noqa: E402
 
+# The deployed checkpoint is a GroupNorm YOLOv11 (BatchNorm was replaced for
+# DP-SGD compatibility). GroupNorm has no running statistics, so Ultralytics'
+# Conv+BN fusion crashes on it. Fusion is a BN-only inference speed-up that is
+# numerically identical for a GN model, so neutralize it to a no-op at the
+# class level BEFORE any model is loaded (covers both load-time and predict-time
+# fuse calls).
+from ultralytics.nn.tasks import DetectionModel  # noqa: E402
+DetectionModel.fuse = lambda self, verbose=True: self
+
 # -----------------------------------------------------------------------------
 # Constants & configuration
 # -----------------------------------------------------------------------------

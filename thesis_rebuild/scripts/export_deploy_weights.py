@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-import types
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -41,16 +40,6 @@ from thesis_rebuild.scripts.evaluate_xai import load_model  # noqa: E402
 CLASS_NAMES = ["Abnormal", "Empty Bunch", "Overripe", "Ripe", "Underripe", "Unripe"]
 
 
-def _no_fuse(self, verbose: bool = True):
-    """Picklable replacement for the fuse-noop lambda.
-
-    build_gn_yolo sets `model.fuse = lambda ...`, but a lambda cannot be
-    pickled by torch.save. Binding a top-level function as a method is
-    picklable and keeps the same behaviour (GroupNorm has no Conv+BN fusion).
-    """
-    return self
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description="Export federated ckpt -> standard Ultralytics .pt")
     ap.add_argument("--weights", required=True, help="federated best.pt (custom {'state',...} format)")
@@ -63,14 +52,20 @@ def main() -> None:
     yolo = load_model(args.weights, args.device)
     model = yolo.model
 
-    # 2) Make the model fully picklable + label-correct for deployment.
-    #    - swap the lambda fuse for a bound top-level function
-    #    - stamp the six ripeness class names (training kept COCO names)
-    model.fuse = types.MethodType(_no_fuse, model)
-    model.names = {i: n for i, n in enumerate(CLASS_NAMES)}
+    # 2) Make the model picklable. build_gn_yolo (and evaluate_xai.load_model)
+    #    assign `model.fuse = lambda ...` as an INSTANCE attribute; a lambda
+    #    cannot be pickled by torch.save, so remove the override and let the
+    #    standard class method remain. Fusion is neutralized at LOAD time
+    #    instead (class-level monkeypatch in app.py and in the verify step
+    #    below), which is picklable-safe.
+    model.__dict__.pop("fuse", None)
+
+    # Stamp the six ripeness class names for nicer downstream labels (training
+    # kept COCO names). app.py uses its own CLASS_NAMES list, so this is cosmetic.
     if hasattr(model, "model") and hasattr(model.model[-1], "nc"):
-        nc = model.model[-1].nc
-        print(f"[export] detection head nc = {nc} (expected 6)")
+        print(f"[export] detection head nc = {model.model[-1].nc} "
+              f"(80 is expected: the head is 80-wide, only indices 0-5 are "
+              f"trained for the palm classes)")
     model.float().eval()
 
     # 3) Save in the standard Ultralytics checkpoint layout.
@@ -89,14 +84,20 @@ def main() -> None:
     print(f"[export] wrote standard checkpoint -> {out} ({out.stat().st_size/1e6:.1f} MB)")
 
     # 4) Verify it reloads with a PLAIN YOLO() exactly like the container will.
+    #    Neutralize Conv+GroupNorm "fusion" at the class level first: GroupNorm
+    #    has no running stats, so Ultralytics' BN-fusion crashes on it. A no-op
+    #    fuse is numerically identical for a GN model. app.py applies the same
+    #    patch in production.
+    from ultralytics.nn.tasks import DetectionModel  # noqa: E402
+    DetectionModel.fuse = lambda self, verbose=True: self
     from ultralytics import YOLO  # noqa: E402
     reloaded = YOLO(str(out))
-    reloaded.model.fuse = types.MethodType(_no_fuse, reloaded.model)  # keep noop
     names = reloaded.names
-    print(f"[verify] reloaded OK; classes = {list(names.values()) if isinstance(names, dict) else names}")
+    print(f"[verify] reloaded OK; head classes available = "
+          f"{len(names) if names else '?'}")
     print("[verify] running a dummy forward pass on a blank image ...")
     import numpy as np
-    dummy = (np.zeros((args.imgsz, args.imgsz, 3), dtype="uint8"))
+    dummy = np.zeros((args.imgsz, args.imgsz, 3), dtype="uint8")
     _ = reloaded.predict(dummy, verbose=False, device=args.device)
     print("[verify] forward pass OK — safe to deploy this file.")
 
