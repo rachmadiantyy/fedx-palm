@@ -116,7 +116,8 @@ Berdasarkan temuan dan keterbatasan di atas, lima arah lanjut diajukan.
 4. **Defense against gradient leakage in practice.** Walaupun DP-SGD
    memberi jaminan teoretis, demonstrasi serangan rekonstruksi gradien
    nyata (DLG/iDLG) pada model B2 versus E1/E2 akan memperkuat narasi
-   praktis bahwa privasi formal benar-benar menutup celah serangan ini.
+   praktis bahwa privasi formal **mengurangi keunggulan penyerang** pada
+   celah serangan ini dalam kerangka $(\varepsilon, \delta)$-DP.
 
 5. **Deployment edge nyata + benchmark inferensi.** Pengukuran latensi
    dan akurasi pada *hardware* edge nyata (mis. Jetson Nano, Raspberry Pi 5)

@@ -170,9 +170,12 @@ dijabarkan sebagai berikut:
    menggunakan Grad-CAM++ dengan metrik kuantitatif Average Drop dan
    Focus Retention Rate pada subset validasi.
 
-7. **Menyusun blueprint deployment** berbasis Docker untuk replikasi
-   sistem oleh kelompok riset atau perusahaan perkebunan tanpa
-   ketergantungan pada infrastruktur khusus.
+7. **Membangun dan menjalankan layanan inferensi berbasis Docker**:
+   mengemas model akhir ke dalam *image* Docker dan men-*deploy*-nya
+   sebagai layanan inferensi nyata pada sebuah VPS (Bab 4.10), sekaligus
+   menyediakan *blueprint* yang dapat direplikasi oleh kelompok riset
+   atau perusahaan perkebunan tanpa ketergantungan pada infrastruktur
+   khusus.
 
 
 ## 1.4 Batasan Penelitian
@@ -199,9 +202,12 @@ Untuk menjaga fokus dan reproducibility, penelitian ini dibatasi pada:
    `max_grad_norm` C = 1.0 tetap. Ablation atas C terbatas pada satu
    konfigurasi K-σ kunci, kalau waktu memungkinkan.
 
-6. **Komputasi**: simulasi single-GPU (RTX 4080) tanpa replikasi
-   multi-host. Blueprint Docker disediakan tetapi deployment
-   distributed nyata di luar cakupan eksperimental.
+6. **Komputasi**: pelatihan *Federated Learning* dijalankan sebagai
+   simulasi *sequential* single-GPU (RTX 4080) tanpa replikasi
+   multi-host — yang di luar cakupan adalah pelatihan FL terdistribusi
+   lintas-host fisik, bukan deployment-nya. Adapun *deployment* inferensi
+   berbasis Docker **dijalankan secara nyata** pada satu VPS CPU-only
+   (Bab 4.10).
 
 7. **Threat model**: *honest-but-curious server* dengan kemampuan
    melihat pembaruan model per ronde. Adversary aktif (Byzantine)

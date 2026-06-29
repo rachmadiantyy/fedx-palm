@@ -267,9 +267,10 @@ direkonstruksi nyaris sempurna hanya dari gradien yang dipertukarkan — ancaman
 yang sangat relevan bagi FL karena gradien/pembaruan parameter adalah objek yang
 justru dikomunikasikan.
 
-DP-SGD menutup celah-celah ini secara prinsipiil: dengan membatasi sensitivitas
-(melalui *clipping*) dan mengaburkan kontribusi tiap sampel (melalui *noise*),
-keluaran model menjadi nyaris tak terbedakan terhadap ada-tidaknya satu sampel.
+DP-SGD **membatasi** celah-celah ini secara formal (bukan menutupnya sepenuhnya):
+dengan membatasi sensitivitas (melalui *clipping*) dan mengaburkan kontribusi tiap
+sampel (melalui *noise*), keluaran model menjadi nyaris tak terbedakan terhadap
+ada-tidaknya satu sampel dalam batas anggaran $\varepsilon$.
 Akibatnya, keunggulan penyerang MIA dibatasi secara matematis oleh $\varepsilon$,
 dan rekonstruksi via *gradient leakage* maupun *model inversion* menjadi tidak
 andal karena gradien yang dipertukarkan telah ternormalisasi dan dikaburkan.
@@ -350,7 +351,83 @@ DP-SGD tidak hanya memengaruhi akurasi numerik tetapi juga *kualitas alasan*
 model — apakah model yang dilatih dengan privasi tetap "melihat" buah pada lokasi
 yang benar.
 
-## 2.9 Containerization untuk Deployment (Docker)
+## 2.9 Penelitian Terkait
+
+Bagian ini meninjau penelitian terdahulu pada lima untai yang menjadi
+fondasi FedX-Palm, sekaligus memetakan posisi penelitian ini terhadapnya.
+
+**(a) Deteksi/klasifikasi kematangan TBS sawit berbasis** ***deep learning***.
+Septiarini et al. [2020] mengklasifikasikan kematangan tandan buah segar
+(TBS) sawit menggunakan fitur warna dan tekstur dengan pembelajaran mesin
+klasik, sementara Suharjito et al. [2021] menyusun dataset citra TBS
+beranotasi untuk pembelajaran mesin dan mengevaluasi beberapa arsitektur
+CNN. Mansour et al. [2018] dan Saleh & Liansitim [2020] menunjukkan *deep
+learning* mengungguli pendekatan fitur-tangan untuk pemeringkatan
+kematangan buah. Mayoritas karya ini berhenti pada **klasifikasi citra
+ter-*crop*** dan dilatih secara **tersentral** pada satu dataset, belum
+menyentuh deteksi multi-objek pada citra lapangan utuh maupun aspek privasi
+data lintas-perkebunan.
+
+**(b) YOLO untuk deteksi objek pertanian.** Sejak Redmon et al. [2016]
+memperkenalkan YOLO sebagai detektor satu tahap *real-time*, keluarga YOLO
+banyak diadopsi untuk deteksi buah dan tanaman karena keseimbangan
+kecepatan-akurasinya. Varian mutakhir YOLOv11 [Khanam & Hussain, 2024]
+memperbaiki *backbone* dan kepala deteksi dengan jumlah parameter yang
+ringkas (varian nano ~2,6 juta), cocok untuk *inference edge*. Penelitian
+ini memanfaatkan YOLOv11n tetapi memodifikasinya (BatchNorm → GroupNorm)
+agar kompatibel dengan akuntansi gradien per-sampel — modifikasi yang tidak
+dibahas pada literatur deteksi pertanian arus utama.
+
+**(c)** ***Federated Learning*** **pada visi komputer.** FedAvg [McMahan
+et al., 2017] menjadi algoritma agregasi rujukan; survei Kairouz et al.
+[2021], Yang et al. [2019], dan Li et al. [2020] memetakan tantangan FL
+termasuk heterogenitas data Non-IID, yang Hsu et al. [2019] formalkan
+melalui partisi Dirichlet. Penerapan FL pada domain sensitif telah
+ditunjukkan pada citra medis [Rieke et al., 2020] dan teks seluler [Hard
+et al., 2018]. Namun penerapan FL pada **deteksi objek** (bukan
+klasifikasi) masih jarang, dan hampir tidak ada pada domain agrikultur
+sawit — celah yang diisi penelitian ini.
+
+**(d)** ***Differential Privacy*** **dalam pembelajaran mendalam dan FL.**
+DP-SGD [Abadi et al., 2016] menjadi mekanisme standar privasi tingkat
+sampel, dengan akuntansi anggaran privasi yang diperketat oleh Rényi-DP
+[Mironov, 2017] dan *concentrated DP* [Bun & Steinke, 2016; Dwork et
+al., 2010]. Pada konteks FL, DP dapat diterapkan di tingkat klien
+(DP-FedAvg [McMahan et al., 2018]) maupun tingkat sampel; Wei et al. [2020]
+dan Truex et al. [2020] mengkaji trade-off privasi-utilitas keduanya.
+Tramèr & Boneh [2021] berargumen bahwa membatasi parameter yang dilatih
+(*partial fine-tuning*) memperbaiki efisiensi DP-SGD pada **klasifikasi
+citra**. Penelitian ini menguji klaim tersebut pada **deteksi objek domain
+baru** dan — sebagaimana dilaporkan Bab 4.5 — menemukan hasil yang berbeda.
+
+**(e) XAI untuk evaluasi model visual.** Grad-CAM [Selvaraju et al., 2017]
+dan penyempurnaannya Grad-CAM++ [Chattopadhyay et al., 2018] adalah metode
+atribusi visual yang dominan untuk CNN, sementara SHAP [Lundberg & Lee,
+2017] menawarkan atribusi agnostik-model. Kebutuhan privasi yang
+memotivasi DP berakar pada serangan inferensi nyata — *membership
+inference* [Shokri et al., 2017], *model inversion* [Fredrikson et al.,
+2015], dan *deep leakage from gradients* [Zhu et al., 2019]. Sebagian besar
+studi XAI mengevaluasi model **non-privat dan tersentral**; pengaruh
+pelatihan DP-federated terhadap *faithfulness* penjelasan belum banyak
+dikuantifikasi.
+
+**Posisi penelitian ini.** Tabel 2.1 merangkum cakupan karya terdahulu.
+Sepanjang penelusuran penulis, belum ada karya yang **menyatukan** deteksi
+objek YOLOv11 + FL + DP-SGD per-sampel + evaluasi XAI kuantitatif +
+demonstrasi *deployment* dalam satu kerangka untuk domain kematangan TBS
+sawit. FedX-Palm mengisi celah integratif tersebut.
+
+| Karya | Deteksi (bukan klasifikasi) | Federated | Differential Privacy | XAI kuantitatif | Deployment |
+|---|:--:|:--:|:--:|:--:|:--:|
+| Septiarini et al. [2020]; Suharjito et al. [2021] | – | – | – | – | – |
+| Redmon et al. [2016]; Khanam & Hussain [2024] | ✓ | – | – | – | – |
+| McMahan et al. [2017]; Rieke et al. [2020] | – | ✓ | – | – | – |
+| Abadi et al. [2016]; Wei et al. [2020] | – | ✓ | ✓ | – | – |
+| Tramèr & Boneh [2021] | – | – | ✓ | – | – |
+| Selvaraju et al. [2017]; Chattopadhyay et al. [2018] | – | – | – | ✓ | – |
+| **FedX-Palm (penelitian ini)** | **✓** | **✓** | **✓** | **✓** | **✓** |
+
+## 2.10 Containerization untuk Deployment (Docker)
 
 Tahap akhir siklus penelitian adalah menyajikan model terlatih agar dapat
 digunakan di lapangan. **Docker** adalah teknologi *containerization* yang
@@ -376,6 +453,7 @@ Dockerfile berlaku sebagai cetak biru yang menjamin model dapat dijalankan ulang
 di lingkungan mana pun — mini-PC pabrik, VPS, maupun server — tanpa konflik
 dependensi. Image dirancang *CPU-only* karena target deployment lapangan umumnya
 tanpa GPU, ukuran image menjadi jauh lebih kecil, dan YOLOv11n cukup ringan untuk
-inferensi pada CPU. Membangun serta menjalankan container bersifat opsional
-(memberi nilai tambah demonstratif), sementara Dockerfile itu sendiri sudah sah
-sebagai bukti kesiapan deployment (*deployment-readiness*).
+inferensi pada CPU. Dalam penelitian ini *image* Docker tidak berhenti sebagai
+cetak biru: image **dibangun dan dijalankan sebagai layanan inferensi nyata pada
+sebuah VPS** (Bab 4.10), sehingga kesiapan deployment (*deployment-readiness*)
+dibuktikan secara operasional, bukan sekadar di atas kertas.

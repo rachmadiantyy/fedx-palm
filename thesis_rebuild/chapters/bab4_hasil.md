@@ -1,13 +1,13 @@
 # BAB 4 HASIL DAN PEMBAHASAN
 
 Bab ini menyajikan hasil empiris dari lima blok eksperimen (termasuk satu pendahuluan) — *baseline*
-sentralized (B1), *baseline* federated tanpa privasi (B2), DP-SGD federated
+centralized (B1), *baseline* federated tanpa privasi (B2), DP-SGD federated
 penuh (E1), dan DP-SGD federated parsial dengan *backbone* beku (E2) —
 diikuti pembahasan privasi-utilitas, analisis kuantitatif kualitas
 penjelasan (XAI) pada model operasional, dan validasi empat hipotesis
 penelitian (H1, H2, H2-K, H3). Seluruh angka berasal dari
 `thesis_rebuild/tables/runs_master.csv` yang menggabungkan 55 *federated
-runs* (B2 + E1 + E2) ditambah satu *run* sentralized terpisah untuk B1.
+runs* (B2 + E1 + E2) ditambah satu *run* centralized terpisah untuk B1.
 
 ## 4.0 Definisi Operasional Hasil
 
@@ -30,7 +30,7 @@ diambil dari ronde dengan nilai tertinggi pada `rounds.csv` per *run*,
 sedangkan $\varepsilon$ dilaporkan sebagai nilai *final* (akumulasi
 sampai ronde terakhir).
 
-## 4.1 Validasi Setup: *Baseline* Sentralized (B1)
+## 4.1 Validasi Setup: *Baseline* Centralized (B1)
 
 Eksperimen B1 mengukur **batas atas (*upper bound*) utilitas** YOLOv11n-GN
 tanpa biaya federasi maupun *noise* privasi. Pelatihan dilakukan selama
@@ -94,13 +94,13 @@ turun ke 0,445; lalu $K \ge 8$ stagnan di kisaran 0,23–0,25. Pola ini
 sejalan dengan literatur FL Non-IID [Hsu et al., 2019]: partisi
 Dirichlet yang lebih halus memperburuk *client drift*, memperlambat
 konvergensi global, dan menurunkan kontribusi efektif tiap pembaruan
-ke arah optimum sentralized.
+ke arah optimum centralized.
 
 **Kedua**, dengan menambah jumlah ronde komunikasi dari 5 menjadi 25
 pada $K = 4$, utilitas meningkat dramatis dari 0,445 menjadi **0,738**
 — kenaikan absolut 0,293 mAP@0.5. Hal ini menunjukkan bahwa **kerugian utilitas FL
 bukan barrier fundamental, melainkan masalah anggaran komunikasi**:
-dengan ronde yang memadai, gap antara federated dan sentralized dapat
+dengan ronde yang memadai, gap antara federated dan centralized dapat
 ditekan ke level *acceptable*. $\Delta_\text{FL}$ pada *operating
 point* ini hanya 0,049 mAP@0.5 (~6,2% relatif terhadap B1) — biaya FL
 yang sangat kecil untuk manfaat lokalitas data plantation.
@@ -339,7 +339,7 @@ tiga **rezim utilitas-privasi** untuk YOLOv11n-GN pada deteksi TBS sawit:
 
 | Rezim | Mekanisme | mAP@0.5 | $\varepsilon$ | Status Deployment |
 |---|---|---|---|---|
-| **No privacy formal** | B1 sentralized (50 ep) | 0,787 | $\infty$ | *acceptable* |
+| **No privacy formal** | B1 centralized (50 ep) | 0,787 | $\infty$ | *acceptable* |
 | | B2 federated $K=4$ (25 ronde) | 0,738 | $\infty$ | *acceptable* |
 | **DP-SGD lemah** | E1 $(K=4,\sigma=0{,}5)$ | 0,190 | 8,36 | *degraded* |
 | | E1 $(K=2,\sigma=0{,}5)$ | 0,188 | 8,62 | *degraded* |
@@ -350,7 +350,7 @@ Dua tindakan praktis mengikuti:
 
 **Untuk produksi pendek waktu**: gunakan B2 ($K = 4$, 25 ronde) — model
 operasional yang aman dari kebocoran data mentah (lokalitas plantation)
-dengan utilitas hampir setara sentralized. Cocok untuk skenario di mana
+dengan utilitas hampir setara centralized. Cocok untuk skenario di mana
 ancaman utama adalah *raw data exfiltration*, bukan *membership inference
 attack* (MIA) terhadap model.
 
@@ -512,7 +512,7 @@ Pengujian dilakukan pada 50 citra dari himpunan *test* yang belum pernah dilihat
 
 Peta panas yang ditampilkan pada antarmuka **konsisten secara visual** dengan FRR = 0,281 yang dilaporkan pada Bagian 4.9.1: atensi model terkonsentrasi di area *bunch* untuk kelas dengan FRR tinggi (Unripe, Empty Bunch), sementara kelas dengan FRR rendah (Abnormal) menunjukkan *spread* atensi yang lebih luas ke konteks daun di sekitarnya — pola yang mengonfirmasi temuan analisis per-kelas pada 4.9.3.
 
-Demonstrasi ini juga menjadi **konfirmasi operasional dari prinsip Zero-Trust Data Sharing** yang dirancang pada Bab 3.12: data mentah klien tidak pernah meninggalkan plantation; hanya bobot model yang ter-agregasi via FedAvg yang dikemas ke *image* Docker dan didistribusikan ke VPS inference. Tidak ada satu pun citra TBS *train* yang tersimpan pada *server* inferensi.
+Demonstrasi ini juga **mengilustrasikan prinsip lokalitas data** yang dirancang pada Bab 3.12: secara desain FedAvg, data mentah klien tidak perlu meninggalkan plantation karena hanya bobot model ter-agregasi yang dikemas ke *image* Docker dan di-*deploy* ke VPS inferensi. Pada layanan inferensi yang ditunjukkan, tidak ada satu pun citra TBS *train* yang tersimpan di *server*. (Catatan: pelatihan FL pada penelitian ini dijalankan sebagai simulasi *sequential*, sehingga isolasi jaringan antar-klien bersifat properti rancangan, bukan diukur secara empiris.)
 
 ### 4.10.5 Implikasi Kelayakan Praktis
 
@@ -522,7 +522,7 @@ Tiga implikasi dari demonstrasi *deployment* ini:
 
 2. **XAI sebagai jaminan kepercayaan operator.** Pengguna lapangan (mandor panen) yang tidak memiliki latar belakang *machine learning* dapat memvalidasi keputusan model secara visual lewat *heatmap*. Kombinasi prediksi + justifikasi visual + metrik agregat yang jujur memberikan basis kepercayaan yang lebih kuat dibanding *black-box detector* konvensional.
 
-3. **Operating point yang realistis.** Model B2 ($K = 4$, 25 ronde) dengan mAP@0.5 = 0,738 berada di rezim *acceptable* (Bagian 4.0) dan terbukti operasional pada VPS produksi — bukan angka *benchmark* yang hanya bermakna di kertas. *Trade-off* antara mAP yang lebih tinggi (B1 sentralized 0,787) dan lokalitas data plantation (B2 federated 0,738) menghasilkan selisih hanya 0,049 mAP@0.5, yang dapat dipertanggungjawabkan untuk manfaat *privacy-by-design*.
+3. **Operating point yang realistis.** Model B2 ($K = 4$, 25 ronde) dengan mAP@0.5 = 0,738 berada di rezim *acceptable* (Bagian 4.0) dan terbukti operasional pada VPS produksi — bukan angka *benchmark* yang hanya bermakna di kertas. *Trade-off* antara mAP yang lebih tinggi (B1 centralized 0,787) dan lokalitas data plantation (B2 federated 0,738) menghasilkan selisih hanya 0,049 mAP@0.5, yang dapat dipertanggungjawabkan untuk manfaat *privacy-by-design*.
 
 ## 4.11 Ancaman terhadap Validitas
 
