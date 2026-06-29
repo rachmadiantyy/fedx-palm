@@ -160,6 +160,19 @@ class GradCAMPlusPlus:
                 if b.is_inference():
                     b.data = b.data.clone()
 
+            # Paksa Detect head menghitung ulang cache anchors/strides di dalam
+            # konteks enable_grad ini. Cache tersebut disimpan sebagai atribut
+            # biasa (bukan buffer) sehingga tidak tersentuh kloning di atas; bila
+            # diisi saat YOLO.predict() berjalan di bawah inference_mode, cache
+            # menjadi inference-tensor dan memicu kegagalan backward. Mengosongkan
+            # ``shape`` memaksa Ultralytics merekonstruksinya pada forward berikut.
+            try:
+                detect_head = pytorch_model.model[-1]
+                if hasattr(detect_head, "shape"):
+                    detect_head.shape = None
+            except (AttributeError, IndexError, TypeError):
+                pass
+
             # Preprocess image (clone + detach agar menjadi leaf tensor normal).
             input_tensor = self._preprocess_image(image).clone().detach()
             input_tensor.requires_grad_(True)
