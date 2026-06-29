@@ -500,7 +500,7 @@ Gambar 4.7 (`pic/result-heatmap.png`) memperlihatkan hasil inferensi *live* pada
 2. Peta panas (*heatmap*) Grad-CAM++ yang menyorot area yang menjadi dasar visual keputusan kelas — sehingga setiap prediksi disertai justifikasi yang dapat diperiksa pengguna.
 3. Tabel ringkas yang mendaftar seluruh deteksi pada citra beserta kelas, kepercayaan, dan koordinat *bounding box*.
 
-Pengujian dilakukan pada 50 citra dari himpunan *test* yang belum pernah dilihat model selama pelatihan. Latensi rata-rata pada VPS CPU 4-vCPU adalah **~1,2 detik per citra** (inference) ditambah **~0,8 detik** untuk komputasi *heatmap* Grad-CAM++ — total ~2 detik per citra, masih dalam rentang interaktif untuk *web upload* manual.
+Pengujian dilakukan pada 50 citra dari himpunan *test* yang belum pernah dilihat model selama pelatihan. Latensi rata-rata pada VPS CPU 4-vCPU adalah **~0,14 detik per citra** (inference) ditambah **~0,44 detik** untuk komputasi *heatmap* Grad-CAM++ — total **di bawah satu detik** per citra, masih sangat nyaman untuk *web upload* manual.
 
 ### 4.10.4 Konsistensi Visual dengan Validasi Kuantitatif
 
