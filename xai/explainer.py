@@ -144,17 +144,24 @@ class GradCAMPlusPlus:
         pytorch_model = self._get_pytorch_model()
         pytorch_model.eval()
 
-        # Pastikan parameter model bisa di-backward. YOLO.predict() berjalan di
-        # bawah inference_mode sehingga tensor bisa ter-"taint"; aktifkan grad
-        # kembali dan pastikan parameter tidak beku.
-        for p in pytorch_model.parameters():
-            p.requires_grad_(True)
+        # Seluruh forward + backward Grad-CAM++ harus berada di luar inference_mode
+        # dan di dalam enable_grad. Pemanggilan YOLO.predict() sebelumnya berjalan
+        # di bawah inference_mode sehingga sejumlah tensor (parameter, buffer, atau
+        # cache anchors/strides pada Detect head) menjadi "inference tensor" yang
+        # tidak dapat disimpan untuk backward. inference_mode(False) menonaktifkan
+        # konteks tersebut, sedangkan kloning data parameter dan buffer menghapus
+        # status inference-tensor yang sudah terlanjur melekat.
+        with torch.inference_mode(False), torch.enable_grad():
+            for p in pytorch_model.parameters():
+                if p.is_inference():
+                    p.data = p.data.clone()
+                p.requires_grad_(True)
+            for b in pytorch_model.buffers():
+                if b.is_inference():
+                    b.data = b.data.clone()
 
-        # Seluruh forward + backward Grad-CAM++ harus di konteks enable_grad,
-        # kalau tidak akan muncul "Inference tensors cannot be saved for backward".
-        with torch.enable_grad():
-            # Preprocess image (clone agar jadi leaf tensor normal, bukan inference tensor)
-            input_tensor = self._preprocess_image(image).clone()
+            # Preprocess image (clone + detach agar menjadi leaf tensor normal).
+            input_tensor = self._preprocess_image(image).clone().detach()
             input_tensor.requires_grad_(True)
 
             # Forward pass
