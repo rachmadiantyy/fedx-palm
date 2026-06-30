@@ -25,7 +25,9 @@ konfigurasi $(K, \sigma)$, dipakai ambang operasional Bab 3.8:
 | *excellent* | $\ge 0{,}90$ |
 
 Pelaporan menggunakan mAP@0.5 sebagai metrik primer dan mAP@0.5:0.95,
-*precision*, dan *recall* sebagai metrik pendukung. *Best mAP@0.5*
+*precision*, *recall*, serta *F1-score* sebagai metrik pendukung; *F1*
+dihitung sebagai rata-rata harmonik *precision* dan *recall*
+($F1 = 2PR/(P+R)$). *Best mAP@0.5*
 diambil dari ronde dengan nilai tertinggi pada `rounds.csv` per *run*,
 sedangkan $\varepsilon$ dilaporkan sebagai nilai *final* (akumulasi
 sampai ronde terakhir).
@@ -45,6 +47,7 @@ tanpa biaya federasi maupun *noise* privasi. Pelatihan dilakukan selama
 | mAP@0.5:0.95 | 0,672 |
 | *Precision* | 0,815 |
 | *Recall* | 0,833 |
+| *F1-score* | 0,824 |
 
 Angka ini memenuhi syarat sebagai *upper bound* yang valid: di atas
 ambang *acceptable* (0,70) dan jauh di atas hasil literatur klasifikasi
@@ -69,19 +72,20 @@ hilir (Bagian 4.9).
 
 ### 4.2.1 Hasil per-$K$
 
-| $K$ | Ronde | mAP@0.5 | mAP@0.5:0.95 | *Precision* | *Recall* | $\Delta_\text{FL}$ | Status |
-|---|---|---|---|---|---|---|---|
-| 2  | 5  | 0,542     | 0,431 | 0,391 | 0,660 | 0,245     | *degraded*   |
-| 4  | 5  | 0,445     | 0,354 | 0,355 | 0,520 | 0,342     | *degraded*   |
-| 4  | 25 | **0,738** | 0,593 | 0,676 | 0,680 | **0,049** | *acceptable* |
-| 8  | 5  | 0,246     | 0,187 | 0,218 | 0,565 | 0,541     | *degraded*   |
-| 12 | 5  | 0,248     | 0,187 | 0,191 | 0,703 | 0,539     | *degraded*   |
-| 16 | 5  | 0,231     | 0,169 | 0,199 | 0,825 | 0,556     | *degraded*   |
+| $K$ | Ronde | mAP@0.5 | mAP@0.5:0.95 | *Precision* | *Recall* | *F1* | $\Delta_\text{FL}$ | Status |
+|---|---|---|---|---|---|---|---|---|
+| 2  | 5  | 0,542     | 0,431 | 0,391 | 0,660 | 0,491 | 0,245     | *degraded*   |
+| 4  | 5  | 0,445     | 0,354 | 0,355 | 0,520 | 0,422 | 0,342     | *degraded*   |
+| 4  | 25 | **0,738** | 0,593 | 0,676 | 0,680 | 0,678 | **0,049** | *acceptable* |
+| 8  | 5  | 0,246     | 0,187 | 0,218 | 0,565 | 0,315 | 0,541     | *degraded*   |
+| 12 | 5  | 0,248     | 0,187 | 0,191 | 0,703 | 0,300 | 0,539     | *degraded*   |
+| 16 | 5  | 0,231     | 0,169 | 0,199 | 0,825 | 0,321 | 0,556     | *degraded*   |
 
 > Sumber angka: `tables/b2_grid_map50.md` dan `tables/runs_master.csv`
 > (baris `exp=B2`). Nilai $K=4$ ronde 5 direkonstruksi dari `rounds.csv`
 > di folder `b2_fl_K4_seed42/` (ronde 1–5 saja, sebelum perpanjangan
-> menjadi 25 ronde).
+> menjadi 25 ronde). Kolom *F1* dihitung dari *precision* dan *recall*
+> ($F1 = 2PR/(P+R)$).
 
 ### 4.2.2 Pembahasan B2
 
@@ -106,11 +110,13 @@ point* ini hanya 0,049 mAP@0.5 (~6,2% relatif terhadap B1) — biaya FL
 yang sangat kecil untuk manfaat lokalitas data plantation.
 
 **Ketiga**, *recall* meningkat dengan $K$ (0,660 pada $K=2$ ke 0,825
-pada $K=16$) sementara *precision* tetap rendah (0,191–0,399). Ini
+pada $K=16$) sementara *precision* tetap rendah (0,191–0,391). Ini
 mengindikasikan model di $K$ besar belajar menghasilkan deteksi
 ber-*recall* tinggi tetapi banyak *false positive* — gejala under-konvergensi
 khas pelatihan FL yang terhenti sebelum *precision* sempat
-ter-tuning. Penambahan ronde mengatasi keduanya secara simultan: pada
+ter-tuning. Hal ini tercermin pada *F1* yang rendah pada konfigurasi
+5-ronde (0,30–0,49) dan melonjak ke 0,678 pada $K = 4$ 25-ronde.
+Penambahan ronde mengatasi keduanya secara simultan: pada
 $K = 4$ 25-ronde, *precision* dan *recall* sama-sama mencapai ~0,68.
 
 ## 4.3 Eksperimen Pendahuluan: DP-FedAvg Level-Klien
