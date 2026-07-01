@@ -60,8 +60,6 @@ def main() -> None:
     # 2) Beri label 6 kelas sawit agar sumbu confusion matrix benar.
     #    (Kepala deteksi 80-lebar warisan COCO; hanya indeks 0-5 yang dilatih.)
     yolo.model.names = {i: n for i, n in enumerate(CLASS_NAMES)}
-    if hasattr(yolo, "names"):
-        yolo.names = yolo.model.names
 
     # 3) Jalankan validasi -> Ultralytics otomatis membuat confusion matrix.
     print(f"[val] menjalankan validasi pada split '{args.split}' dari {args.data} ...")
