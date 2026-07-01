@@ -1,0 +1,21 @@
+# FedX-Palm — Model Serving (inference + Grad-CAM++)
+# Demo sidang di VPS: unggah foto sawit -> deteksi YOLOv11 + heatmap live.
+# CPU-only, tidak butuh GPU. Letakkan best.pt dari Colab di ./weights/best.pt.
+#
+# Jalankan:  docker compose -f docker-compose.serve.yml up --build -d
+# Akses:     http://<IP-VPS>:8080
+
+services:
+  fedx-serve:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.serve
+    container_name: fedx-palm-serve
+    ports:
+      - "8080:8080"
+    environment:
+      - MODEL_PATH=/app/weights/best.pt
+      - CONF_THRES=0.25
+    volumes:
+      - ./weights:/app/weights:ro   # taruh best.pt di sini (read-only)
+    restart: unless-stopped

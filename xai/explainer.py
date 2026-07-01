@@ -91,10 +91,15 @@ class GradCAMPlusPlus:
         self._hooks.append(target.register_full_backward_hook(backward_hook))
 
     def _get_pytorch_model(self):
-        """Extract PyTorch model from YOLO wrapper."""
+        """Ambil DetectionModel dari wrapper YOLO.
+
+        Catatan: jangan menggali sampai ``self.model.model.model`` (nn.Sequential
+        mentah). Memanggil Sequential itu langsung memutus routing skip-connection
+        YOLO sehingga lapisan Concat menerima satu Tensor (bukan list) dan crash
+        di ``torch.cat``. DetectionModel (``self.model.model``) punya forward yang
+        menangani routing tersebut dengan benar.
+        """
         if hasattr(self.model, 'model'):
-            if hasattr(self.model.model, 'model'):
-                return self.model.model.model
             return self.model.model
         return self.model
 
@@ -139,23 +144,52 @@ class GradCAMPlusPlus:
         pytorch_model = self._get_pytorch_model()
         pytorch_model.eval()
 
-        # Preprocess image
-        input_tensor = self._preprocess_image(image)
-        input_tensor.requires_grad_(True)
+        # Seluruh forward + backward Grad-CAM++ harus berada di luar inference_mode
+        # dan di dalam enable_grad. Pemanggilan YOLO.predict() sebelumnya berjalan
+        # di bawah inference_mode sehingga sejumlah tensor (parameter, buffer, atau
+        # cache anchors/strides pada Detect head) menjadi "inference tensor" yang
+        # tidak dapat disimpan untuk backward. inference_mode(False) menonaktifkan
+        # konteks tersebut, sedangkan kloning data parameter dan buffer menghapus
+        # status inference-tensor yang sudah terlanjur melekat.
+        with torch.inference_mode(False), torch.enable_grad():
+            for p in pytorch_model.parameters():
+                if p.is_inference():
+                    p.data = p.data.clone()
+                p.requires_grad_(True)
+            for b in pytorch_model.buffers():
+                if b.is_inference():
+                    b.data = b.data.clone()
 
-        # Forward pass
-        pytorch_model.zero_grad()
-        output = pytorch_model(input_tensor)
+            # Paksa Detect head menghitung ulang cache anchors/strides di dalam
+            # konteks enable_grad ini. Cache tersebut disimpan sebagai atribut
+            # biasa (bukan buffer) sehingga tidak tersentuh kloning di atas; bila
+            # diisi saat YOLO.predict() berjalan di bawah inference_mode, cache
+            # menjadi inference-tensor dan memicu kegagalan backward. Mengosongkan
+            # ``shape`` memaksa Ultralytics merekonstruksinya pada forward berikut.
+            try:
+                detect_head = pytorch_model.model[-1]
+                if hasattr(detect_head, "shape"):
+                    detect_head.shape = None
+            except (AttributeError, IndexError, TypeError):
+                pass
 
-        # Get target score for backpropagation
-        target_score = self._get_target_score(output, target_class, target_box_idx)
+            # Preprocess image (clone + detach agar menjadi leaf tensor normal).
+            input_tensor = self._preprocess_image(image).clone().detach()
+            input_tensor.requires_grad_(True)
 
-        if target_score is None:
-            logger.warning("Could not compute target score for Grad-CAM++")
-            return Explanation(method="grad-cam++", image=image)
+            # Forward pass
+            pytorch_model.zero_grad()
+            output = pytorch_model(input_tensor)
 
-        # Backward pass
-        target_score.backward(retain_graph=True)
+            # Get target score for backpropagation
+            target_score = self._get_target_score(output, target_class, target_box_idx)
+
+            if target_score is None:
+                logger.warning("Could not compute target score for Grad-CAM++")
+                return Explanation(method="grad-cam++", image=image)
+
+            # Backward pass
+            target_score.backward(retain_graph=True)
 
         if self.gradients is None or self.activations is None:
             logger.warning("Gradients or activations not captured")
@@ -242,24 +276,36 @@ class GradCAMPlusPlus:
     def _get_target_score(
         self, output, target_class: Optional[int], target_box_idx: int
     ) -> Optional[torch.Tensor]:
-        """Extract target score from model output for backpropagation."""
+        """Ambil skor target dari keluaran model untuk backpropagation.
+
+        Keluaran eval DetectionModel YOLOv11 berbentuk tuple ``(y, x)`` dengan
+        ``y`` berukuran ``[B, 4+nc, num_anchors]`` (4 koordinat bbox + nc skor
+        kelas; YOLOv8/v11 tidak punya skor objectness terpisah). Kanal kelas-c
+        berada di indeks ``4 + c``.
+        """
         try:
             if isinstance(output, (list, tuple)):
-                pred = output[0] if len(output) > 0 else output
+                pred = output[0] if len(output) > 0 else None
             else:
                 pred = output
 
-            if pred.dim() >= 3:
-                if target_class is not None:
-                    class_scores = pred[0, :, 5 + target_class] if pred.shape[-1] > 5 else pred[0, :, target_class]
-                    return class_scores.max()
-                else:
-                    if pred.shape[-1] > 4:
-                        conf_scores = pred[0, :, 4]
-                        return conf_scores.max()
-                    return pred[0].sum()
-            else:
-                return pred.sum()
+            if not isinstance(pred, torch.Tensor):
+                return None
+
+            if pred.dim() == 3:
+                _, ch, anc = pred.shape
+                # Kanal kelas berada di dimensi yang lebih kecil (4+nc), anchor besar.
+                if ch <= anc:  # [B, 4+nc, A]
+                    if target_class is not None and ch > 4 + target_class:
+                        return pred[0, 4 + target_class, :].max()
+                    return pred[0, 4:, :].max() if ch > 4 else pred[0].max()
+                else:          # [B, A, 4+nc]
+                    last = pred.shape[-1]
+                    if target_class is not None and last > 4 + target_class:
+                        return pred[0, :, 4 + target_class].max()
+                    return pred[0, :, 4:].max() if last > 4 else pred[0].max()
+
+            return pred.sum()
 
         except Exception as e:
             logger.warning(f"Error extracting target score: {e}")
@@ -437,11 +483,9 @@ class FocusRetentionRate:
     FRR close to 1.0 → model focuses on object (good)
     FRR close to 0.0 → model focuses on background (bad)
 
-    Thesis results (Table 4.10):
-    - Baseline (ε=∞): FRR = 0.847
-    - Weak DP (ε=8.0): FRR = 0.839
-    - Moderate DP (ε=4.0): FRR = 0.812
-    - Strong DP (ε=1.0): FRR = 0.756
+    Thesis results (real, Bab 4 — Tabel 4.11):
+    - Baseline (ε=∞): FRR = 0.962
+    - DP (ε=8.0 / 4.0 / 1.0): NaN — model collapse, no valid prediction
     """
 
     def compute(

@@ -18,7 +18,7 @@ federated_learning:
 # Model Configuration
 model:
   variant: "yolo11n.pt"  # Options: yolo11n, yolo11s, yolo11m, yolo11l, yolo11x
-  num_classes: 6  # Palm fruit ripeness: Unripe, Underripe, Ripe, Overripe, Abnormal, Empty Bunch
+  num_classes: 6  # Palm ripeness (Roboflow order): Abnormal, Empty Bunch, Overripe, Ripe, Underripe, Unripe
   imgsz: 640
   pretrained: true
   freeze_backbone: false

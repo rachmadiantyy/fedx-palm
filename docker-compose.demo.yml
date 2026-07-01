@@ -1,0 +1,99 @@
+# FedX-Palm DEMO Docker Compose
+# Lightweight images (~150 MB each) that simulate the FedAvg + DP + Non-IID
+# lifecycle for live demonstration during thesis defense. Real training
+# results come from the Colab simulation (see notebooks/ and Bab 4 of thesis).
+
+services:
+  fl-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server.demo
+    container_name: fedx-palm-server
+    ports:
+      - "8080:8080"
+    environment:
+      - NUM_ROUNDS=5
+      - MIN_CLIENTS=4
+    networks:
+      - fed-network
+    restart: "no"
+
+  fl-client-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client.demo
+    container_name: fedx-palm-client-1
+    environment:
+      - CLIENT_ID=client_1
+      - SERVER=fl-server:8080
+      - DIRICHLET_ALPHA=0.1
+      - DP_EPSILON=4.0
+      - DP_SIGMA=1.5
+      - LOCAL_EPOCHS=2
+      - NUM_ROUNDS=5
+    depends_on:
+      - fl-server
+    networks:
+      - fed-network
+    restart: "no"
+
+  fl-client-2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client.demo
+    container_name: fedx-palm-client-2
+    environment:
+      - CLIENT_ID=client_2
+      - SERVER=fl-server:8080
+      - DIRICHLET_ALPHA=0.3
+      - DP_EPSILON=4.0
+      - DP_SIGMA=1.5
+      - LOCAL_EPOCHS=2
+      - NUM_ROUNDS=5
+    depends_on:
+      - fl-server
+    networks:
+      - fed-network
+    restart: "no"
+
+  fl-client-3:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client.demo
+    container_name: fedx-palm-client-3
+    environment:
+      - CLIENT_ID=client_3
+      - SERVER=fl-server:8080
+      - DIRICHLET_ALPHA=0.5
+      - DP_EPSILON=4.0
+      - DP_SIGMA=1.5
+      - LOCAL_EPOCHS=2
+      - NUM_ROUNDS=5
+    depends_on:
+      - fl-server
+    networks:
+      - fed-network
+    restart: "no"
+
+  fl-client-4:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client.demo
+    container_name: fedx-palm-client-4
+    environment:
+      - CLIENT_ID=client_4
+      - SERVER=fl-server:8080
+      - DIRICHLET_ALPHA=0.7
+      - DP_EPSILON=4.0
+      - DP_SIGMA=1.5
+      - LOCAL_EPOCHS=2
+      - NUM_ROUNDS=5
+    depends_on:
+      - fl-server
+    networks:
+      - fed-network
+    restart: "no"
+
+networks:
+  fed-network:
+    driver: bridge

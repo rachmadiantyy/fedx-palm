@@ -1,0 +1,13 @@
+# Demo: lightweight FL server (simulates Flower server)
+# Image size: ~150 MB (vs ~5 GB for full PyTorch image)
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# No heavy ML deps — just simulate FL server lifecycle for demo
+RUN pip install --no-cache-dir flask==3.0.0
+
+COPY docker/server_demo.py /app/server_demo.py
+
+EXPOSE 8080
+CMD ["python", "server_demo.py"]

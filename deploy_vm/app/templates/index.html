@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FedX-Palm — Oil Palm Ripeness Detection</title>
+<style>
+  :root {
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-dark: #1d4ed8;
+    --border: #e5e7eb;
+    --ok: #16a34a;
+    --warn: #d97706;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  header {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 2rem;
+  }
+  header h1 { margin: 0; font-size: 1.4rem; }
+  header p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.9rem; }
+  .container { max-width: 1100px; margin: 1.5rem auto; padding: 0 1.5rem; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .card h2 { margin: 0 0 0.75rem; font-size: 1.1rem; }
+  .metrics {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+  }
+  .metric {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    flex: 1;
+    min-width: 160px;
+  }
+  .metric .label { font-size: 0.75rem; text-transform: uppercase; color: var(--muted); }
+  .metric .value { font-size: 1.2rem; font-weight: 600; margin-top: 0.25rem; }
+  .upload-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+  input[type=file] {
+    flex: 1;
+    min-width: 240px;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fafafa;
+  }
+  button {
+    background: var(--accent);
+    color: white;
+    border: 0;
+    padding: 0.6rem 1.25rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--accent-dark); }
+  button:disabled { background: #94a3b8; cursor: not-allowed; }
+  .result-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  @media (max-width: 720px) { .result-grid { grid-template-columns: 1fr; } }
+  .result-pane h3 { margin: 0 0 0.5rem; font-size: 0.95rem; color: var(--muted); }
+  .result-pane img {
+    width: 100%;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    display: block;
+  }
+  table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.9rem; }
+  th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: #f9fafb; font-weight: 600; color: var(--muted); }
+  tr:last-child td { border-bottom: 0; }
+  .status { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
+  .status.error { color: #dc2626; }
+  .status.success { color: var(--ok); }
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(0,0,0,0.15);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .conf-thres { color: var(--muted); font-size: 0.8rem; margin-left: 0.5rem; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>FedX-Palm — Oil Palm FFB Ripeness Detection</h1>
+    <p>YOLOv11 + Federated Learning + Grad-CAM++ explainability</p>
+  </header>
+
+  <div class="container">
+    <div class="metrics">
+      <div class="metric">
+        <div class="label">Operating model</div>
+        <div class="value">B2 federated, K=4</div>
+      </div>
+      <div class="metric">
+        <div class="label">mAP@0.5</div>
+        <div class="value">0.738</div>
+      </div>
+      <div class="metric">
+        <div class="label">FRR (XAI)</div>
+        <div class="value">0.281</div>
+      </div>
+      <div class="metric">
+        <div class="label">Confidence threshold</div>
+        <div class="value">{{ "%.2f"|format(conf_thres) }}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Upload a palm bunch image</h2>
+      <form id="uploadForm">
+        <div class="upload-row">
+          <input type="file" id="imageInput" name="image" accept="image/*" required />
+          <button type="submit" id="submitBtn">Detect &amp; Explain</button>
+        </div>
+        <div class="status" id="statusBar">Pick a JPG/PNG image and submit.</div>
+      </form>
+    </div>
+
+    <div class="card" id="resultsCard" style="display:none;">
+      <h2>Result</h2>
+      <div class="result-grid">
+        <div class="result-pane">
+          <h3>Detections (bounding boxes + class)</h3>
+          <img id="detImg" alt="detection result" />
+        </div>
+        <div class="result-pane">
+          <h3>Grad-CAM++ heatmap (red = high)</h3>
+          <img id="camImg" alt="Grad-CAM++ heatmap" />
+        </div>
+      </div>
+      <h3 style="margin-top:1rem;">Detections table</h3>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Class</th><th>Confidence</th><th>bbox (x1, y1, x2, y2)</th></tr>
+        </thead>
+        <tbody id="detTable"></tbody>
+      </table>
+      <div class="status" id="timingBar"></div>
+    </div>
+  </div>
+
+<script>
+const form = document.getElementById('uploadForm');
+const btn  = document.getElementById('submitBtn');
+const sbar = document.getElementById('statusBar');
+const card = document.getElementById('resultsCard');
+const detImg = document.getElementById('detImg');
+const camImg = document.getElementById('camImg');
+const detTable = document.getElementById('detTable');
+const tBar = document.getElementById('timingBar');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const file = document.getElementById('imageInput').files[0];
+  if (!file) return;
+  btn.disabled = true;
+  sbar.className = 'status';
+  sbar.innerHTML = '<span class="spinner"></span>Inferring...';
+  card.style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('image', file);
+
+  try {
+    const res = await fetch('/predict', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Inference failed');
+
+    detImg.src = 'data:image/png;base64,' + data.images.detections_b64;
+    if (data.images.heatmap_b64) {
+      camImg.src = 'data:image/png;base64,' + data.images.heatmap_b64;
+      camImg.style.display = 'block';
+    } else {
+      camImg.style.display = 'none';
+    }
+    detTable.innerHTML = data.detections.length
+      ? data.detections.map(d => `
+          <tr>
+            <td>${d.id + 1}</td>
+            <td>${d.class}</td>
+            <td>${(d.confidence * 100).toFixed(1)}%</td>
+            <td>${d.bbox_xyxy.map(v => v.toFixed(0)).join(', ')}</td>
+          </tr>`).join('')
+      : '<tr><td colspan="4" style="text-align:center; color:#6b7280;">No detections above threshold.</td></tr>';
+    tBar.textContent = `Inference: ${data.timings_ms.inference} ms · Grad-CAM++: ${data.timings_ms.gradcam} ms`;
+    card.style.display = 'block';
+    sbar.className = 'status success';
+    sbar.textContent = `${data.count} detection${data.count === 1 ? '' : 's'} found.`;
+  } catch (err) {
+    sbar.className = 'status error';
+    sbar.textContent = 'Error: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

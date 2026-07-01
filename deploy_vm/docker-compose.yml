@@ -1,0 +1,49 @@
+# =============================================================================
+# FedX-Palm — Portainer Stack file
+# =============================================================================
+# Recommended deployment on the VM:
+#   Portainer -> Stacks -> Add stack -> paste this YAML in the Web editor
+#   -> set MODEL_PATH_HOST env var (or edit the volume line below) so it
+#   points to where best.pt lives on the VM.
+#
+# Single-file stack: no .env required if you accept the defaults
+# (MODEL_PATH_HOST=/srv/fedx-palm/weights, PORT_HOST=8080).
+# =============================================================================
+services:
+  inference:
+    # Build the image from the repo cloned on the VM:
+    #     git clone ... && cd fedx-palm
+    # If you prefer pre-built, push to a registry and replace `build` with
+    # `image: your-registry/fedx-palm:tag`.
+    build:
+      context: ..                      # repo root (so xai/ is in the context)
+      dockerfile: deploy_vm/Dockerfile
+    image: fedx-palm:latest
+    container_name: fedx-palm
+    restart: unless-stopped
+    ports:
+      - "${PORT_HOST:-8080}:8080"
+    volumes:
+      # Mount the host folder containing best.pt as read-only.
+      # On the VM: mkdir -p /srv/fedx-palm/weights && scp best.pt onto it.
+      - "${MODEL_PATH_HOST:-/srv/fedx-palm/weights}:/app/weights:ro"
+    environment:
+      MODEL_PATH: /app/weights/best.pt
+      CONF_THRES: "${CONF_THRES:-0.25}"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # CPU-only image; this keeps the container from saturating a shared VM.
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+
+# No volumes / networks declared on purpose: the model weights live on the
+# host filesystem (bind mount), and the container talks to the world only
+# through the published port — keeping the stack trivial to inspect in
+# Portainer.

@@ -1,0 +1,873 @@
+%==============================================================================
+% Paper C — IIUM Engineering Journal (IIUMEJ)
+% FedX-Palm: comprehensive thesis paper.
+% Title: FedX-Palm: A YOLOv11-Based Federated Learning Framework with
+%        Differential Privacy and Explainable AI for Oil Palm Ripeness Detection
+%        (pillar order: YOLOv11 -> FL -> DP -> XAI).
+%
+% SCOPE (distinct from the JUTI paper, which isolates the XAI/faithfulness
+% angle): this is the UMBRELLA paper for the whole thesis "FedX-Palm: A
+% Federated Explainable Framework for Privacy-Preserving Palm Fruit Ripeness".
+% The CENTREPIECE is the privacy-preserving DP-SGD privacy-utility analysis
+% (full grid E1 + partial grid E2 + epsilon from a PRV accountant + the three
+% operating regimes); FL baseline, XAI faithfulness, and deployment are
+% supporting pillars. This directly answers co-supervisor revisions R1-R4
+% (explicit epsilon accounting, ablation grid, reframed DP claims, anti-leakage).
+%
+% COMPILE:  pdflatex main  ->  pdflatex main     (inline thebibliography; no bibtex)
+%
+% IIUMEJ house style: two-column A4, Times; bilingual ABSTRACT + ABSTRAK;
+% numbered headings; tables caption-above (Arabic); figures caption-below;
+% equations numbered; references [n] in IIUMEJ author-year list style.
+%
+% BEFORE SUBMISSION
+%   - drop figures/privacy_utility_e1.png, figures/K_curve_e1.png,
+%     figures/xai_per_class.png into figures/ (from thesis_rebuild/figures and
+%     evaluate_xai.py).
+%   - have the IIUM co-author review the Malay ABSTRAK.
+%==============================================================================
+\documentclass[twocolumn,a4paper,10pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+\usepackage{geometry}
+\geometry{a4paper,top=2.3cm,bottom=2.3cm,left=1.8cm,right=1.8cm,columnsep=0.7cm}
+\usepackage{fancyhdr}
+\usepackage{caption}
+\captionsetup{font=small,labelsep=period}
+\captionsetup[table]{name=Table}
+\captionsetup[figure]{name=Figure}
+
+% --- IIUMEJ numbered headings: "1.", "2.1.", "2.1.1."
+\renewcommand{\thesection}{\arabic{section}.}
+\renewcommand{\thesubsection}{\arabic{section}.\arabic{subsection}.}
+\renewcommand{\thesubsubsection}{\arabic{section}.\arabic{subsection}.\arabic{subsubsection}.}
+\usepackage{titlesec}
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.5em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries\itshape}{\thesubsection}{0.5em}{}
+\titleformat{\subsubsection}{\normalfont\normalsize\itshape}{\thesubsubsection}{0.5em}{}
+
+\renewcommand{\thetable}{\arabic{table}}
+\renewcommand{\thefigure}{\arabic{figure}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[C]{\small\itshape IIUM Engineering Journal, Vol. XX, No. X, 20XX \hfill Dianty et al.}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\headheight}{14pt}
+
+\begin{document}
+
+%==============================================================================
+% FRONT MATTER — spans both columns
+%==============================================================================
+\twocolumn[
+\begin{@twocolumnfalse}
+\begin{center}
+{\Large\bfseries FedX-Palm: A YOLOv11-Based Federated Learning Framework with
+Differential Privacy and Explainable AI for Oil Palm Ripeness Detection\par}
+\vspace{1em}
+{\large Rachma Dianty\textsuperscript{1,*}, Favian Dewanta\textsuperscript{1},
+and Teddy Surya Gunawan\textsuperscript{2}\par}
+\vspace{0.8em}
+{\small\itshape \textsuperscript{1}Department of Electrical Engineering, School
+of Electrical Engineering, Telkom University, Bandung, Indonesia\par}
+{\small\itshape \textsuperscript{2}Department of Electrical and Computer
+Engineering, International Islamic University Malaysia, Kuala Lumpur 53100,
+Malaysia\par}
+\vspace{0.5em}
+{\small\textsuperscript{*}Corresponding author:
+\texttt{rachmadiantyy@gmail.com}\par}
+\vspace{0.3em}
+{\small\itshape (Received: Day Month Year; Accepted: Day Month Year;
+Published online: Day Month Year)\par}
+\end{center}
+\vspace{0.5em}
+
+% --- ABSTRACT (English) — REQUIRED
+\noindent\textbf{ABSTRACT:} Automated oil palm fresh fruit bunch (FFB) ripeness
+detection promises consistency over subjective manual grading, but centralizing
+plantation imagery conflicts with the confidentiality of operational data, and
+deep models offer no formal privacy by default. This paper presents FedX-Palm,
+a framework that integrates a YOLOv11n--GroupNorm detector with horizontal
+\emph{federated learning} (FL), per-sample \emph{differential privacy} (DP),
+and Grad-CAM++ explainability for six-class FFB ripeness detection, and
+empirically maps where the combination is practical and where it is not.
+Experiments use a leakage-free split keyed by bunch identity (9,094 training,
+769 validation, 951 test images from 89 bunches) with Non-IID Dirichlet client
+partitions. Without privacy noise, the federated model attains mAP@0.5 = 0.738,
+only 0.049 below the centralized reference (0.787) -- so architectural FL
+offers near-centralized accuracy. We then characterize the privacy--utility
+trade-off over a $5 \times 5$ grid of clients $K \in \{2,4,8,12,16\}$ and noise
+multipliers $\sigma \in \{0.5,1,1.5,2,3\}$, with per-client $\varepsilon$
+derived from a privacy-loss-distribution (PRV) accountant at $\delta =
+10^{-5}$. Under full-model DP-SGD the best configuration reaches mAP@0.5 =
+0.190 ($\varepsilon = 8.36$); degradation is gradual rather than a cliff,
+larger $K$ consistently worsens utility (a per-sample-DP penalty opposite to
+client-level DP), and freezing the backbone (partial DP) does not help in this
+new-domain setting. Three operating regimes emerge -- no-formal-privacy,
+weak-DP, and strict-DP -- with the federated no-DP model the only deployable
+point at present. Grad-CAM++ faithfulness on that operating model gives global
+Focus Retention Rate (FRR) = 0.281 versus 0.182 centralized, so federation
+does not degrade explanation quality. The deployable checkpoint is packaged
+into a Docker image and demonstrated as a CPU-only inference service on a
+Virtual Private Server, returning bounding boxes, Grad-CAM++ heatmaps, and
+per-detection summaries at roughly two seconds per image. The results
+delineate where federated FFB detection is practical today and where formal DP
+remains a research target rather than a deployable option.
+
+\vspace{0.4em}
+% --- ABSTRAK (Malay) — REQUIRED by IIUMEJ
+\noindent\textbf{ABSTRAK:} Pengesanan kematangan tandan buah segar (TBS) kelapa
+sawit secara automatik menjanjikan konsistensi berbanding penggredan manual yang
+subjektif, namun pengumpulan imej ladang secara berpusat bercanggah dengan
+kerahsiaan data operasi, dan model pembelajaran mendalam tidak menawarkan
+jaminan privasi formal secara lalai. Kertas ini memperkenalkan FedX-Palm, satu
+kerangka yang menggabungkan pembelajaran persekutuan (\emph{federated learning},
+FL) mendatar dengan privasi pembezaan (\emph{differential privacy}, DP) setiap
+sampel, pengesan YOLOv11n--GroupNorm, dan kebolehjelasan Grad-CAM++ untuk
+pengesanan kematangan TBS enam kelas. Eksperimen menggunakan pembahagian bebas
+kebocoran berdasarkan identiti tandan (9,094 imej latihan, 769 pengesahan, 951
+ujian daripada 89 tandan) dengan partisi pelanggan Dirichlet Non-IID. Tanpa
+hingar privasi, model persekutuan mencapai mAP@0.5 = 0.738, hanya 0.049 di bawah
+rujukan berpusat (0.787) -- kos persekutuan yang kecil. Seterusnya, pertukaran
+privasi--utiliti dicirikan pada grid $5 \times 5$ bagi bilangan pelanggan $K \in
+\{2,4,8,12,16\}$ dan pengganda hingar $\sigma \in \{0.5,1,1.5,2,3\}$, dengan
+$\varepsilon$ diterbitkan daripada perakaun taburan kehilangan privasi (PRV)
+pada $\delta = 10^{-5}$. Di bawah DP-SGD seluruh model, konfigurasi terbaik
+mencapai mAP@0.5 = 0.190 ($\varepsilon = 8.36$); degradasi bersifat beransur dan
+bukan jurang mendadak, $K$ yang lebih besar secara konsisten memburukkan
+utiliti, dan pembekuan tulang belakang (DP separa) tidak membantu. Tiga rejim
+operasi muncul -- tanpa privasi formal, DP lemah, dan DP ketat -- dengan model
+persekutuan tanpa DP sebagai satu-satunya titik boleh guna pada masa ini.
+Kesetiaan Grad-CAM++ pada model operasi tersebut memberikan Focus Retention
+Rate (FRR) global = 0.281 berbanding 0.182 berpusat, menunjukkan persekutuan
+tidak menurunkan kualiti penjelasan. Hasil kajian menjelaskan di mana
+pengesanan TBS sawit secara persekutuan praktikal pada hari ini dan di mana DP
+formal masih merupakan sasaran penyelidikan, bukan pilihan boleh guna.
+
+\vspace{0.4em}
+\noindent\textbf{KEYWORDS:} \emph{federated learning; differential privacy;
+explainable AI; oil palm ripeness; YOLOv11}.
+
+\vspace{1.2em}
+\end{@twocolumnfalse}
+]
+
+%==============================================================================
+\section{Introduction}
+%==============================================================================
+The oil palm industry is a cornerstone of Indonesian and Malaysian
+agribusiness, with the two countries together accounting for over 85\% of the
+world's palm oil supply~\cite{usda2024}. At the operational level, the single
+most influential decision in determining oil yield and quality is the timing of
+fresh fruit bunch (FFB) harvest. Bunches harvested too early contain
+insufficient mesocarp oil, whereas bunches harvested too late accumulate Free
+Fatty Acid (FFA), degrading Crude Palm Oil (CPO) quality. Industry practice
+distinguishes six commercially relevant ripeness classes -- \emph{Unripe},
+\emph{Underripe}, \emph{Ripe}, \emph{Overripe}, \emph{Empty Bunch}, and
+\emph{Abnormal} -- and traditional assessment by harvest foremen, based on bunch
+colour and loose fruitlet count, is subjective with reported misclassification
+rates of 15--25\% under suboptimal lighting~\cite{sabri2017}.
+
+Modern object detectors of the YOLO family~\cite{redmon2016}, of which
+YOLOv11~\cite{yolov11} is the latest iteration, can localize and classify
+multiple bunches in a single frame in real time. Several studies have applied
+them to palm imagery~\cite{junos2022,gunawan2023,elwirehardja2021}, yet two
+practical barriers remain. First, training accurate detectors requires diverse
+imagery spanning seasons, lighting, and sites; centralizing such imagery clashes
+with a reality that plantation images are commercially sensitive -- revealing
+block locations, production volumes, and operational practices -- so estates are
+reluctant to ship raw data to a shared server. Second, deep models leak
+information about their training data through their parameters, so collaborative
+training without a formal privacy mechanism is not, by itself, privacy
+preserving.
+
+\emph{Federated learning} (FL)~\cite{fedavg} answers the first barrier
+architecturally: multiple estates collaboratively train a shared model while raw
+imagery remains local; only model parameters traverse the network. In the
+taxonomy of Kairouz \emph{et al.}~\cite{kairouz2021}, the plantation-consortium
+scenario is \emph{cross-silo} -- few clients, each holding large amounts of
+data~\cite{li2020}. \emph{Differential privacy} (DP)~\cite{abadi2016} answers
+the second: per-sample gradient clipping and calibrated Gaussian noise bound the
+contribution of any single image, with the privacy budget $\varepsilon$
+quantified by a privacy accountant. Finally, field adoption demands
+\emph{trustworthiness}: operators need to understand why a bunch is labelled
+ripe or overripe, which Explainable AI (XAI) methods such as
+Grad-CAM++~\cite{gradcampp} provide and which faithfulness metrics can quantify.
+
+This paper presents \textbf{FedX-Palm}, a framework integrating these four
+pillars -- HFL, DP, a YOLOv11n detector, and Grad-CAM++ -- and, more
+importantly, an honest empirical characterization of \emph{when the combination
+works and when it does not}. The contributions are:
+\begin{enumerate}
+\item a leakage-free, bunch-identity split protocol for palm detection datasets,
+and a federated baseline that quantifies the cost of federation (0.049 mAP@0.5)
+under Non-IID partitions;
+\item a systematic privacy--utility study over a $5 \times 5$ grid of client
+count $K$ and noise multiplier $\sigma$, with $\varepsilon$ derived explicitly
+from a PRV accountant, comparing full-model versus partial (frozen-backbone)
+DP-SGD;
+\item three empirical findings -- DP degradation is gradual not catastrophic,
+larger $K$ worsens per-sample-DP utility (opposite to client-level DP), and
+partial DP does not outperform full DP here -- that reframe earlier
+``catastrophic collapse'' reports as configuration-specific artefacts; and
+\item a per-class Grad-CAM++ faithfulness evaluation on the deployable operating
+model, showing federation does not degrade explanation quality.
+\end{enumerate}
+
+Concretely, this study tests four hypotheses:
+\begin{itemize}
+\item[\textbf{H1}] (\emph{FL viability}) A federated YOLOv11n--GroupNorm
+detector trained without DP can reach the \emph{acceptable} accuracy band
+(mAP@0.5 $\geq 0.70$) under Non-IID Dirichlet partitions, at a small cost
+relative to centralized training.
+\item[\textbf{H2}] (\emph{Gradual DP decay}) On a converged, generic-pretrained
+object detector, per-sample DP-SGD induces a \emph{gradual} privacy--utility
+decay across the practical range $\varepsilon \in [0.2, 14]$, rather than a
+single-noise-level cliff.
+\item[\textbf{H2-K}] (\emph{Client-count penalty}) Under per-sample DP-SGD,
+increasing the number of clients $K$ at fixed $\sigma$ \emph{worsens} both
+utility and the per-client $\varepsilon$, opposite to the intuition of
+client-level DP where more clients amplify privacy.
+\item[\textbf{H3}] (\emph{Explanation preservation}) Federation does not
+materially degrade Grad-CAM++ faithfulness on the deployable model; FRR (and
+its per-class breakdown) is at least preserved relative to centralized
+training.
+\end{itemize}
+
+%==============================================================================
+\section{Literature Review}
+%==============================================================================
+
+\subsection{Vision-Based Oil Palm Ripeness Assessment}
+Colour-feature classifiers~\cite{sabri2017} preceded modern CNN approaches.
+Junos \emph{et al.}~\cite{junos2022} applied a YOLO variant on UAV imagery for
+fruit-level detection; Gunawan \emph{et al.}~\cite{gunawan2023} benchmarked
+YOLOv8 variants for palm ripeness; Elwirehardja \emph{et
+al.}~\cite{elwirehardja2021} deployed ripeness classifiers on mobile devices. A
+common limitation is the assumption of centralized training, single-number mAP
+validation, and silence on both privacy and explanation trustworthiness. This
+work addresses all three.
+
+\subsection{Federated Learning for Cross-Silo Scenarios}
+McMahan \emph{et al.}~\cite{fedavg} introduced FedAvg: clients perform local SGD
+and the server aggregates updates by a data-size-weighted average; see
+\cite{li2020} for a survey. Kairouz \emph{et al.}~\cite{kairouz2021} distinguish
+\emph{cross-device} from \emph{cross-silo}; a plantation consortium is clearly
+cross-silo. Data heterogeneity is commonly simulated via Dirichlet
+partitioning~\cite{hsu2019}, where a concentration parameter $\alpha$ controls
+per-client class imbalance.
+
+\subsection{Differential Privacy for Deep Learning}
+DP-SGD~\cite{abadi2016} provides $(\varepsilon,\delta)$-DP by clipping each
+per-sample gradient to a norm bound $C$ and adding Gaussian noise of scale
+$\sigma C$; the cumulative budget $\varepsilon$ is tracked by a privacy
+accountant. Modern accountants based on the privacy loss distribution
+(PRV)~\cite{gopi2021} give tight bounds and are implemented in
+Opacus~\cite{opacus2021}. Because per-sample gradients require
+per-sample-independent normalization, BatchNorm must be replaced by
+GroupNorm~\cite{groupnorm}. Tram\`er and Boneh~\cite{tramer2021} argue that
+DP-SGD benefits markedly from strong pre-trained features, suggesting that
+training only a small head over a frozen backbone (partial DP) should be more
+noise-efficient than full-model DP -- a hypothesis we test directly.
+
+\subsection{Explainable AI and Faithfulness Metrics}
+Grad-CAM~\cite{gradcam} weights each feature-map channel by the
+spatially-averaged gradient of the target-class score; Grad-CAM++~\cite{gradcampp}
+refines this for multiple same-class instances, common in FFB imagery. Two
+faithfulness metrics are used here: an \emph{Occlusion Confidence Drop} (OCD)
+and the \emph{Focus Retention Rate} (FRR), both in the perturbation-based
+family~\cite{rise}; OCD is a deletion-based variant of, but distinct from, the
+restriction-based \emph{Average Drop} of Chattopadhyay \emph{et
+al.}~\cite{gradcampp} (we discuss the difference in Sec.~3.6). FRR
+additionally serves as an agronomic alignment proxy -- does the model attend
+to the fruit or the background?
+
+%==============================================================================
+\section{Methodology}
+%==============================================================================
+
+\subsection{Dataset and Anti-Leakage Split}
+The dataset is the \emph{palm-fruit-ripeness-detection} collection (Roboflow,
+version 2): 10,814 images from 89 unique bunches, annotated across six classes.
+A naive random split risks leakage at the bunch level -- multiple frames of the
+same bunch could land in both train and test, letting the model recognize the
+bunch rather than learn ripeness cues. We apply a stratified group split keyed
+by \texttt{bunch\_id}: each bunch is assigned entirely to one partition, with
+stratification preserving class balance (Table~\ref{tab:split}). A leakage audit
+confirmed zero bunch-identity overlap between any two partitions.
+
+\begin{table}[ht]
+\centering
+\caption{Leakage-free dataset partition by bunch identity.}
+\label{tab:split}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Partition} & \textbf{Images} & \textbf{Unique bunches} \\
+\midrule
+Train           & 9{,}094  & 72 \\
+Validation      & 769      & 8 \\
+Test (held out) & 951      & 9 \\
+\midrule
+\textbf{Total}  & 10{,}814 & 89 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Non-IID Federation and Detector}
+The training partition is divided among $K$ clients using a Dirichlet
+distribution with per-client concentration $\alpha$ spanning 0.1 (highly skewed)
+to 0.8 (near uniform), simulating realistic estate heterogeneity. Validation and
+test sets are kept global for comparability. The detector is YOLOv11n
+($\approx$2.6M parameters), initialized from COCO~\cite{coco} weights; all 81
+BatchNorm layers are converted in place to GroupNorm~\cite{groupnorm} (eight
+groups, auto-reduced as needed), with affine parameters copied to preserve the
+pre-trained initialization. This conversion is mandatory for per-sample DP-SGD
+and is applied uniformly across all experiments for consistency.
+
+\subsection{Federated Training (FedAvg)}
+Training uses FedAvg over $T$ communication rounds. Each round, every client
+receives global parameters $w_t$, runs $E = 2$ local SGD epochs (learning rate
+0.01, momentum 0.937, weight decay $5\times10^{-4}$, batch 16, image $640\times
+640$), and returns $w_t^k$; the server aggregates by data-size weighting,
+Eq.~(\ref{eq:fedavg}):
+\begin{equation}
+w_{t+1} = \sum_{k=1}^{K} \frac{n_k}{n}\, w_t^k,
+\label{eq:fedavg}
+\end{equation}
+with $n_k$ the shard size of client $k$ and $n=\sum_k n_k$. The federated
+baseline (B2) uses $K=4$; an extended 25-round run provides the deployment
+operating point (50 epoch-equivalents, matching the 50-epoch centralized
+reference B1 for a fair federation-cost comparison).
+
+\subsection{Per-Sample DP-SGD and Privacy Accounting}
+For the privacy experiments, local optimization is replaced by per-sample
+DP-SGD~\cite{abadi2016}. For each sample $i$ in a Poisson-sampled minibatch,
+the gradient $g_i$ is clipped to norm $C$ and Gaussian noise is added before
+the update, as in Eq.~(\ref{eq:dpsgd}):
+\begin{equation}
+\tilde{g} = \frac{1}{B}\!\left( \sum_{i} g_i \cdot
+\min\!\Big(1, \tfrac{C}{\lVert g_i\rVert_2}\Big) +
+\mathcal{N}(0, \sigma^2 C^2 \mathbf{I}) \right).
+\label{eq:dpsgd}
+\end{equation}
+
+\paragraph{DP hyperparameters.} Table~\ref{tab:dphyp} lists the exact DP
+hyperparameters used; they are held fixed across the entire $K \times \sigma$
+grid so that comparisons isolate the effect of $K$ and $\sigma$ alone. The
+per-sample clipping norm is $C = 1.0$ (a standard mid-range choice for vision
+detectors), the local minibatch size is $B = 16$ (identical to the non-private
+baselines, ensuring a fair utility comparison), and Poisson sub-sampling is
+applied within each client. The sampling rate is therefore \emph{per client},
+$q_k = B / n_k$, so clients with smaller shards $n_k$ see larger $q_k$ and
+spend privacy faster -- this asymmetry is the source of the H2-K
+``double-penalty'' analyzed in Sec.~\ref{sec:e1results}.
+
+\paragraph{Privacy accounting (per-client, not global).} A separate Opacus
+\texttt{PrivacyEngine}~\cite{opacus2021} is attached to every client's
+optimizer; consequently the privacy accounting is \emph{per-client}, not
+global. Each client's PRV accountant~\cite{gopi2021} composes the per-step
+sub-sampled Gaussian mechanism over its own $T \cdot E$ local steps to yield
+$\varepsilon_k$ at fixed $\delta = 10^{-5}$. Reported $\varepsilon$ values
+correspond to the smallest-shard client (the worst case under H2-K). We do
+\emph{not} compose across clients into a single global $\varepsilon$: the
+shared global model is updated by FedAvg over disjoint client shards, so each
+client's neighbourhood is its own dataset and the per-client guarantee is the
+relevant DP statement under the standard horizontal-FL threat model.
+
+\begin{table}[ht]
+\centering
+\caption{DP-SGD hyperparameters (held fixed across the $K \times \sigma$ grid).}
+\label{tab:dphyp}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{ll}
+\toprule
+\textbf{Hyperparameter} & \textbf{Value} \\
+\midrule
+Per-sample clipping norm $C$ & 1.0 \\
+Local minibatch size $B$ & 16 \\
+Per-client sampling rate $q_k$ & $B / n_k$ (Poisson) \\
+Communication rounds $T$ & 5 \\
+Local epochs per round $E$ & 2 \\
+Noise multiplier $\sigma$ (swept) & $\{0.5,\,1,\,1.5,\,2,\,3\}$ \\
+Privacy parameter $\delta$ & $10^{-5}$ \\
+Accountant & PRV (Opacus) \\
+Accounting scope & per-client (worst-shard $\varepsilon$ reported) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two DP variants are studied: \emph{full} DP-SGD (E1, all $\approx$2.6M
+parameters trainable) and \emph{partial} DP-SGD (E2, backbone frozen, only the
+$\approx$0.2M-parameter head trained), the latter testing the Tram\`er--Boneh
+hypothesis~\cite{tramer2021}. Each variant is swept over $K \in
+\{2,4,8,12,16\} \times \sigma \in \{0.5,1,1.5,2,3\}$, giving 25 configurations
+per variant.
+
+\subsection{Explanation Quality Metrics}
+Grad-CAM++ is applied at the last shared convolutional layer before the
+detection head. On $N = 200$ test images, two faithfulness metrics are
+computed globally and per class. The \emph{primary} metric is the Focus
+Retention Rate, which is well-defined and unambiguous; the second is an
+occlusion-based confidence-drop signal that we deliberately rename to avoid
+confusion with the literature.
+
+\paragraph{Focus Retention Rate (FRR).} FRR is the fraction of heatmap
+intensity falling inside the ground-truth boxes, as in
+Eq.~(\ref{eq:frr}); higher is better:
+\begin{equation}
+\mathrm{FRR} = \frac{\sum_{p\in \mathrm{ROI}} I(p)}
+                    {\sum_{p\in \mathrm{Image}} I(p)}.
+\label{eq:frr}
+\end{equation}
+FRR doubles as an agronomic alignment proxy: does the model attend to the
+fruit, or to the background? It is the metric on which the central
+explanation claims of this paper rest.
+
+\paragraph{Occlusion Confidence Drop (OCD).} We complement FRR with an
+occlusion-based signal that we name \emph{Occlusion Confidence Drop} (OCD)
+rather than \emph{Average Drop} to avoid clashing with the original
+Chattopadhyay \emph{et al.}~\cite{gradcampp} definition (where the input is
+\emph{restricted} to the salient region and lower drop is better). Here, in
+contrast, the salient region (heatmap $\geq 0.5$) is \emph{occluded} by
+replacing it with the per-image mean pixel value, and OCD measures the
+resulting relative confidence drop, as in Eq.~(\ref{eq:ad}); higher is
+better, because a large drop means the occluded region was decisive:
+\begin{equation}
+\mathrm{OCD} = \frac{1}{N}\sum_{i=1}^{N}
+\frac{\max(0,\, Y_i^c - O_i^c)}{Y_i^c}\times 100\%,
+\label{eq:ad}
+\end{equation}
+where $Y_i^c$ and $O_i^c$ are the model's confidences on the original and
+salient-region-occluded image $i$ for class $c$. OCD is a deletion-based
+faithfulness signal in the same broad family as RISE~\cite{rise}, but
+formally distinct from Chattopadhyay's restriction-based Average Drop.
+
+%==============================================================================
+\section{Results and Discussion}
+%==============================================================================
+
+\subsection{Federation Cost without Privacy Noise}
+Table~\ref{tab:acc} compares the federated baseline against the centralized
+reference. The federated detector reaches mAP@0.5 = 0.738, only 0.049 ($\approx$6\%)
+below the centralized upper bound of 0.787, with both in the acceptable range
+($\geq 0.70$). Federation is therefore a viable basis for decision support: the
+utility cost of keeping raw imagery on-site is small. This validates hypothesis
+H1 (the GroupNorm baseline reaches acceptable accuracy) and establishes the
+reference against which the cost of privacy is measured.
+
+\begin{table}[ht]
+\centering
+\caption{Detection performance on the held-out test set. FL cost =
+centralized $-$ federated.}
+\label{tab:acc}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & \textbf{mAP@0.5} & \textbf{mAP@.5:.95} & \textbf{Prec.} & \textbf{Rec.} \\
+\midrule
+Centralized (ref.) & 0.787 & 0.672 & 0.815 & 0.833 \\
+Federated ($K{=}4$) & 0.738 & 0.584 & 0.626 & 0.727 \\
+FL cost (abs.)     & 0.049 & 0.088 & 0.189 & 0.106 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Privacy--Utility Trade-off under Full DP-SGD (E1)}
+\label{sec:e1results}
+Table~\ref{tab:e1} reports mAP@0.5 across the full $K\times\sigma$ grid, and
+Table~\ref{tab:eps} the corresponding $\varepsilon$ from the PRV accountant.
+Three findings stand out. First, no configuration reaches the acceptable
+threshold: the best point is $K{=}4,\sigma{=}0.5$ at mAP@0.5 = 0.190
+($\varepsilon = 8.36$), so the cost of formal privacy ($0.738 - 0.190 = 0.548$)
+vastly exceeds the cost of federation (0.049). Second, degradation is
+\emph{gradual}: along any row, utility declines smoothly as $\sigma$ rises and
+$\varepsilon$ falls, with no single noise level triggering a vertical collapse
+(Fig.~\ref{fig:pu}). This refutes earlier ``catastrophic-collapse'' readings
+that stemmed from a BatchNorm--Opacus pipeline artefact rather than a true
+privacy--utility cliff (H2 confirmed). Third, larger $K$ \emph{consistently
+worsens} utility at matched $\sigma$ ($K{=}2$ gives 0.188 vs $K{=}16$ at 0.087
+for $\sigma{=}0.5$), and simultaneously inflates $\varepsilon$ (8.62 vs 13.75)
+because smaller shards raise the sampling rate $q = B/n_k$ -- a per-sample-DP
+``double penalty'' opposite to the client-level-DP intuition that more clients
+help (H2-K confirmed).
+
+\begin{table}[ht]
+\centering
+\caption{Full DP-SGD (E1): mAP@0.5 across the $K\times\sigma$ grid. Bold = best.}
+\label{tab:e1}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{cccccc}
+\toprule
+$K\backslash\sigma$ & 0.5 & 1.0 & 1.5 & 2.0 & 3.0 \\
+\midrule
+2  & 0.188 & 0.183 & 0.124 & 0.077 & 0.064 \\
+4  & \textbf{0.190} & 0.150 & 0.124 & 0.070 & 0.045 \\
+8  & 0.156 & 0.158 & 0.110 & 0.086 & 0.031 \\
+12 & 0.113 & 0.116 & 0.112 & 0.107 & 0.042 \\
+16 & 0.087 & 0.082 & 0.071 & 0.061 & 0.045 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Privacy budget $\varepsilon$ (PRV accountant, $\delta = 10^{-5}$)
+for E1. $\varepsilon$ rises with $K$ at fixed $\sigma$.}
+\label{tab:eps}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{cccccc}
+\toprule
+$K\backslash\sigma$ & 0.5 & 1.0 & 1.5 & 2.0 & 3.0 \\
+\midrule
+2  & 8.62  & 1.14 & 0.51 & 0.34 & 0.20 \\
+4  & 8.36  & 1.08 & 0.48 & 0.32 & 0.19 \\
+8  & 10.68 & 1.73 & 0.76 & 0.49 & 0.30 \\
+12 & 11.92 & 2.13 & 0.95 & 0.61 & 0.36 \\
+16 & 13.75 & 2.81 & 1.28 & 0.82 & 0.48 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/privacy_utility_e1.png}
+\caption{Privacy--utility trade-off for full DP-SGD (E1): mAP@0.5 versus
+$\varepsilon$, one curve per client count $K$. Degradation is gradual, and
+smaller $K$ dominates at matched $\varepsilon$.}
+\label{fig:pu}
+\end{figure}
+
+\subsection{Partial DP-SGD (E2) and the Limits of Frozen-Backbone Transfer}
+\label{sec:tramer-scope}
+Freezing the backbone and training only the detection head under DP-SGD was
+expected to be more noise-efficient: with far fewer trainable parameters, the
+relative scale of the privacy noise should fall and a small head should
+suffice when the frozen features are task-relevant -- the central intuition of
+Tram\`er and Boneh~\cite{tramer2021}. Empirically, on \emph{our} setting, the
+opposite holds: across every matched $(K,\sigma)$, full DP (E1) outperforms
+partial DP (E2) -- E2's best point is only mAP@0.5 = 0.113
+($K{=}2,\sigma{=}0.5$) versus E1's 0.190, an average gap of about $+0.08$
+mAP@0.5 in favour of E1 (Table~\ref{tab:e1vse2}). The most likely cause is
+\emph{domain mismatch with the frozen features}: COCO-pretrained YOLOv11n
+features encode generic object cues (edges, textures, shapes) but not
+FFB-specific ones (mesocarp colour, bunch geometry, fruitlet occlusion), so a
+$\approx$0.2M-parameter head alone cannot bridge the capacity gap to
+six-class palm ripeness. This does not refute Tram\`er and Boneh's broader
+claim, whose evidence is drawn from image-classification benchmarks with
+strong, in-domain pre-training (e.g., ImageNet-pretrained ResNets on
+ImageNet-like targets); rather, it identifies an \emph{empirical scope limit}
+of frozen-backbone DP for object detectors transferred to a new visual domain.
+We therefore present E2 not as a refutation, but as a configuration-specific
+counter-example that motivates investigating in-domain pre-training or
+\emph{adapter}-based partial DP as future work.
+
+\begin{table}[ht]
+\centering
+\caption{Full (E1) vs partial (E2) DP-SGD at matched $(K,\sigma)$. E1 dominates
+throughout.}
+\label{tab:e1vse2}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{ccccc}
+\toprule
+$\varepsilon\!\approx$ & $(K,\sigma)$ & E1 & E2 & E1$-$E2 \\
+\midrule
+8.4  & (4, 0.5) & \textbf{0.190} & 0.070 & $+$0.120 \\
+8.6  & (2, 0.5) & \textbf{0.188} & 0.113 & $+$0.075 \\
+1.1  & (4, 1.0) & \textbf{0.150} & 0.066 & $+$0.084 \\
+1.1  & (2, 1.0) & \textbf{0.183} & 0.080 & $+$0.103 \\
+0.5  & (4, 1.5) & \textbf{0.124} & 0.069 & $+$0.055 \\
+0.2  & (2, 3.0) & \textbf{0.064} & 0.040 & $+$0.024 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Three Operating Regimes}
+Synthesizing B1, B2, E1, and E2 yields three regimes (Table~\ref{tab:regime}).
+The \emph{no-formal-privacy} regime (centralized 0.787; federated 0.738) is the
+only one that is deployable; the \emph{weak-DP} regime ($\varepsilon\approx 8$,
+mAP$\approx$0.19) is degraded but non-trivial; the \emph{strict-DP} regime
+($\varepsilon < 0.5$) collapses. Practically: for threats centred on raw-data
+exfiltration, federated no-DP is recommended; for scenarios requiring formal
+$(\varepsilon,\delta)$-DP, the present trade-off is too costly and motivates
+DP-friendly architectures or substantially larger communication budgets.
+
+\begin{table}[ht]
+\centering
+\caption{Three privacy--utility regimes for YOLOv11n--GN on FFB detection.}
+\label{tab:regime}
+\small
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{llcc}
+\toprule
+\textbf{Regime} & \textbf{Config.} & \textbf{mAP@0.5} & $\boldsymbol{\varepsilon}$ \\
+\midrule
+No formal privacy & B1 centralized      & 0.787 & $\infty$ \\
+                  & B2 federated $K{=}4$ & 0.738 & $\infty$ \\
+Weak DP           & E1 $(4,0.5)$        & 0.190 & 8.36 \\
+Strict DP         & E1 $(4,3.0)$        & 0.045 & 0.19 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Explanation Faithfulness on the Operating Model}
+Grad-CAM++ is evaluated on the deployable federated model (B2). Per class
+(Table~\ref{tab:xai}), the colour-driven classes \emph{Unripe} and \emph{Empty
+Bunch} are the most tightly localized on the fruit (FRR $\approx$ 0.46), while
+\emph{Ripe} and \emph{Underripe} show the highest occlusion sensitivity (OCD
+$\approx$ 26\%). \emph{Abnormal} is weakest on both (OCD = 7.45\%, FRR =
+0.093): lacking a single consistent cue, the model's attention disperses onto
+the canopy, so \emph{Abnormal} predictions warrant manual confirmation. The
+\textbf{primary} explanation claim anchors on FRR -- the structurally cleaner
+metric: applying the identical protocol to the centralized model gives global
+FRR = 0.182 versus the federated 0.281, so federation does \emph{not} degrade
+explanation quality and, on this metric, slightly sharpens it. OCD shows the
+same direction (4.95\% centralized, 15.90\% federated). Both signals agree on
+the hardest case as well -- \emph{Abnormal} has the lowest FRR under either
+regime -- confirming that the difficulty is intrinsic to the class rather than
+an artefact of federation. H3 is therefore confirmed for the operating model.
+Representative heatmaps appear in Fig.~\ref{fig:xai}.
+
+\begin{table}[ht]
+\centering
+\caption{Per-class Grad-CAM++ faithfulness on the federated operating model.
+OCD: occlusion confidence drop, higher-better (\%); FRR: focus retention rate,
+higher-better (0--1). $n$: class-instances.}
+\label{tab:xai}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Class} & \textbf{$n$} & \textbf{OCD (\%)} & \textbf{FRR} \\
+\midrule
+Abnormal        & 72  & 7.45  & 0.093 \\
+Empty Bunch     & 20  & 20.90 & 0.462 \\
+Overripe        & 45  & 18.93 & 0.343 \\
+Ripe            & 124 & 26.29 & 0.292 \\
+Underripe       & 49  & 26.68 & 0.270 \\
+Unripe          & 34  & 15.71 & 0.463 \\
+\midrule
+\textbf{Global} & 344 & \textbf{15.90} & \textbf{0.281} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[ht]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/xai_per_class.png}
+\caption{Representative Grad-CAM++ heatmaps for the six ripeness classes
+(federated operating model). Highlight intensity (red = high) marks the regions
+most influential to the per-class prediction.}
+\label{fig:xai}
+\end{figure*}
+
+\subsection{Threats to Validity}
+All grid runs use a single seed under a compute budget; reported numbers may
+vary by $\pm$0.01--0.03 mAP@0.5, though the qualitative trends (gradual DP
+decay, $K$-monotonicity, E1$>$E2) have effect sizes well beyond that range. A
+single dataset source bounds external generalization; multi-estate validation
+is future work. Best-round selection per run mildly favours the DP variants but
+is applied uniformly. FRR rewards in-box heatmaps and may under-credit
+explanations attending to nearby cues such as fallen fruitlets; per-class OCD
+is a complementary signal that mostly agrees with FRR on the ranking.
+
+%==============================================================================
+\section{Deployment Demonstration}
+\label{sec:deployment}
+%==============================================================================
+To establish operational viability beyond simulation, the deployable operating
+checkpoint (B2 federated $K{=}4$, 25 rounds, mAP@0.5 = 0.738) is packaged into
+a Docker image and served from a CPU-only Virtual Private Server (VPS). The
+service exposes a Flask \texttt{/predict} endpoint and a lightweight web
+front-end through which an operator uploads a plantation image and receives
+three artefacts simultaneously: bounding boxes with class labels and
+confidences, the per-image Grad-CAM++ heatmap, and a tabular summary of
+detections (Fig.~\ref{fig:vps}).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/docker_ui.png}
+\caption{FedX-Palm inference service running on a CPU-only VPS: upload
+interface and aggregate model metrics shown to the operator as decision
+context.}
+\label{fig:vps-ui}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/result_heatmap.png}
+\caption{Live inference output: YOLOv11n bounding-box predictions and
+Grad-CAM++ overlay for an unseen test image. Each prediction is accompanied
+by a visual justification that the operator can audit.}
+\label{fig:vps}
+\end{figure}
+
+Operationally, the demonstration validates three architectural commitments of
+FedX-Palm. \emph{First}, separation of training and inference: while federated
+training requires per-client GPU resources, inference runs comfortably on a
+commodity CPU at roughly two seconds per image (1.2~s YOLOv11n forward pass
+plus 0.8~s Grad-CAM++), keeping production infrastructure costs low.
+\emph{Second}, instantiation of zero-trust data flow: only the FedAvg-aggregated
+model weights leave the client estates; no raw imagery is stored on the
+inference VPS, mirroring the privacy architecture analyzed throughout the
+paper. \emph{Third}, end-user trust support through XAI: by surfacing the
+Grad-CAM++ heatmap alongside each detection, the service lets field operators
+visually verify whether a ``ripe'' or ``overripe'' label is grounded in the
+fruit region or, as flagged for the \emph{Abnormal} class in
+Sec.~4.6, in surrounding context warranting manual confirmation.
+
+%==============================================================================
+\section{Conclusion}
+%==============================================================================
+FedX-Palm integrates horizontal federated learning, per-sample differential
+privacy, a YOLOv11n--GroupNorm detector, and Grad-CAM++ explainability for
+six-class oil palm FFB ripeness detection, and characterizes honestly where the
+combination is practical. On a leakage-free bunch-identity split, federation
+costs only 0.049 mAP@0.5 (0.738 vs 0.787), making privacy-by-architecture
+attractive. Formal differential privacy, however, is expensive on this detector:
+across a $5\times5$ $K\times\sigma$ grid with $\varepsilon$ from a PRV
+accountant, the best full-DP point reaches mAP@0.5 = 0.190 at $\varepsilon =
+8.36$, degradation is gradual rather than catastrophic, larger $K$ consistently
+hurts (a per-sample-DP penalty), and partial DP does not help. Grad-CAM++
+faithfulness on the deployable model is preserved under federation (global FRR
+= 0.281 vs 0.182 centralized; complementary OCD signal in agreement), with the
+Abnormal class flagged for manual oversight. A Docker-packaged inference
+service on a commodity CPU VPS demonstrates that the federated operating model
+runs end-to-end with visual XAI in roughly two seconds per image.
+These results both demonstrate a working privacy-aware, explainable palm
+ripeness system and delineate the boundary at which formal DP becomes
+impractical -- motivating DP-friendly architectures and larger communication
+budgets as future work, alongside multi-estate validation and edge-deployment
+benchmarks.
+
+%==============================================================================
+\section*{CRediT Authorship Contribution Statement}
+%==============================================================================
+\textbf{R. Dianty:} Conceptualization, Methodology, Software, Validation,
+Writing -- Original Draft, Writing -- Review \& Editing, Visualization.
+\textbf{F. Dewanta:} Formal analysis, Data Curation, Writing -- Original Draft,
+Supervision. \textbf{T. S. Gunawan:} Investigation, Writing -- Review \&
+Editing, Supervision, Project Administration.
+
+\section*{Declaration of Competing Interest}
+The authors declare no known competing financial interests or personal
+relationships that could have appeared to influence the work reported here.
+
+\section*{Declaration of Generative AI and AI-Assisted Technologies in the Writing Process}
+The authors used Claude (Anthropic) to assist with drafting clarity and LaTeX
+formatting. All experimental design, code, results, and analysis are the
+authors' own; the authors reviewed and edited all AI-assisted content and take
+full responsibility for the final publication.
+
+\section*{Data Availability}
+The dataset is openly available from Roboflow (palm-fruit-ripeness-detection,
+version 2). The leakage-free \texttt{bunch\_id}-keyed split protocol and
+partition lists are available from the corresponding author upon reasonable
+request.
+
+%==============================================================================
+\section*{References}
+%==============================================================================
+\begin{thebibliography}{99}
+\small
+
+\bibitem{usda2024} USDA Foreign Agricultural Service. (2024) Oilseeds: World
+Markets and Trade. Washington, DC, technical report.
+
+\bibitem{sabri2017} Sabri N, Ibrahim Z, Syahlan S, Jamil N, Mangshor NNA.
+(2017) Palm oil fresh fruit bunch ripeness grading identification using colour
+features. Journal of Fundamental and Applied Sciences, 9(4S):1-15.
+
+\bibitem{redmon2016} Redmon J, Divvala S, Girshick R, Farhadi A. (2016) You
+only look once: Unified, real-time object detection. In Proceedings of the IEEE
+Conference on Computer Vision and Pattern Recognition (CVPR), pp. 779-788.
+
+\bibitem{yolov11} Khanam R, Hussain M. (2024) YOLOv11: An overview of the key
+architectural enhancements. arXiv preprint arXiv:2410.17725.
+
+\bibitem{junos2022} Junos MH, Mohd Khairuddin AS, Thannirmalai S, Dahari M.
+(2022) Automatic detection of oil palm fruits from UAV images using an improved
+YOLO model. The Visual Computer, 38:2341-2355.
+
+\bibitem{gunawan2023} Gunawan TS, Kartiwi M, Mansor H, Yusoff NM. (2023) Palm
+fruit ripeness detection and classification using various YOLOv8 models. In
+Proceedings of the 2023 IEEE 9th International Conference on Smart
+Instrumentation, Measurement and Applications (ICSIMA), pp. 193-198.
+
+\bibitem{elwirehardja2021} Elwirehardja GN, Prayoga JS, et al. (2021) Oil palm
+fresh fruit bunch ripeness classification on mobile devices using deep learning
+approaches. Computers and Electronics in Agriculture, 188:106359.
+
+\bibitem{fedavg} McMahan B, Moore E, Ramage D, Hampson S, Arcas BA. (2017)
+Communication-efficient learning of deep networks from decentralized data. In
+Proceedings of the 20th International Conference on Artificial Intelligence and
+Statistics (AISTATS), pp. 1273-1282.
+
+\bibitem{kairouz2021} Kairouz P, McMahan HB, et al. (2021) Advances and open
+problems in federated learning. Foundations and Trends in Machine Learning,
+14(1-2):1-210.
+
+\bibitem{li2020} Li T, Sahu AK, Talwalkar A, Smith V. (2020) Federated learning:
+Challenges, methods, and future directions. IEEE Signal Processing Magazine,
+37(3):50-60.
+
+\bibitem{hsu2019} Hsu TMH, Qi H, Brown M. (2019) Measuring the effects of
+non-identical data distribution for federated visual classification. arXiv
+preprint arXiv:1909.06335.
+
+\bibitem{abadi2016} Abadi M, Chu A, Goodfellow I, McMahan HB, Mironov I, Talwar
+K, Zhang L. (2016) Deep learning with differential privacy. In Proceedings of
+the ACM SIGSAC Conference on Computer and Communications Security (CCS), pp.
+308-318.
+
+\bibitem{gopi2021} Gopi S, Lee YT, Wutschitz L. (2021) Numerical composition of
+differential privacy. In Advances in Neural Information Processing Systems
+(NeurIPS), 34:11631-11642.
+
+\bibitem{opacus2021} Yousefpour A, Shilov I, Sablayrolles A, et al. (2021)
+Opacus: User-friendly differential privacy library in PyTorch. arXiv preprint
+arXiv:2109.12298.
+
+\bibitem{groupnorm} Wu Y, He K. (2018) Group normalization. In European
+Conference on Computer Vision (ECCV), pp. 3-19.
+
+\bibitem{tramer2021} Tram\`er F, Boneh D. (2021) Differentially private learning
+needs better features (or much more data). In International Conference on
+Learning Representations (ICLR).
+
+\bibitem{gradcam} Selvaraju RR, Cogswell M, Das A, Vedantam R, Parikh D, Batra
+D. (2017) Grad-CAM: Visual explanations from deep networks via gradient-based
+localization. In Proceedings of the IEEE International Conference on Computer
+Vision (ICCV), pp. 618-626.
+
+\bibitem{gradcampp} Chattopadhyay A, Sarkar A, Howlader P, Balasubramanian VN.
+(2018) Grad-CAM++: Generalized gradient-based visual explanations for deep
+convolutional networks. In Proceedings of the IEEE Winter Conference on
+Applications of Computer Vision (WACV), pp. 839-847.
+
+\bibitem{rise} Petsiuk V, Das A, Saenko K. (2018) RISE: Randomized input
+sampling for explanation of black-box models. In British Machine Vision
+Conference (BMVC).
+
+\bibitem{coco} Lin TY, Maire M, Belongie S, et al. (2014) Microsoft COCO:
+Common objects in context. In European Conference on Computer Vision (ECCV),
+pp. 740-755.
+
+\end{thebibliography}
+
+\end{document}
