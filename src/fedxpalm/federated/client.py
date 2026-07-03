@@ -1,15 +1,13 @@
 """One client's local fine-tuning for one federated round (no DP -- used for B2).
 
-Uses Ultralytics' high-level `YOLO.train()` API directly: it is well-tested
-and handles augmentation/scheduling/checkpointing correctly on its own, so
-there is no reason to hand-roll a loop here the way privacy/dp_sgd.py has
-to (Opacus needs low-level control that `YOLO.train()` does not expose).
+See trainer_utils.build_trainer_from_checkpoint for why this doesn't just
+call the high-level `YOLO(path).train(...)` API.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from ultralytics import YOLO
+from fedxpalm.federated.trainer_utils import build_trainer_from_checkpoint
 
 
 def train_client_round(
@@ -25,10 +23,10 @@ def train_client_round(
 
     Returns the path to the resulting weights (`.../weights/last.pt`).
     """
-    model = YOLO(global_weights_path)
     run_name = f"r{round_idx}_client{client_id}"
-    model.train(
+    overrides = dict(
         data=client_data_yaml,
+        model=global_weights_path,
         epochs=hyp["epochs_per_round"],
         batch=hyp["batch_size"],
         imgsz=hyp.get("imgsz", 640),
@@ -44,8 +42,11 @@ def train_client_round(
         verbose=False,
         val=False,
         plots=False,
-        workers=4,
+        workers=hyp.get("workers", 4),
     )
+    trainer = build_trainer_from_checkpoint(global_weights_path, overrides)
+    trainer.train()
+
     weights_path = Path(out_dir) / run_name / "weights" / "last.pt"
     if not weights_path.exists():
         raise FileNotFoundError(f"expected client weights at {weights_path}, training may have failed")

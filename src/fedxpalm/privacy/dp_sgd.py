@@ -12,12 +12,9 @@ between point releases.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-import torch
 from opacus import PrivacyEngine
-from ultralytics.models.yolo.detect.train import DetectionTrainer
 
+from fedxpalm.federated.trainer_utils import build_trainer_from_checkpoint
 from fedxpalm.models.groupnorm import disable_inplace_ops
 
 
@@ -38,10 +35,6 @@ def train_client_round_dp(
     keys ready for fedavg(), and info carries {epsilon, steps, sigma, n_samples}
     for the round's history log.
     """
-    ckpt = torch.load(global_weights_path, map_location="cpu", weights_only=False)
-    model = ckpt["model"].float()
-    disable_inplace_ops(model)  # in case a fresh (non-DP-prepared) checkpoint slips in
-
     run_name = f"r{round_idx}_client{client_id}_dp"
     overrides = dict(
         data=client_data_yaml,
@@ -64,8 +57,8 @@ def train_client_round_dp(
         project=out_dir,
         name=run_name,
     )
-    trainer = DetectionTrainer(overrides=overrides)
-    trainer.model = model  # pre-built -> setup_model() reuses it instead of re-loading global_weights_path
+    trainer = build_trainer_from_checkpoint(global_weights_path, overrides)
+    disable_inplace_ops(trainer.model)  # in case a fresh (non-DP-prepared) checkpoint slips in
     trainer._setup_train()
 
     privacy_engine = PrivacyEngine(accountant=dp_hyp.get("accountant", "prv"))
@@ -95,7 +88,7 @@ def train_client_round_dp(
     state_dict = {k.replace("_module.", "", 1): v.detach().clone() for k, v in dp_model.state_dict().items()}
 
     info = {
-        "epsilon": epsilon,
+        "epsilon": float(epsilon),
         "delta": dp_hyp["delta"],
         "sigma": dp_hyp["sigma"],
         "max_grad_norm": dp_hyp["max_grad_norm"],

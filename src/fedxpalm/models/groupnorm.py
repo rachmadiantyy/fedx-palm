@@ -67,6 +67,61 @@ def disable_inplace_ops(module: nn.Module) -> int:
     return disabled
 
 
+_fuse_patched = False
+
+
+def patch_fuse_for_groupnorm() -> None:
+    """Makes Ultralytics' `BaseModel.fuse()` skip GroupNorm layers instead of crashing.
+
+    `model.val()` / `.predict()` load weights through `AutoBackend`, which
+    unconditionally calls `model.fuse()` to algebraically merge each Conv's
+    BatchNorm into its preceding conv for faster inference. GroupNorm has no
+    such closed-form fusion (and doesn't need one -- it's already cheap), so
+    the stock `fuse()` crashes with `AttributeError: 'GroupNorm' object has
+    no attribute 'running_var'` the moment it hits a converted layer. This
+    patches the class method once, process-wide, to leave GroupNorm'd Conv
+    blocks unfused and fuse everything else as normal. Applied automatically
+    on `import fedxpalm`.
+    """
+    global _fuse_patched
+    if _fuse_patched:
+        return
+
+    from ultralytics.nn.modules import Conv, Conv2, ConvTranspose, DWConv, RepConv, RepVGGDW
+    from ultralytics.nn.modules.head import Detect
+    from ultralytics.nn.tasks import BaseModel
+    from ultralytics.utils.torch_utils import fuse_conv_and_bn, fuse_deconv_and_bn
+
+    def _groupnorm_safe_fuse(self, verbose: bool = True):
+        if not self.is_fused():
+            for m in self.model.modules():
+                if isinstance(m, (Conv, Conv2, DWConv)) and hasattr(m, "bn"):
+                    if not isinstance(m.bn, nn.BatchNorm2d):
+                        continue  # GroupNorm (or anything else non-fusable): leave as-is
+                    if isinstance(m, Conv2):
+                        m.fuse_convs()
+                    m.conv = fuse_conv_and_bn(m.conv, m.bn)
+                    delattr(m, "bn")
+                    m.forward = m.forward_fuse
+                if isinstance(m, ConvTranspose) and hasattr(m, "bn") and isinstance(m.bn, nn.BatchNorm2d):
+                    m.conv_transpose = fuse_deconv_and_bn(m.conv_transpose, m.bn)
+                    delattr(m, "bn")
+                    m.forward = m.forward_fuse
+                if isinstance(m, RepConv):
+                    m.fuse_convs()
+                    m.forward = m.forward_fuse
+                if isinstance(m, RepVGGDW):
+                    m.fuse()
+                    m.forward = m.forward_fuse
+                if isinstance(m, Detect) and getattr(m, "end2end", False):
+                    m.fuse()
+            self.info(verbose=verbose)
+        return self
+
+    BaseModel.fuse = _groupnorm_safe_fuse
+    _fuse_patched = True
+
+
 def prepare_model_for_dp(yolo_model, max_groups: int = 32):
     """Convert BN->GN, disable in-place activations, and run Opacus' ModuleValidator.
 
