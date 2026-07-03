@@ -3,7 +3,12 @@
 # client nodes, sequential FedAvg simulation on a single GPU).
 
 model:
-  arch: "yolo11n.pt"     # Ultralytics pretrained nano checkpoint (COCO), fine-tuned per client
+  arch: "yolo11s.pt"     # Ultralytics pretrained small checkpoint (COCO), fine-tuned per client
+                          # ~9.5M params (~3.6x yolo11n) -- chosen over nano for higher mAP
+                          # ceiling; trained/served on the author's RTX GPU, not CPU-only.
+                          # Backbone/neck/head layer indices (0-10 / 11-22 / 23) are identical
+                          # to yolo11n, so freeze_stages (dp_config.yaml) and Grad-CAM++'s
+                          # target_layer_idx=22 (xai/gradcam.py) still apply unchanged.
   imgsz: 640
 
 clients:
@@ -12,21 +17,23 @@ clients:
   partition_seed: 42
 
 federated:
-  rounds: 25                 # operating-point rounds (curve-K sweep in FL_CONFIG_CURVE_ROUNDS below)
-  curve_rounds: 5             # cheaper rounds used only for the K-sweep curve (mirrors Table 4.2 note)
-  aggregation: "fedavg"        # w_{t+1} = sum_k (n_k / N) * w_k
+  rounds: 40                  # operating-point rounds (bumped from 25 -> 40 to chase mAP > 85%)
+  curve_rounds: 5              # cheaper rounds used only for the K-sweep curve (mirrors Table 4.2 note)
+  aggregation: "fedavg"         # w_{t+1} = sum_k (n_k / N) * w_k
 
 local_training:
-  epochs_per_round: 1
+  epochs_per_round: 2           # bumped from 1 -> 2: more local signal per round before aggregating
   batch_size: 16
   optimizer: "AdamW"
   lr0: 0.001
   momentum: 0.9
   weight_decay: 0.0005
+  patience: 0                   # no early stop locally -- federated rounds already cap total steps
   loss: "ciou+cls+dfl"          # Ultralytics default detection loss (CIoU + classification + DFL)
 
 baseline_centralized:
-  epochs: 100
+  epochs: 150                   # bumped from 100 -> 150
+  patience: 30                  # early-stop if val mAP plateaus for 30 epochs
   batch_size: 16
   optimizer: "AdamW"
   lr0: 0.001

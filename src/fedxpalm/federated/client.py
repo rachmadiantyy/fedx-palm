@@ -36,6 +36,7 @@ def train_client_round(
         lr0=hyp.get("lr0", 0.001),
         momentum=hyp.get("momentum", 0.9),
         weight_decay=hyp.get("weight_decay", 0.0005),
+        patience=hyp.get("patience", 100),
         device=device,
         project=out_dir,
         name=run_name,

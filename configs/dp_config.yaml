@@ -13,7 +13,9 @@ variants:
   full:                        # E1 -- DP-SGD applied to every trainable parameter
     freeze_stages: null
   partial:                     # E2 -- DP-SGD applied to neck+head only, backbone frozen
-    # YOLOv11n layers 0-10 are the backbone (Conv/C3k2 stem down to SPPF+C2PSA);
+    # YOLOv11 layers 0-10 are the backbone (Conv/C3k2 stem down to SPPF+C2PSA);
+    # this layer graph is identical across the n/s/m/l/x scale variants
+    # (only channel widths/depths differ), so it holds for yolo11s too.
     # 11-22 are the PAN-FPN neck, 23 is the Detect head. Values are the
     # stage indices Ultralytics' own `freeze=[...]` trainer arg expects
     # (sets requires_grad=False on every `model.<i>.*` parameter).
