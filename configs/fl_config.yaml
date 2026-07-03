@@ -1,0 +1,32 @@
+# Federated learning topology and local training hyperparameters.
+# Mirrors the original FedX-Palm experiment design (server-aggregator + K
+# client nodes, sequential FedAvg simulation on a single GPU).
+
+model:
+  arch: "yolo11n.pt"     # Ultralytics pretrained nano checkpoint (COCO), fine-tuned per client
+  imgsz: 640
+
+clients:
+  k_values: [2, 4, 8, 12, 16]     # sweep -- one full federated run per K
+  dirichlet_alpha: 0.5            # smaller alpha => more Non-IID class skew per client
+  partition_seed: 42
+
+federated:
+  rounds: 25                 # operating-point rounds (curve-K sweep in FL_CONFIG_CURVE_ROUNDS below)
+  curve_rounds: 5             # cheaper rounds used only for the K-sweep curve (mirrors Table 4.2 note)
+  aggregation: "fedavg"        # w_{t+1} = sum_k (n_k / N) * w_k
+
+local_training:
+  epochs_per_round: 1
+  batch_size: 16
+  optimizer: "SGD"
+  lr0: 0.01
+  momentum: 0.9
+  weight_decay: 0.0005
+  loss: "ciou+cls+dfl"          # Ultralytics default detection loss (CIoU + classification + DFL)
+
+baseline_centralized:
+  epochs: 100
+  batch_size: 16
+  optimizer: "SGD"
+  lr0: 0.01

@@ -1,0 +1,40 @@
+# Dataset source for FedX-Palm v2.
+#
+# NOTE: the Claude Code sandbox that generated this scaffold could not reach
+# api.roboflow.com (blocked by the environment's egress policy), so the
+# class list below is INHERITED from the original FedX-Palm thesis (6
+# ripeness classes) and NOT verified against this specific Roboflow project.
+# Run `python scripts/01_download_dataset.py` yourself, then check the
+# generated `<download_dir>/data.yaml` and fix `names` below if it differs
+# (order and count both matter -- class ids are positional).
+
+roboflow:
+  api_key: "Ej0bSMpeSri3ky0IYkOU"   # move to $ROBOFLOW_API_KEY before committing/sharing this repo further
+  workspace: "dydy-worker"
+  project: "palm-fruit-ripeness-detection-f6sac-ccb2z"
+  version: 2
+  format: "yolov11"
+
+download_dir: "data/raw"
+
+# ASSUMED 6 ripeness classes (verify against downloaded data.yaml!):
+names:
+  - Unripe
+  - Underripe
+  - Ripe
+  - Overripe
+  - Empty_Bunch
+  - Abnormal
+nc: 6
+
+# Leakage-free split: group images by bunch identity (parsed from filename)
+# before splitting, so frames of the same physical FFB never straddle
+# train/val/test.
+bunch_id_regex: '^(?P<bunch_id>.+?)(?:_\d+)?\.(jpg|jpeg|png)$'
+split_ratios:
+  train: 0.70
+  val: 0.15
+  test: 0.15
+split_seed: 42
+
+output_dir: "data/splits"

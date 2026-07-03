@@ -1,0 +1,28 @@
+# Differential privacy (DP-SGD, per-sample) hyperparameters.
+# Mirrors the original FedX-Palm privacy sweep: full grid K x sigma,
+# epsilon derived post-hoc from the PRV accountant (Opacus), never fixed
+# manually.
+
+dp_sgd:
+  max_grad_norm: 1.0          # clipping threshold C
+  noise_multiplier_values: [0.5, 1.0, 1.5, 2.0, 3.0]   # sigma sweep
+  delta: 1.0e-5
+  accountant: "prv"           # Opacus PRVAccountant
+
+variants:
+  full:                        # E1 -- DP-SGD applied to every trainable parameter
+    freeze_stages: null
+  partial:                     # E2 -- DP-SGD applied to neck+head only, backbone frozen
+    # YOLOv11n layers 0-10 are the backbone (Conv/C3k2 stem down to SPPF+C2PSA);
+    # 11-22 are the PAN-FPN neck, 23 is the Detect head. Values are the
+    # stage indices Ultralytics' own `freeze=[...]` trainer arg expects
+    # (sets requires_grad=False on every `model.<i>.*` parameter).
+    freeze_stages: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+# BatchNorm layers are not compatible with Opacus per-sample gradients
+# (batch statistics leak cross-sample information into a "per-sample"
+# gradient). They are converted to GroupNorm before any DP run; see
+# src/fedxpalm/models/groupnorm.py. num_groups chosen as the largest divisor
+# of each layer's channel count that is <= max_groups.
+groupnorm:
+  max_groups: 32
