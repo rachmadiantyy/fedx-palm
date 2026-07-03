@@ -13,7 +13,7 @@ import argparse
 import random
 import re
 import shutil
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import yaml
@@ -40,6 +40,49 @@ def _collect_pairs(dataset_dir: Path) -> list[tuple[Path, Path]]:
             lbl_path = lbl_dir / (img_path.stem + ".txt")
             pairs.append((img_path, lbl_path if lbl_path.exists() else None))
     return pairs
+
+
+def audit_class_distribution(output_dir: Path, class_names: list[str], splits: tuple[str, ...] = ("train", "val", "test")) -> dict[str, dict[int, int]]:
+    """Counts label instances per class per split and warns about classes
+    that end up with zero (or very few) instances in any split.
+
+    A prior rebuild of this exact dataset hit "Empty Bunch" at 0 instances
+    in the val split after a naive split -- Empty Bunch is the minority
+    class dataset-wide (~20% of the largest class), so this is a real risk
+    worth checking every time the split ratio or seed changes, not just
+    trusting the bunch-level greedy assignment to balance classes too.
+    """
+    counts: dict[str, dict[int, int]] = {}
+    for split_name in splits:
+        labels_dir = output_dir / split_name / "labels"
+        counter: Counter = Counter()
+        if labels_dir.exists():
+            for lbl_path in labels_dir.glob("*.txt"):
+                for line in lbl_path.read_text().splitlines():
+                    line = line.strip()
+                    if line:
+                        counter[int(line.split()[0])] += 1
+        counts[split_name] = dict(counter)
+
+    header = f"{'Class':<16}" + "".join(f"{s:>10}" for s in splits) + f"{'TOTAL':>10}"
+    print("\nClass distribution per split:")
+    print(header)
+    print("-" * len(header))
+    zero_warnings = []
+    for class_id, name in enumerate(class_names):
+        row = [counts[s].get(class_id, 0) for s in splits]
+        total = sum(row)
+        flag = ""
+        if any(v == 0 for v in row):
+            flag = "  <-- ZERO instances in a split!"
+            zero_warnings.append(name)
+        print(f"{name:<16}" + "".join(f"{v:>10}" for v in row) + f"{total:>10}{flag}")
+    print("-" * len(header))
+    if zero_warnings:
+        print(f"WARNING: {', '.join(zero_warnings)} has/have zero instances in at least one "
+              f"split -- consider a different split_seed, or check if these classes are just "
+              f"genuinely rare dataset-wide before proceeding to Dirichlet partitioning.")
+    return counts
 
 
 def leakage_free_split(cfg_path: str = "configs/dataset.yaml") -> Path:
@@ -119,11 +162,22 @@ def leakage_free_split(cfg_path: str = "configs/dataset.yaml") -> Path:
     for name in ratios:
         print(f"  {name}: {assigned[name]} images ({assigned[name] / total_images:.1%})")
     print(f"Leakage audit: 0 bunch_ids span multiple splits. Wrote {output_dir}/data.yaml")
+
+    audit_class_distribution(output_dir, cfg["names"], tuple(ratios.keys()))
     return output_dir
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/dataset.yaml")
+    parser.add_argument("--audit-only", action="store_true",
+                         help="skip re-splitting, just re-run the class-distribution audit "
+                              "on an existing data/splits/ (e.g. after manually editing files)")
     args = parser.parse_args()
-    leakage_free_split(args.config)
+
+    if args.audit_only:
+        with open(args.config) as f:
+            _cfg = yaml.safe_load(f)
+        audit_class_distribution(Path(_cfg["output_dir"]), _cfg["names"], tuple(_cfg["split_ratios"].keys()))
+    else:
+        leakage_free_split(args.config)

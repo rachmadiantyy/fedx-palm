@@ -1,13 +1,12 @@
 # Dataset source for FedX-Palm v2.
 #
-# NOTE: the Claude Code sandbox that generated this scaffold could not reach
-# api.roboflow.com (blocked by the environment's egress policy). The class
-# list below was cross-checked against a separate, independent rebuild of
-# this exact same Roboflow project (branch claude/thesis-rebuild-dp-sgd,
-# thesis_rebuild/scripts/00_download_dataset.py) rather than guessed --
-# still confirm it against your own downloaded <download_dir>/data.yaml
-# after running scripts/01_download_dataset.py, in case that branch applied
-# its own renaming on top of Roboflow's raw class list.
+# Confirmed directly against the real downloaded data.yaml (2026-07-03):
+# 9982 train + 416 valid + 416 test = 10814 images total. Class instance
+# counts are imbalanced -- "Empty Bunch" is the minority class everywhere
+# (~2033/9982 in train, ~20% of the largest class) -- see
+# src/fedxpalm/data/split.py's post-split class audit, which specifically
+# warns if any class ends up with zero instances in a split (this bit a
+# prior rebuild attempt of this exact dataset).
 
 roboflow:
   api_key: "Ej0bSMpeSri3ky0IYkOU"   # move to $ROBOFLOW_API_KEY before committing/sharing this repo further
@@ -18,8 +17,7 @@ roboflow:
 
 download_dir: "data/raw"
 
-# 6 ripeness classes, alphabetical order (cross-checked, see note above --
-# still verify against your own downloaded data.yaml):
+# 6 ripeness classes, alphabetical order (confirmed against real data.yaml):
 names:
   - Abnormal
   - Empty Bunch
@@ -34,9 +32,9 @@ nc: 6
 # train/val/test.
 bunch_id_regex: '^(?P<bunch_id>.+?)(?:_\d+)?\.(jpg|jpeg|png)$'
 split_ratios:
-  train: 0.70
-  val: 0.15
-  test: 0.15
+  train: 0.80
+  val: 0.10
+  test: 0.10
 split_seed: 42
 
 output_dir: "data/splits"

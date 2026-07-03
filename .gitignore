@@ -1,10 +1,12 @@
 # FedX-Palm generated artifacts (datasets, checkpoints, run logs, results) --
-# these are produced by scripts/ on your GPU box, not checked in.
-data/
-models/
-runs/
-results/
-weights/
+# these are produced by scripts/ on your GPU box, not checked in. Anchored
+# to repo root (leading /) so these patterns don't also match same-named
+# source directories, e.g. src/fedxpalm/data/ or src/fedxpalm/models/.
+/data/
+/models/
+/runs/
+/results/
+/weights/
 *.pt
 *.onnx
 
