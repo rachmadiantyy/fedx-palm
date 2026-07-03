@@ -357,7 +357,8 @@ melatih model dengan DP-SGD secara efisien. Tiga komponen utamanya:
    sampel satu per satu -- pendekatan ini jauh lebih efisien dibanding
    implementasi DP-SGD naif.
 2. **`DPOptimizer`** membungkus *optimizer* PyTorch standar (pada
-   penelitian ini, AdamW) untuk menerapkan *clipping* per-sampel (2.5) dan
+   penelitian ini, SGD momentum -- lihat Subbab 3.6.1 untuk alasan
+   pemilihannya) untuk menerapkan *clipping* per-sampel (2.5) dan
    penambahan *noise* Gaussian (2.6) secara otomatis sebelum setiap langkah
    `step()`.
 3. **`PrivacyEngine`** adalah antarmuka tingkat tinggi yang mengikat model,

@@ -208,17 +208,24 @@ keduanya memengaruhi validitas hasil apabila tidak ditangani:
 | *Epoch* lokal per ronde | 2 | `fl_config.yaml: local_training.epochs_per_round` |
 | Ukuran *batch* | 16 | `local_training.batch_size` |
 | Ukuran citra | 640×640 | `model.imgsz` |
-| *Optimizer* | AdamW | `local_training.optimizer` |
-| *Learning rate* awal | 0,001 | `local_training.lr0` |
+| *Optimizer* | SGD | `local_training.optimizer` |
+| *Learning rate* awal | 0,01 | `local_training.lr0` |
 | Momentum | 0,9 | `local_training.momentum` |
 | *Weight decay* | 0,0005 | `local_training.weight_decay` |
 | Jumlah ronde federasi | 40 | `federated.rounds` |
 
-Pemilihan AdamW (bukan SGD momentum seperti pada iterasi pertama kerangka
-ini) didasarkan pada rezim pelatihan federasi: dengan hanya 2 *epoch* lokal
-per ronde sebelum agregasi, *learning rate* adaptif AdamW memberi
-konvergensi yang lebih andal tanpa penjadwalan *learning rate* panjang yang
-biasanya dibutuhkan SGD momentum.
+SGD momentum dipilih (bukan *optimizer* adaptif seperti AdamW) atas dua
+alasan. Pertama, mengikuti literatur DP-SGD sendiri (Subbab 2.4.3): SGD
+adalah *optimizer* yang dipakai pada karakterisasi teoretis dan empiris asli
+mekanisme *clipping*+*noise* Gaussian; estimasi momen kedua *optimizer*
+adaptif seperti AdamW ikut tercemar oleh *noise* per-langkah yang disuntikkan
+DP-SGD, sebuah interaksi yang belum sama matangnya dikaji pada literatur
+dibanding SGD polos. Kedua, dan lebih penting untuk validitas perbandingan:
+SGD dipakai **seragam di keempat blok eksperimen** (B1, B2, E1, E2) --
+bukan hanya pada blok berDP -- agar selisih utilitas $\Delta_{FL}$ (B1
+vs B2) dan $\Delta_{DP}$ (B2 vs E1/E2) murni mencerminkan efek federasi dan
+privasi yang diteliti, bukan tercampur dengan efek pergantian *optimizer*
+antarblok.
 
 ### 3.6.2 Algoritma FedAvg
 
@@ -260,7 +267,7 @@ Subbab 2.4 dan 2.7. Karena Opacus membutuhkan kendali langsung atas
 `model`, `optimizer`, dan `DataLoader` -- kendali yang tidak diekspos API
 tingkat tinggi `YOLO.train()` -- fungsi ini memakai pola serupa
 `build_trainer_from_checkpoint` untuk memperoleh `DetectionTrainer` dengan
-model, *optimizer* (AdamW, hiperparameter sama seperti Subbab 3.6.1), dan
+model, *optimizer* (SGD, hiperparameter sama seperti Subbab 3.6.1), dan
 *dataloader* lokal klien yang sudah disiapkan Ultralytics, lalu
 membungkus ketiganya dengan `opacus.PrivacyEngine.make_private(...,
 poisson_sampling=True)`. Presisi campuran (AMP) dinonaktifkan

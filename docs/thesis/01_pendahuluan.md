@@ -3,7 +3,7 @@ CATATAN PENULISAN (hapus komentar ini sebelum submit):
 Bab ini adalah rombak total Bab 1 mengikuti kerangka FedX-Palm, tetapi
 dijalankan ulang di atas dataset Roboflow baru ("palm-fruit-ripeness-
 detection-f6sac-ccb2z" v2, workspace "dydy-worker") dan konfigurasi
-eksperimen yang diperbarui (YOLOv11n, optimizer AdamW, K in
+eksperimen yang diperbarui (YOLOv11n, optimizer SGD, K in
 {2,4,8,12,16}, 40 ronde federasi, sigma in {0.5,1.0,1.5,2.0,3.0}).
 Bagian yang ditandai [VERIFIKASI: ...] harus dicek terhadap data.yaml
 hasil unduhan Roboflow yang sesungguhnya dan spesifikasi perangkat
@@ -102,11 +102,12 @@ tetap YOLOv11 varian **nano** (bukan varian yang lebih besar), karena
 mayoritas penelitian deteksi kematangan TBS sawit berbasis YOLOv11 yang
 dijumpai pada tinjauan pustaka penelitian ini memilih varian nano justru
 demi ruang gerak *deployment* CPU/edge -- konsisten dengan tujuan
-*deployment* CPU-only pada Bab 4 -- dan *local optimizer* diganti dari SGD
-ke **AdamW**, karena tiap ronde federasi hanya menjalankan sedikit *epoch*
-lokal sebelum agregasi, sebuah rezim yang lebih diuntungkan oleh *learning
-rate* adaptif AdamW dibandingkan SGD momentum yang biasanya memerlukan
-penjadwalan *learning rate* lebih panjang. Berangkat dari keempat elemen di
+*deployment* CPU-only pada Bab 4. *Local optimizer* dipertahankan sebagai
+SGD momentum di seluruh blok eksperimen (bukan diganti ke *optimizer*
+adaptif seperti AdamW), konsisten dengan literatur DP-SGD yang
+karakterisasinya dibangun di atas SGD polos (Bab 2.4), dan agar selisih
+utilitas antarblok murni mencerminkan efek federasi/privasi, bukan
+tercampur efek pergantian *optimizer*. Berangkat dari keempat elemen di
 atas, penelitian ini mengusulkan **FedX-Palm: A YOLOv11-Based Federated
 Learning Framework with Differential Privacy and Explainable AI for Oil Palm
 Ripeness Detection**. HFL menjadi tulang punggung komputasi terdistribusi,
@@ -282,9 +283,9 @@ berikut.
 
 4. **Pelatihan Lokal (*Local Fine-tuning*).** Pada setiap ronde, klien
    menjalankan *fine-tuning* YOLOv11n atas porsi data lokalnya. *Optimizer*
-   yang dipakai adalah AdamW, dengan *loss* *Complete IoU* (CIoU) untuk
-   regresi *bounding box* yang dipadukan dengan komponen *loss* klasifikasi
-   dan *Distribution Focal Loss* (DFL).
+   yang dipakai adalah SGD momentum, dengan *loss* *Complete IoU* (CIoU)
+   untuk regresi *bounding box* yang dipadukan dengan komponen *loss*
+   klasifikasi dan *Distribution Focal Loss* (DFL).
 
 5. **Penyuntikan *Differential Privacy* pada Gradien Per-sampel.** Selama
    pelatihan lokal, mekanisme DP-SGD per-sampel diberlakukan melalui

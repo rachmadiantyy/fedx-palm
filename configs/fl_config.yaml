@@ -26,8 +26,12 @@ federated:
 local_training:
   epochs_per_round: 2           # bumped from 1 -> 2: more local signal per round before aggregating
   batch_size: 16
-  optimizer: "AdamW"
-  lr0: 0.001
+  optimizer: "SGD"               # matches DP-SGD's own literature (SGD, not an adaptive optimizer --
+                                  # Adam/AdamW's second-moment estimate gets corrupted by the per-step
+                                  # Gaussian noise DP-SGD injects, an interaction that isn't as well
+                                  # characterized). Used for B1/B2 too so Delta_FL/Delta_DP comparisons
+                                  # across all four blocks aren't confounded by a change of optimizer.
+  lr0: 0.01
   momentum: 0.9
   weight_decay: 0.0005
   patience: 0                   # no early stop locally -- federated rounds already cap total steps
@@ -37,5 +41,5 @@ baseline_centralized:
   epochs: 150                   # bumped from 100 -> 150
   patience: 30                  # early-stop if val mAP plateaus for 30 epochs
   batch_size: 16
-  optimizer: "AdamW"
-  lr0: 0.001
+  optimizer: "SGD"
+  lr0: 0.01
