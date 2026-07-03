@@ -20,6 +20,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="0", help="'0' for first GPU, 'cpu' for CPU-only")
     parser.add_argument("--out-dir", default="runs/b1_centralized")
+    parser.add_argument("--imgsz", type=int, default=None, help="override configs/fl_config.yaml model.imgsz (e.g. 960)")
+    parser.add_argument("--batch", type=int, default=None, help="override baseline_centralized.batch_size")
     args = parser.parse_args()
 
     with open("configs/dataset.yaml") as f:
@@ -30,14 +32,16 @@ if __name__ == "__main__":
     hyp = fl_cfg["baseline_centralized"]
     data_yaml = str(Path(ds_cfg["output_dir"]) / "data.yaml")
     base_weights = "models/base_groupnorm.pt"
+    imgsz = args.imgsz or fl_cfg["model"]["imgsz"]
+    batch = args.batch or hyp["batch_size"]
 
     overrides = dict(
         data=data_yaml,
         model=base_weights,
         epochs=hyp["epochs"],
         patience=hyp.get("patience", 30),
-        batch=hyp["batch_size"],
-        imgsz=fl_cfg["model"]["imgsz"],
+        batch=batch,
+        imgsz=imgsz,
         optimizer=hyp["optimizer"],
         lr0=hyp["lr0"],
         device=args.device,
@@ -52,7 +56,7 @@ if __name__ == "__main__":
     trainer.train()
     best_weights = str(Path(args.out_dir) / "train" / "weights" / "best.pt")
 
-    metrics = evaluate_detector(best_weights, data_yaml, split="test", imgsz=fl_cfg["model"]["imgsz"], device=args.device)
+    metrics = evaluate_detector(best_weights, data_yaml, split="test", imgsz=imgsz, device=args.device)
 
     Path("results").mkdir(exist_ok=True)
     with open("results/b1_centralized.json", "w") as f:
