@@ -15,8 +15,23 @@ longer matched a post-round-1 client's (freshly BatchNorm-shaped) one.
 Fix: build the `DetectionTrainer` directly and assign the pre-loaded model
 to `trainer.model` *before* calling `trainer.train()` -- `setup_model()`
 skips rebuilding when `self.model` is already an `nn.Module`.
+
+Second, unrelated fix bundled here because every training entrypoint in
+this repo goes through this one function: if `overrides['project']` is a
+*relative* path, Ultralytics' `get_save_dir()` re-roots it under its own
+default runs directory instead of resolving it against the current working
+directory -- `project="runs/b1_centralized"` silently becomes
+`<runs_dir>/detect/runs/b1_centralized/<name>` (confirmed both in this
+sandbox and on the user's real Windows run: weights ended up nested two
+levels deeper than every script in this repo assumes, e.g.
+`runs/detect/runs/b1_centralized/train/weights/best.pt` instead of
+`runs/b1_centralized/train/weights/best.pt`). Resolving `project` to an
+absolute path here, once, avoids that for every caller (client.py,
+dp_sgd.py, scripts/05) without needing the same fix repeated everywhere.
 """
 from __future__ import annotations
+
+from pathlib import Path
 
 import torch
 from ultralytics.models.yolo.detect.train import DetectionTrainer
@@ -27,6 +42,9 @@ def build_trainer_from_checkpoint(global_weights_path: str, overrides: dict) -> 
     for Ultralytics' own bookkeeping/logging), but the actual module used for
     training is the one pre-loaded here, not rebuilt from its `.yaml`.
     """
+    if "project" in overrides:
+        overrides = {**overrides, "project": str(Path(overrides["project"]).resolve())}
+
     ckpt = torch.load(global_weights_path, map_location="cpu", weights_only=False)
     model = ckpt["model"].float()
     trainer = DetectionTrainer(overrides=overrides)
