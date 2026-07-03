@@ -19,8 +19,8 @@ federated:
 local_training:
   epochs_per_round: 1
   batch_size: 16
-  optimizer: "SGD"
-  lr0: 0.01
+  optimizer: "AdamW"
+  lr0: 0.001
   momentum: 0.9
   weight_decay: 0.0005
   loss: "ciou+cls+dfl"          # Ultralytics default detection loss (CIoU + classification + DFL)
@@ -28,5 +28,5 @@ local_training:
 baseline_centralized:
   epochs: 100
   batch_size: 16
-  optimizer: "SGD"
-  lr0: 0.01
+  optimizer: "AdamW"
+  lr0: 0.001
