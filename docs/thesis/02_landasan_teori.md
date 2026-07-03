@@ -42,8 +42,10 @@ lepas, sedangkan *Abnormal* mencakup tandan dengan kelainan pertumbuhan atau
 penyakit. Pembedaan antarkelas terutama bertumpu pada isyarat visual berupa
 warna kulit buah, jumlah brondolan yang lepas, dan tekstur permukaan tandan
 [n]. Berdasarkan standar perkebunan, keenam kelas yang dipakai pada
-penelitian ini [VERIFIKASI terhadap `names` pada `data.yaml` dataset
-Roboflow yang dipakai] adalah sebagai berikut.
+penelitian ini (indeks 0-5 pada `data.yaml` dataset Roboflow berurutan
+alfabetis: *Abnormal*, *Empty Bunch*, *Overripe*, *Ripe*, *Underripe*,
+*Unripe* -- lihat `configs/dataset.yaml`) dijabarkan berikut ini menurut
+urutan tingkat kematangan, bukan urutan indeks, agar lebih mudah dipahami.
 
 1. ***Unripe* (Mentah).** Buah berwarna hitam pekat atau hijau tua dengan
    kandungan minyak yang masih sangat minim.

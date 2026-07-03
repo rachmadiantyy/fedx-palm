@@ -50,15 +50,37 @@ sesungguhnya baru bisa didapat setelah kamu jalankan di GPU-mu sendiri.
 
 Ditandai `[VERIFIKASI: ...]` di teks masing-masing bab:
 
-1. **Nama & urutan 6 kelas** -- cek `data.yaml` hasil
-   `scripts/01_download_dataset.py`, cocokkan dengan `names` di
-   `configs/dataset.yaml`. Kalau beda, kode lain (partisi, evaluasi) tetap
-   jalan benar (semua baca dari `configs/dataset.yaml`), tapi **teks Bab
-   1/Bab 2** yang menyebut nama kelas perlu disesuaikan.
-2. **Spesifikasi GPU** yang sungguh-sungguh kamu pakai (tipe RTX, VRAM) --
-   isi di Bab 1 Subbab 1.5.1 dan Bab 3 Subbab 3.2.1.
+1. **Nama & urutan 6 kelas** -- sudah diperbarui di `configs/dataset.yaml`
+   (`Abnormal, Empty Bunch, Overripe, Ripe, Underripe, Unripe`, alfabetis)
+   berdasarkan cross-check terhadap branch lain di repo yang sama
+   (`claude/thesis-rebuild-dp-sgd`, lihat bagian "Catatan tentang branch
+   lain" di bawah) yang sudah pernah mengunduh dataset ini secara nyata.
+   Tetap **cek ulang** terhadap `data.yaml` hasil unduhan
+   `scripts/01_download_dataset.py` versimu sendiri untuk memastikan.
+2. **Spesifikasi GPU** yang sungguh-sungguh kamu pakai -- dari `nvidia-smi`
+   yang kamu tunjukkan di sesi ini: **NVIDIA GeForce RTX 4080, 16 GB
+   VRAM**. Sudah bisa dipakai mengisi Bab 1 Subbab 1.5.1 dan Bab 3 Subbab
+   3.2.1 langsung.
 3. **Karakteristik dataset** (jumlah citra, jumlah instans per kelas) --
    isi di Bab 3 Subbab 3.3.1 setelah unduhan selesai.
+
+## Catatan tentang branch lain di repo ini (`claude/thesis-rebuild-dp-sgd`)
+
+Selama sesi ini ketahuan ada branch **lain** di repo yang sama
+(`claude/thesis-rebuild-dp-sgd`) yang tampaknya jauh lebih maju --
+Bab 1-5 sudah lengkap (`thesis_rebuild/chapters/bab1_pendahuluan.md` s.d.
+`bab5_kesimpulan.md`), ada hasil eksperimen asli
+(`thesis_rebuild/tables/*.csv`), deployment VM yang sudah jalan dan
+diukur latensinya, bahkan draft paper untuk submit ke jurnal (IEEE Access/
+Sensors/dst.). Riwayat commit-nya menyebut deadline ~27 Juni 2026 (sudah
+lewat saat sesi ini berlangsung, 3 Juli 2026), jadi kemungkinan besar
+sudah final/mendekati final.
+
+Kamu memutuskan **tetap lanjut di branch ini** (`claude/palm-oil-yolov11-
+federated-m4o613`) dan training dari nol, bukan memakai branch itu. Kalau
+di kemudian hari berubah pikiran, branch itu masih aman tersimpan di
+`origin/claude/thesis-rebuild-dp-sgd` -- tidak disentuh oleh apapun di
+sesi ini.
 
 ## Bug nyata yang ditemukan & diperbaiki (relevan untuk Bab 3)
 

@@ -27,15 +27,14 @@ dan dijalankan melalui sepuluh skrip bernomor (`scripts/01_*.py` hingga
 
 ### 3.2.1 Spesifikasi Perangkat Keras
 
-[VERIFIKASI: lengkapi tipe GPU (mis. NVIDIA RTX ????, kapasitas VRAM) dan
-spesifikasi CPU/RAM workstation/server yang benar-benar dipakai untuk
-menjalankan `notebooks/FedXPalm_v2_Colab.ipynb` atau `scripts/05`-`08`.]
-Seluruh pelatihan (B1, B2, E1, E2) dijalankan pada satu GPU; simulasi
-federasi K klien direalisasikan sebagai *loop* FedAvg sekuensial pada GPU
-tunggal tersebut (Subbab 3.6.2), bukan sebagai proses terdistribusi
-lintas-*host* fisik. *Deployment* akhir (Subbab 3.12) dijalankan pada
-sebuah *Virtual Private Server* (VPS) CPU-*only* untuk menguji portabilitas
-praktis tanpa ketergantungan GPU pada tahap produksi.
+Seluruh pelatihan (B1, B2, E1, E2) dijalankan pada satu GPU **NVIDIA
+GeForce RTX 4080 (16 GB VRAM)** [VERIFIKASI: lengkapi spesifikasi CPU/RAM
+*workstation*/*server* pendukung bila relevan]; simulasi federasi K klien
+direalisasikan sebagai *loop* FedAvg sekuensial pada GPU tunggal tersebut
+(Subbab 3.6.2), bukan sebagai proses terdistribusi lintas-*host* fisik.
+*Deployment* akhir (Subbab 3.12) dijalankan pada sebuah *Virtual Private
+Server* (VPS) CPU-*only* untuk menguji portabilitas praktis tanpa
+ketergantungan GPU pada tahap produksi.
 
 ### 3.2.2 Konfigurasi Perangkat Lunak
 

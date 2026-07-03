@@ -31,10 +31,11 @@ visi komputer relevan untuk diterapkan pada rantai pascapanen sawit.
 
 Pada sisi teknologi, model *object detection* mutakhir seperti YOLOv11
 memungkinkan pengenalan enam tingkat kematangan TBS -- *Unripe*, *Underripe*,
-*Ripe*, *Overripe*, *Empty Bunch*, dan *Abnormal* [VERIFIKASI: cocokkan nama
-dan urutan enam kelas ini dengan `names` pada `data.yaml` hasil unduhan
-proyek Roboflow *palm-fruit-ripeness-detection-f6sac-ccb2z* versi 2,
-workspace *dydy-worker*] -- dilakukan dalam satu tahap inferensi yang
+*Ripe*, *Overripe*, *Empty Bunch*, dan *Abnormal* (urutan kelas pada
+`data.yaml` proyek Roboflow *palm-fruit-ripeness-detection-f6sac-ccb2z*
+versi 2, workspace *dydy-worker*, adalah alfabetis: *Abnormal*, *Empty
+Bunch*, *Overripe*, *Ripe*, *Underripe*, *Unripe* -- lihat
+`configs/dataset.yaml`) -- dilakukan dalam satu tahap inferensi yang
 menggabungkan lokalisasi dan klasifikasi. Kemampuan tersebut menjanjikan,
 namun bergantung pada ketersediaan data latih yang beragam. Di sinilah
 persoalan privasi muncul. Citra perkebunan bukan sekadar gambar buah; di
@@ -48,14 +49,15 @@ alami untuk situasi seperti ini. Pada skema HFL, tiap *client node* (yang
 merepresentasikan kebun berbeda) berbagi ruang fitur citra yang sama tetapi
 memegang sampel data yang sepenuhnya terisolasi. Pelatihan berjalan lokal di
 setiap node, dan yang dipertukarkan ke *server aggregator* hanya pembaruan
-parameter model, bukan citra mentahnya. Penelitian ini juga merealisasikan
-*deployment* inferensi berbasis Docker: model akhir dikemas ke dalam *image*
-Docker dan dijalankan sebagai layanan inferensi nyata pada sebuah
-[VERIFIKASI: GPU NVIDIA RTX -- isi tipe/VRAM perangkat pelatihan yang
-sebenarnya dipakai] untuk pelatihan, dan CPU-only untuk *deployment*, guna
-menjaga reprodusibilitas dan portabilitas antar lingkungan komputasi. Yang
-berada di luar cakupan adalah pelatihan *Federated Learning* terdistribusi
-lintas-host fisik, yang dijalankan sebagai simulasi ekuivalen pada satu GPU.
+parameter model, bukan citra mentahnya. Seluruh pelatihan dijalankan pada
+satu GPU NVIDIA GeForce RTX 4080 (16 GB VRAM). Penelitian ini juga
+merealisasikan *deployment* inferensi berbasis Docker: model akhir dikemas
+ke dalam *image* Docker dan dijalankan sebagai layanan inferensi nyata pada
+sebuah *Virtual Private Server* (VPS) CPU-*only* -- terpisah dari GPU yang
+dipakai pelatihan -- guna menjaga reprodusibilitas dan portabilitas antar
+lingkungan komputasi. Yang berada di luar cakupan adalah pelatihan
+*Federated Learning* terdistribusi lintas-*host* fisik, yang dijalankan
+sebagai simulasi ekuivalen pada satu GPU tersebut.
 
 Memisahkan data mentah saja ternyata tidak cukup. Riset keamanan beberapa
 tahun terakhir memperlihatkan bahwa parameter model yang dipertukarkan dapat
@@ -171,9 +173,9 @@ Agar fokus dan hasilnya tetap terukur, penelitian dibatasi pada cakupan
 berikut:
 
 1. Subjek deteksi adalah citra Tandan Buah Segar (TBS) kelapa sawit yang
-   dikategorikan ke dalam enam kelas kematangan [VERIFIKASI terhadap
-   `data.yaml` dataset]: *Unripe*, *Underripe*, *Ripe*, *Overripe*, *Empty
-   Bunch*, dan *Abnormal*.
+   dikategorikan ke dalam enam kelas kematangan: *Unripe*, *Underripe*,
+   *Ripe*, *Overripe*, *Empty Bunch*, dan *Abnormal* (lihat `configs/
+   dataset.yaml` untuk urutan indeks kelas yang dipakai kode).
 
 2. Arsitektur deteksi yang dievaluasi adalah YOLOv11n (varian *nano*,
    ~2,6 juta parameter), dengan seluruh lapisan *Batch Normalization*
@@ -185,8 +187,8 @@ berikut:
 3. Lingkungan FL dirancang sebagai sistem dengan satu *server aggregator*
    dan K *client node*, dengan K di-*sweep* pada {2, 4, 8, 12, 16}.
    Eksperimen pelatihan dijalankan sebagai *simulasi federated* yang
-   ekuivalen pada satu GPU [VERIFIKASI: sebutkan tipe GPU] dengan skema
-   pembagian data Non-IID (*Non-Independent and Identically Distributed*)
+   ekuivalen pada satu GPU (NVIDIA GeForce RTX 4080, 16 GB VRAM) dengan
+   skema pembagian data Non-IID (*Non-Independent and Identically Distributed*)
    berbasis distribusi Dirichlet. *Deployment* inferensi model akhir
    direalisasikan sebagai *image* Docker yang dibangun dan dijalankan pada
    satu VPS CPU-only; yang berada di luar cakupan hanyalah pelatihan FL
@@ -231,8 +233,8 @@ komputasi terdistribusi.
 Rincian lingkungan pengembangan dan eksekusi eksperimen adalah:
 
 1. **Platform Komputasi.** Seluruh pelatihan model YOLOv11n dijalankan pada
-   [VERIFIKASI: workstation/server dengan akselerator GPU NVIDIA RTX --
-   sebutkan tipe dan kapasitas VRAM]. Bobot hasil pelatihan disimpan dalam
+   *workstation*/*server* dengan akselerator GPU NVIDIA GeForce RTX 4080
+   (16 GB VRAM). Bobot hasil pelatihan disimpan dalam
    format `.pt` sebagai *checkpoint* untuk tahap evaluasi, eksplanasi XAI,
    dan penyiapan *blueprint deployment* Docker.
 

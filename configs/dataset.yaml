@@ -1,12 +1,13 @@
 # Dataset source for FedX-Palm v2.
 #
 # NOTE: the Claude Code sandbox that generated this scaffold could not reach
-# api.roboflow.com (blocked by the environment's egress policy), so the
-# class list below is INHERITED from the original FedX-Palm thesis (6
-# ripeness classes) and NOT verified against this specific Roboflow project.
-# Run `python scripts/01_download_dataset.py` yourself, then check the
-# generated `<download_dir>/data.yaml` and fix `names` below if it differs
-# (order and count both matter -- class ids are positional).
+# api.roboflow.com (blocked by the environment's egress policy). The class
+# list below was cross-checked against a separate, independent rebuild of
+# this exact same Roboflow project (branch claude/thesis-rebuild-dp-sgd,
+# thesis_rebuild/scripts/00_download_dataset.py) rather than guessed --
+# still confirm it against your own downloaded <download_dir>/data.yaml
+# after running scripts/01_download_dataset.py, in case that branch applied
+# its own renaming on top of Roboflow's raw class list.
 
 roboflow:
   api_key: "Ej0bSMpeSri3ky0IYkOU"   # move to $ROBOFLOW_API_KEY before committing/sharing this repo further
@@ -17,14 +18,15 @@ roboflow:
 
 download_dir: "data/raw"
 
-# ASSUMED 6 ripeness classes (verify against downloaded data.yaml!):
+# 6 ripeness classes, alphabetical order (cross-checked, see note above --
+# still verify against your own downloaded data.yaml):
 names:
-  - Unripe
-  - Underripe
-  - Ripe
-  - Overripe
-  - Empty_Bunch
   - Abnormal
+  - Empty Bunch
+  - Overripe
+  - Ripe
+  - Underripe
+  - Unripe
 nc: 6
 
 # Leakage-free split: group images by bunch identity (parsed from filename)
