@@ -1,4 +1,4 @@
-"""Materialize per-client train folders (symlinks) from a Dirichlet partition manifest.
+"""Materialize per-client train folders (symlinked/hardlinked/copied) from a Dirichlet partition manifest.
 
 Built once per K before federated training starts; every client re-uses the
 same shared val/test split (federated evaluation happens on the server's
@@ -12,7 +12,28 @@ import json
 import os
 from pathlib import Path
 
+import shutil
+
 import yaml
+
+
+def _link_or_copy(src: Path, dst: Path) -> None:
+    """Symlink if possible, else hardlink, else fall back to a real copy.
+
+    os.symlink() raises OSError [WinError 1314] on Windows unless the
+    process runs elevated or Developer Mode is enabled -- not something we
+    can assume of every machine this pipeline runs on. Hardlinks need no
+    special privilege and work as long as src/dst are on the same volume
+    (true here, both under data/splits/); a plain copy is the universal
+    fallback if even that fails (e.g. different drives).
+    """
+    try:
+        os.symlink(src, dst)
+    except OSError:
+        try:
+            os.link(src, dst)
+        except OSError:
+            shutil.copy2(src, dst)
 
 
 def materialize_clients(
@@ -42,11 +63,11 @@ def materialize_clients(
             src_img = next(train_images.glob(f"{stem}.*"))
             dst_img = img_link_dir / src_img.name
             if not dst_img.exists():
-                os.symlink(src_img.resolve(), dst_img)
+                _link_or_copy(src_img.resolve(), dst_img)
             src_lbl = train_labels / f"{stem}.txt"
             dst_lbl = lbl_link_dir / f"{stem}.txt"
             if src_lbl.exists() and not dst_lbl.exists():
-                os.symlink(src_lbl.resolve(), dst_lbl)
+                _link_or_copy(src_lbl.resolve(), dst_lbl)
 
         data_yaml = {
             "path": str(client_dir.resolve()),
