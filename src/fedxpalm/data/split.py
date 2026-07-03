@@ -170,6 +170,13 @@ def leakage_free_split(cfg_path: str = "configs/dataset.yaml") -> Path:
                 split_of_bunch[bunch_id] = split_name
             cursor += count
 
+    # Wipe any previous split output first -- otherwise stale files from an
+    # earlier run (e.g. before a bunch_id extraction fix, or a different
+    # split_ratios/seed) linger alongside the new copies, and the bunch that
+    # owns them appears to "leak" across splits when it's really just old +
+    # new files coexisting under the same split_name directories.
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
     for split_name in ratios:
         (output_dir / split_name / "images").mkdir(parents=True, exist_ok=True)
         (output_dir / split_name / "labels").mkdir(parents=True, exist_ok=True)
