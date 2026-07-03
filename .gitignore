@@ -1,3 +1,13 @@
+# FedX-Palm generated artifacts (datasets, checkpoints, run logs, results) --
+# these are produced by scripts/ on your GPU box, not checked in.
+data/
+models/
+runs/
+results/
+weights/
+*.pt
+*.onnx
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
