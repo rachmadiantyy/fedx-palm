@@ -27,10 +27,14 @@ names:
   - Unripe
 nc: 6
 
-# Leakage-free split: group images by bunch identity (parsed from filename)
-# before splitting, so frames of the same physical FFB never straddle
-# train/val/test.
-bunch_id_regex: '^(?P<bunch_id>.+?)(?:_\d+)?\.(jpg|jpeg|png)$'
+# Leakage-free split: group images by bunch identity before splitting, so
+# frames of the same physical FFB never straddle train/val/test, then
+# stratify by each bunch's dominant class. Bunch-id extraction logic lives
+# in src/fedxpalm/data/split.py (not configurable here) -- it strips
+# Roboflow's `.rf.<hash>` suffix first, then matches the leading
+# `frame[a-z]*\d+` token, e.g. "frame1-10-_png_jpg.rf.<hash>.jpg" ->
+# "frame1". Confirmed against this dataset's real filenames (2026-07-03);
+# if a future dataset version changes naming, update _parse_bunch_id there.
 split_ratios:
   train: 0.80
   val: 0.10
