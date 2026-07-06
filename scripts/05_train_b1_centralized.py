@@ -59,7 +59,10 @@ if __name__ == "__main__":
     metrics = evaluate_detector(best_weights, data_yaml, split="test", imgsz=imgsz, device=args.device)
 
     Path("results").mkdir(exist_ok=True)
-    with open("results/b1_centralized.json", "w") as f:
-        json.dump({"weights": best_weights, "metrics": metrics}, f, indent=2)
+    # Named after --out-dir (default "b1_centralized") so re-runs with a different
+    # --out-dir (e.g. an imgsz=960 ablation) don't clobber a prior run's results file.
+    results_path = f"results/{Path(args.out_dir).name}.json"
+    with open(results_path, "w") as f:
+        json.dump({"weights": best_weights, "imgsz": imgsz, "batch": batch, "metrics": metrics}, f, indent=2)
     print(f"B1 centralized: mAP@0.5={metrics['map50']:.3f}  mAP@0.5:0.95={metrics['map50_95']:.3f}")
-    print("Saved results/b1_centralized.json")
+    print(f"Saved {results_path}")
