@@ -11,7 +11,10 @@ model:
                           # yolo11s/m/l/x, so freeze_stages (dp_config.yaml) and Grad-CAM++'s
                           # target_layer_idx=22 (xai/gradcam.py) apply unchanged if this is
                           # ever swapped back up for more capacity.
-  imgsz: 640
+  imgsz: 960                      # bumped from 640: B1 ablation showed +0.011 mAP50 / +0.017 mAP50-95
+                                    # (0.857->0.868 / 0.710->0.727) at negligible extra wall-clock cost.
+                                    # Applied globally (not just B1) so Delta_FL/Delta_DP comparisons
+                                    # across B1/B2/E1/E2 stay on the same base resolution.
 
 clients:
   k_values: [2, 4, 8, 12, 16]     # sweep -- one full federated run per K
@@ -25,7 +28,9 @@ federated:
 
 local_training:
   epochs_per_round: 2           # bumped from 1 -> 2: more local signal per round before aggregating
-  batch_size: 16
+  batch_size: 8                 # halved from 16: imgsz=960 roughly doubles per-image VRAM, and E1/E2's
+                                  # per-sample DP-SGD (Opacus) adds further overhead on top of that.
+                                  # Override with --batch on scripts/06/07/08 if 8 still OOMs on E1/E2.
   optimizer: "SGD"               # matches DP-SGD's own literature (SGD, not an adaptive optimizer --
                                   # Adam/AdamW's second-moment estimate gets corrupted by the per-step
                                   # Gaussian noise DP-SGD injects, an interaction that isn't as well

@@ -26,7 +26,8 @@ def make_dp_client_round_fn(hyp, dp_hyp, device, freeze_stages):
 
 
 def run_dp_sweep(variant: str, device: str = "0", k_override: int | None = None,
-                  sigma_override: float | None = None, rounds_override: int | None = None):
+                  sigma_override: float | None = None, rounds_override: int | None = None,
+                  imgsz_override: int | None = None, batch_override: int | None = None):
     """variant: 'full' (E1) or 'partial' (E2), matching configs/dp_config.yaml's `variants` keys."""
     with open("configs/dataset.yaml") as f:
         ds_cfg = yaml.safe_load(f)
@@ -37,7 +38,10 @@ def run_dp_sweep(variant: str, device: str = "0", k_override: int | None = None,
 
     splits_dir = Path(ds_cfg["output_dir"])
     data_yaml = str(splits_dir / "data.yaml")
-    hyp = dict(fl_cfg["local_training"], imgsz=fl_cfg["model"]["imgsz"])
+    imgsz = imgsz_override or fl_cfg["model"]["imgsz"]
+    hyp = dict(fl_cfg["local_training"], imgsz=imgsz)
+    if batch_override:
+        hyp["batch_size"] = batch_override
     rounds = rounds_override or fl_cfg["federated"]["rounds"]
     k_values = [k_override] if k_override is not None else fl_cfg["clients"]["k_values"]
     sigma_values = [sigma_override] if sigma_override is not None else dp_cfg["dp_sgd"]["noise_multiplier_values"]
@@ -70,7 +74,7 @@ def run_dp_sweep(variant: str, device: str = "0", k_override: int | None = None,
             epsilon_max = max(epsilons)
 
             metrics = evaluate_detector(result["final_weights"], data_yaml, split="test",
-                                         imgsz=fl_cfg["model"]["imgsz"], device=device)
+                                         imgsz=imgsz, device=device)
 
             out_path = Path("results") / f"{tag}_k{k}_sigma{sigma}.json"
             with open(out_path, "w") as f:

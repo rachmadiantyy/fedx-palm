@@ -16,6 +16,9 @@ from opacus import PrivacyEngine
 
 from fedxpalm.federated.trainer_utils import build_trainer_from_checkpoint
 from fedxpalm.models.groupnorm import disable_inplace_ops
+from fedxpalm.privacy.opacus_patch import patch_opacus_for_dict_datasets
+
+patch_opacus_for_dict_datasets()
 
 
 def train_client_round_dp(
@@ -76,6 +79,14 @@ def train_client_round_dp(
     for _epoch in range(hyp["epochs_per_round"]):
         for batch in dp_loader:
             if len(batch["img"]) == 0:  # Poisson sampling can draw an empty batch
+                continue
+            if len(batch["cls"]) == 0:
+                # A batch with images but zero ground-truth boxes across all of them
+                # (small Poisson draw landing entirely on an unlabeled/background image)
+                # leaves Ultralytics' box-regression branch (model.23.cv2.*) disconnected
+                # from the loss graph -- Opacus then raises "Per sample gradient is not
+                # initialized" since those parameters never got a backward pass. Skipping
+                # is safe: such a batch carries no positive detection signal anyway.
                 continue
             batch = trainer.preprocess_batch(batch)
             dp_optimizer.zero_grad()

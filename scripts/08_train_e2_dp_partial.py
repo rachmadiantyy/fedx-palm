@@ -17,7 +17,10 @@ if __name__ == "__main__":
     parser.add_argument("--k", type=int, default=None)
     parser.add_argument("--sigma", type=float, default=None)
     parser.add_argument("--rounds", type=int, default=None)
+    parser.add_argument("--imgsz", type=int, default=None, help="override configs/fl_config.yaml model.imgsz")
+    parser.add_argument("--batch", type=int, default=None, help="override local_training.batch_size (lower if OOM)")
     args = parser.parse_args()
 
     run_dp_sweep("partial", device=args.device, k_override=args.k,
-                 sigma_override=args.sigma, rounds_override=args.rounds)
+                 sigma_override=args.sigma, rounds_override=args.rounds,
+                 imgsz_override=args.imgsz, batch_override=args.batch)

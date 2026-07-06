@@ -33,6 +33,8 @@ if __name__ == "__main__":
     parser.add_argument("--device", default="0")
     parser.add_argument("--k", type=int, default=None, help="run only this K (default: sweep all k_values)")
     parser.add_argument("--rounds", type=int, default=None, help="override configs/fl_config.yaml federated.rounds")
+    parser.add_argument("--imgsz", type=int, default=None, help="override configs/fl_config.yaml model.imgsz")
+    parser.add_argument("--batch", type=int, default=None, help="override local_training.batch_size (lower if OOM)")
     args = parser.parse_args()
 
     with open("configs/dataset.yaml") as f:
@@ -42,7 +44,10 @@ if __name__ == "__main__":
 
     splits_dir = Path(ds_cfg["output_dir"])
     data_yaml = str(splits_dir / "data.yaml")
-    hyp = dict(fl_cfg["local_training"], imgsz=fl_cfg["model"]["imgsz"])
+    imgsz = args.imgsz or fl_cfg["model"]["imgsz"]
+    hyp = dict(fl_cfg["local_training"], imgsz=imgsz)
+    if args.batch:
+        hyp["batch_size"] = args.batch
     rounds = args.rounds or fl_cfg["federated"]["rounds"]
     k_values = [args.k] if args.k is not None else fl_cfg["clients"]["k_values"]
 
@@ -65,7 +70,7 @@ if __name__ == "__main__":
         )
 
         metrics = evaluate_detector(result["final_weights"], data_yaml, split="test",
-                                     imgsz=fl_cfg["model"]["imgsz"], device=args.device)
+                                     imgsz=imgsz, device=args.device)
         with open(f"results/b2_k{k}.json", "w") as f:
             json.dump({"k": k, "rounds": rounds, "weights": result["final_weights"], "metrics": metrics}, f, indent=2)
         print(f"B2 K={k}: mAP@0.5={metrics['map50']:.3f}  mAP@0.5:0.95={metrics['map50_95']:.3f}")
