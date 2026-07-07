@@ -275,11 +275,10 @@ berikut.
    ringan untuk *deployment* CPU pada tahap akhir.
 
 3. **Penyiapan dan Distribusi Dataset.** Citra TBS sawit diunduh dari
-   Roboflow, dipecah ulang menjadi *train/validation/test* berbasis
-   identitas tandan (`bunch_id`) untuk mencegah kebocoran data (*leakage*)
-   antar-*split*, lalu dipecah ke K klien melalui *sampling* Dirichlet,
-   sehingga proporsi kelas kematangan tidak seragam antar klien dan
-   mendekati heterogenitas data perkebunan di lapangan.
+   Roboflow menggunakan pembagian *train/validation/test* bawaan platform
+   tersebut, lalu dipecah ke K klien melalui *sampling* Dirichlet, sehingga
+   proporsi kelas kematangan tidak seragam antar klien dan mendekati
+   heterogenitas data perkebunan di lapangan.
 
 4. **Pelatihan Lokal (*Local Fine-tuning*).** Pada setiap ronde, klien
    menjalankan *fine-tuning* YOLOv11n atas porsi data lokalnya. *Optimizer*

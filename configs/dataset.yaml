@@ -7,6 +7,10 @@
 # src/fedxpalm/data/split.py's post-split class audit, which specifically
 # warns if any class ends up with zero instances in a split (this bit a
 # prior rebuild attempt of this exact dataset).
+#
+# Split: Roboflow's own train/valid/test split is used as-is (copied
+# verbatim by scripts/02_prepare_splits.py, "valid" renamed to "val" for
+# this repo's naming convention) -- no bunch-identity re-split.
 
 roboflow:
   api_key: "Ej0bSMpeSri3ky0IYkOU"   # move to $ROBOFLOW_API_KEY before committing/sharing this repo further
@@ -26,19 +30,5 @@ names:
   - Underripe
   - Unripe
 nc: 6
-
-# Leakage-free split: group images by bunch identity before splitting, so
-# frames of the same physical FFB never straddle train/val/test, then
-# stratify by each bunch's dominant class. Bunch-id extraction logic lives
-# in src/fedxpalm/data/split.py (not configurable here) -- it strips
-# Roboflow's `.rf.<hash>` suffix first, then matches the leading
-# `frame[a-z]*\d+` token, e.g. "frame1-10-_png_jpg.rf.<hash>.jpg" ->
-# "frame1". Confirmed against this dataset's real filenames (2026-07-03);
-# if a future dataset version changes naming, update _parse_bunch_id there.
-split_ratios:
-  train: 0.80
-  val: 0.10
-  test: 0.10
-split_seed: 42
 
 output_dir: "data/splits"

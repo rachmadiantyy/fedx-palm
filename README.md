@@ -4,7 +4,7 @@ A YOLOv11-based Federated Learning framework with Differential Privacy and
 Explainable AI for oil palm fresh fruit bunch (FFB) ripeness detection.
 
 - **Federated Learning**: FedAvg across K simulated client nodes, Non-IID
-  data via Dirichlet partitioning, leakage-free `bunch_id`-grouped splits.
+  data via Dirichlet partitioning over Roboflow's own train/valid/test split.
 - **Differential Privacy**: per-sample DP-SGD (Opacus), full and
   backbone-frozen variants, epsilon via the PRV accountant.
 - **Explainable AI**: Grad-CAM++ with Average Drop / Focus Retention Rate

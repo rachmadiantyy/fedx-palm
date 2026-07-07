@@ -14,7 +14,7 @@ sebagai jejak audit ke kode sesungguhnya.
 ## 3.1 Rancangan Penelitian
 
 Penelitian ini dirancang sebagai eksperimen kuantitatif bertingkat, dimulai
-dari pembagian dataset bebas-kebocoran dan partisi Non-IID Dirichlet,
+dari penyiapan dataset dan partisi Non-IID Dirichlet,
 dilanjutkan empat blok eksperimen (B1, B2, E1, E2), dan dievaluasi pada tiga
 dimensi: utilitas deteksi, privasi formal, dan keterjelasan (*explainability*).
 Seluruh kode implementasi diorganisasikan sebagai paket Python `fedxpalm`
@@ -54,7 +54,7 @@ GPU (`src/fedxpalm/federated/server.py`). Model akhir di-*deploy* sebagai
 layanan inferensi Flask + Ultralytics (CPU) di dalam *image* Docker
 (`deployment/`), dijalankan pada satu VPS.
 
-## 3.3 Dataset dan Strategi Pembagian Bebas-Kebocoran
+## 3.3 Dataset dan Strategi Pembagian Data
 
 ### 3.3.1 Karakteristik Dataset
 
@@ -68,33 +68,23 @@ karakteristik dataset di sini berdasarkan `data.yaml` hasil unduhan
 sesungguhnya, bukan asumsi.] Dataset mencakup enam kelas kematangan TBS
 sebagaimana dijabarkan pada Subbab 2.1.2.
 
-### 3.3.2 Strategi Pemisahan Berbasis Identitas Tandan (`bunch_id`)
+### 3.3.2 Strategi Pembagian Train/Validation/Test
 
-*Split* bawaan Roboflow (train/valid/test) bersifat per-*frame* dan acak,
-sehingga berisiko menempatkan beberapa foto dari tandan fisik yang sama pada
-*split* train dan test sekaligus -- model kemudian sebagian "menghafal"
-tandan yang justru dipakai mengujinya, mengembang-gelembungkan metrik
-evaluasi secara optimistis-palsu. `src/fedxpalm/data/split.py`
-(`leakage_free_split`) menanggulangi ini dengan mengumpulkan ulang seluruh
-citra lintas *split* bawaan Roboflow, mengelompokkannya berdasarkan
-`bunch_id` yang diuraikan dari nama berkas citra (pola *regex*
-`^(?P<bunch_id>.+?)(?:_\d+)?\.(jpg|jpeg|png)$`, dengan citra yang tidak
-cocok polanya diperlakukan sebagai *bunch* tunggal beranggota satu citra),
-lalu membagi ulang pada **level *bunch*** (bukan level citra) mengikuti
-rasio 70% *train* : 15% *validation* : 15% *test* (*seed* = 42). Algoritma
-pembagian bersifat *greedy*: setiap *bunch* (diacak urutannya terlebih
-dahulu) dialokasikan ke *split* yang jumlah citranya paling jauh di bawah
-target proporsinya saat itu, sehingga rasio akhir tetap mendekati target
-meski ukuran tiap *bunch* (jumlah foto per tandan) bervariasi.
+Penelitian ini memakai pembagian *train/validation/test* bawaan platform
+Roboflow apa adanya (`src/fedxpalm/data/split.py`, `use_roboflow_split`),
+tanpa pemecahan ulang manual. `scripts/02_prepare_splits.py` menyalin
+ketiga *split* tersebut (menamai ulang `valid` menjadi `val` agar konsisten
+dengan penamaan pada seluruh skrip lain di repositori ini) dan menuliskan
+`data.yaml` gabungan yang menunjuk ke ketiganya. Pendekatan ini konsisten
+dengan penelitian deteksi kematangan TBS sawit berbasis YOLO lain pada
+domain yang sama (lihat Tabel 2.1, Subbab 2.5), yang juga melaporkan hasil
+langsung di atas *split* bawaan Roboflow.
 
-### 3.3.3 Audit Kebocoran Data
-
-Setelah pembagian, `leakage_free_split` menjalankan audit otomatis:
-memverifikasi bahwa tidak ada satupun `bunch_id` yang muncul pada lebih dari
-satu *split* (`assert not leaked`). Audit ini dijalankan sebagai bagian
-integral dari `scripts/02_prepare_splits.py`, bukan langkah manual terpisah,
-sehingga kebocoran data akan menghentikan pipeline dengan galat eksplisit
-alih-alih lolos secara diam-diam.
+Setelah penyalinan, `use_roboflow_split` tetap menjalankan audit distribusi
+kelas per *split* (`audit_class_distribution`) untuk memastikan tidak ada
+kelas yang kebetulan berjumlah nol instans pada *split* manapun -- relevan
+karena "Empty Bunch" adalah kelas minoritas di seluruh dataset (~20% dari
+kelas terbesar).
 
 ## 3.4 Partisi Data Non-IID Berbasis Distribusi Dirichlet
 
