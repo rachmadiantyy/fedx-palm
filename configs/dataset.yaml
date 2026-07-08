@@ -19,7 +19,8 @@ roboflow:
   version: 2
   format: "yolov11"
 
-download_dir: "data/raw"
+download_dir: "data/raw_v2"   # separate from the old bunch-split era's data/raw, so a stale
+                                # leftover checkout of that folder can't silently contaminate this run
 
 # 6 ripeness classes, alphabetical order (confirmed against real data.yaml):
 names:
@@ -31,4 +32,4 @@ names:
   - Unripe
 nc: 6
 
-output_dir: "data/splits"
+output_dir: "data/splits_v2"
