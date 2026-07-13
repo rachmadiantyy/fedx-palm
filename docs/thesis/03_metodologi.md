@@ -14,7 +14,7 @@ sebagai jejak audit ke kode sesungguhnya.
 ## 3.1 Rancangan Penelitian
 
 Penelitian ini dirancang sebagai eksperimen kuantitatif bertingkat, dimulai
-dari penyiapan dataset dan partisi Non-IID Dirichlet,
+dari pembagian dataset bebas-kebocoran dan partisi Non-IID Dirichlet,
 dilanjutkan empat blok eksperimen (B1, B2, E1, E2), dan dievaluasi pada tiga
 dimensi: utilitas deteksi, privasi formal, dan keterjelasan (*explainability*).
 Seluruh kode implementasi diorganisasikan sebagai paket Python `fedxpalm`
@@ -64,40 +64,46 @@ Dataset diperoleh dari platform Roboflow, proyek
 `scripts/01_download_dataset.py` (membungkus
 `src/fedxpalm/data/download.py`). Dataset mencakup enam kelas kematangan TBS
 sebagaimana dijabarkan pada Subbab 2.1.2, dengan total **10.814 citra**
-(9.982 *train* : 416 *validation* : 416 *test*, sesuai *split* bawaan
-Roboflow -- lihat Subbab 3.3.2). Tabel 3.1 merangkum jumlah instans anotasi
-per kelas pada tiap *split*, dikonfirmasi langsung dari keluaran
-`scripts/02_prepare_splits.py`.
+sebelum pembagian ulang bebas-kebocoran (lihat Subbab 3.3.2). [VERIFIKASI
+setelah `scripts/02_prepare_splits.py` dijalankan ulang dengan split
+bunch-level: isi Tabel 3.1 (distribusi instans per kelas per *split*) dengan
+angka aktual dari keluaran skrip tersebut -- angka pada draf sebelumnya
+dihitung di atas *split* bawaan Roboflow yang sudah tidak dipakai lagi,
+lihat catatan di Subbab 3.3.2.]
 
-**Tabel 3.1 Distribusi instans anotasi per kelas per *split***
+### 3.3.2 Strategi Pemisahan Berbasis Identitas Tandan (`bunch_id`)
 
-| Kelas | Train | Val | Test | Total |
-|---|---:|---:|---:|---:|
-| Abnormal | 6.387 | 219 | 251 | 6.857 |
-| Empty Bunch | 2.033 | 92 | 87 | 2.212 |
-| Overripe | 6.241 | 293 | 266 | 6.800 |
-| Ripe | 6.854 | 347 | 341 | 7.542 |
-| Underripe | 6.087 | 289 | 257 | 6.633 |
-| Unripe | 7.109 | 251 | 292 | 7.652 |
+*Split* bawaan Roboflow (train/valid/test) bersifat per-*frame* dan acak,
+sehingga berisiko menempatkan beberapa foto dari tandan fisik yang sama pada
+*split* train dan test sekaligus -- model kemudian sebagian "menghafal"
+tandan yang justru dipakai mengujinya, mengembang-gelembungkan metrik
+evaluasi secara optimistis-palsu. Ini bukan kekhawatiran teoretis semata:
+sebuah percobaan langsung menggunakan *split* bawaan Roboflow apa adanya
+pada dataset ini mengembalikan mAP@0,5=0,993 dan mAP@0,5:0,95=0,906 --
+angka yang tidak realistis dicapai detektor manapun pada *held-out set*
+yang jujur untuk enam kelas kematangan yang kemiripan visualnya tinggi.
 
-"Empty Bunch" konsisten menjadi kelas minoritas di seluruh *split* (~25-29%
-dari kelas terbesar pada *split* yang sama), namun tidak ada kelas yang
-berjumlah nol instans pada *split* manapun -- lolos audit otomatis
-`audit_class_distribution` (Subbab 3.3.2).
+`src/fedxpalm/data/split.py` (`leakage_free_split`) menanggulangi ini dengan
+mengumpulkan ulang seluruh citra lintas *split* bawaan Roboflow,
+mengelompokkannya berdasarkan `bunch_id` yang diuraikan dari nama berkas
+citra -- pola *regex* menghapus akhiran `.rf.<hash>` milik Roboflow terlebih
+dahulu, lalu mencocokkan token `frame[^-]+` di awal nama berkas sebagai
+identitas tandan (mis. `frame1-10-_png_jpg.rf.<hash>.jpg` -> `frame1`) --
+lalu membagi ulang pada **level *bunch*** (bukan level citra) mengikuti
+rasio 80% *train* : 10% *validation* : 10% *test* (*seed* = 42), distratifikasi
+menurut kelas dominan tiap *bunch* supaya kelas minoritas (Empty Bunch)
+tidak terkonsentrasi tidak sengaja pada satu *split*.
 
-### 3.3.2 Strategi Pembagian Train/Validation/Test
+### 3.3.3 Audit Kebocoran Data
 
-Penelitian ini memakai pembagian *train/validation/test* bawaan platform
-Roboflow apa adanya (`src/fedxpalm/data/split.py`, `use_roboflow_split`),
-tanpa pemecahan ulang manual. `scripts/02_prepare_splits.py` menyalin
-ketiga *split* tersebut (menamai ulang `valid` menjadi `val` agar konsisten
-dengan penamaan pada seluruh skrip lain di repositori ini) dan menuliskan
-`data.yaml` gabungan yang menunjuk ke ketiganya. Pendekatan ini konsisten
-dengan penelitian deteksi kematangan TBS sawit berbasis YOLO lain pada
-domain yang sama (lihat Tabel 2.1, Subbab 2.5), yang juga melaporkan hasil
-langsung di atas *split* bawaan Roboflow.
+Setelah pembagian, `leakage_free_split` menjalankan audit otomatis:
+memverifikasi bahwa tidak ada satupun `bunch_id` yang muncul pada lebih dari
+satu *split* (`assert not leaked`). Audit ini dijalankan sebagai bagian
+integral dari `scripts/02_prepare_splits.py`, bukan langkah manual terpisah,
+sehingga kebocoran data akan menghentikan pipeline dengan galat eksplisit
+alih-alih lolos secara diam-diam.
 
-Setelah penyalinan, `use_roboflow_split` tetap menjalankan audit distribusi
+Selain audit kebocoran, `leakage_free_split` juga menjalankan audit distribusi
 kelas per *split* (`audit_class_distribution`) untuk memastikan tidak ada
 kelas yang kebetulan berjumlah nol instans pada *split* manapun -- relevan
 karena "Empty Bunch" adalah kelas minoritas di seluruh dataset (~20% dari

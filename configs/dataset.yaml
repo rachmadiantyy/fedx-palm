@@ -8,9 +8,15 @@
 # warns if any class ends up with zero instances in a split (this bit a
 # prior rebuild attempt of this exact dataset).
 #
-# Split: Roboflow's own train/valid/test split is used as-is (copied
-# verbatim by scripts/02_prepare_splits.py, "valid" renamed to "val" for
-# this repo's naming convention) -- no bunch-identity re-split.
+# Split: leakage-free, grouped by bunch identity (src/fedxpalm/data/split.py)
+# -- NOT Roboflow's own train/valid/test as-is. A real run using Roboflow's
+# own split on this exact dataset came back mAP@0.5=0.993 / mAP@0.5:0.95=0.906
+# -- numbers no genuine detector reaches on a real held-out set for 6
+# visually-similar ripeness classes, consistent with near-duplicate video
+# frames of the same physical bunch straddling train/test. Bunch-id
+# extraction strips Roboflow's `.rf.<hash>` suffix first, then matches the
+# leading `frame[a-z]*\d+` token, e.g. "frame1-10-_png_jpg.rf.<hash>.jpg" ->
+# "frame1".
 
 roboflow:
   api_key: "Ej0bSMpeSri3ky0IYkOU"   # move to $ROBOFLOW_API_KEY before committing/sharing this repo further
@@ -31,5 +37,11 @@ names:
   - Underripe
   - Unripe
 nc: 6
+
+split_ratios:
+  train: 0.80
+  val: 0.10
+  test: 0.10
+split_seed: 42
 
 output_dir: "data/splits_v2"
