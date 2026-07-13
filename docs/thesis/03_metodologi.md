@@ -62,11 +62,28 @@ Dataset diperoleh dari platform Roboflow, proyek
 *palm-fruit-ripeness-detection-f6sac-ccb2z* versi 2 pada *workspace*
 *dydy-worker*, diunduh dalam format anotasi `yolov11` melalui
 `scripts/01_download_dataset.py` (membungkus
-`src/fedxpalm/data/download.py`). [VERIFIKASI setelah pengunduhan: jumlah
-total citra, jumlah instans per kelas, dan resolusi citra asli -- isi tabel
-karakteristik dataset di sini berdasarkan `data.yaml` hasil unduhan
-sesungguhnya, bukan asumsi.] Dataset mencakup enam kelas kematangan TBS
-sebagaimana dijabarkan pada Subbab 2.1.2.
+`src/fedxpalm/data/download.py`). Dataset mencakup enam kelas kematangan TBS
+sebagaimana dijabarkan pada Subbab 2.1.2, dengan total **10.814 citra**
+(9.982 *train* : 416 *validation* : 416 *test*, sesuai *split* bawaan
+Roboflow -- lihat Subbab 3.3.2). Tabel 3.1 merangkum jumlah instans anotasi
+per kelas pada tiap *split*, dikonfirmasi langsung dari keluaran
+`scripts/02_prepare_splits.py`.
+
+**Tabel 3.1 Distribusi instans anotasi per kelas per *split***
+
+| Kelas | Train | Val | Test | Total |
+|---|---:|---:|---:|---:|
+| Abnormal | 6.387 | 219 | 251 | 6.857 |
+| Empty Bunch | 2.033 | 92 | 87 | 2.212 |
+| Overripe | 6.241 | 293 | 266 | 6.800 |
+| Ripe | 6.854 | 347 | 341 | 7.542 |
+| Underripe | 6.087 | 289 | 257 | 6.633 |
+| Unripe | 7.109 | 251 | 292 | 7.652 |
+
+"Empty Bunch" konsisten menjadi kelas minoritas di seluruh *split* (~25-29%
+dari kelas terbesar pada *split* yang sama), namun tidak ada kelas yang
+berjumlah nol instans pada *split* manapun -- lolos audit otomatis
+`audit_class_distribution` (Subbab 3.3.2).
 
 ### 3.3.2 Strategi Pembagian Train/Validation/Test
 
