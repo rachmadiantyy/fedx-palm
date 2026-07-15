@@ -47,7 +47,8 @@ def run_federated_training(
 
     global_weights_path = init_weights_path
     history = []
-    best = {"round": None, "map50": -1.0, "weights": None}
+    best = {"round": None, "map50": -1.0, "weights": None, "val": None}
+    training_start = time.time()
 
     for t in range(rounds):
         round_start = time.time()
@@ -80,8 +81,9 @@ def run_federated_training(
             round_record["val"] = val_metrics
             if float(val_metrics.get("map50", -1.0)) > best["map50"]:
                 best = {"round": t, "map50": float(val_metrics["map50"]),
-                        "weights": str(out_dir / "best_global.pt")}
+                        "weights": str(out_dir / "best_global.pt"), "val": val_metrics}
                 shutil.copy2(global_weights_path, best["weights"])
+                round_record["best_updated"] = True
             print(f"[round {t + 1}/{rounds}] val mAP@0.5={val_metrics.get('map50', float('nan')):.3f} "
                   f"(best so far: {best['map50']:.3f} @ round {best['round']})")
 
@@ -97,10 +99,16 @@ def run_federated_training(
     final_copy = str(out_dir / "final_global.pt")
     shutil.copy2(global_weights_path, final_copy)
 
+    total_runtime = time.time() - training_start
+    final_val = next((h.get("val") for h in reversed(history) if h.get("val")), None)
     return {
         "final_weights": final_copy,
         "best_weights": best["weights"] or final_copy,  # no eval_fn -> fall back to final
         "best_round": best["round"] if best["round"] is not None else rounds - 1,
         "best_val_map50": best["map50"] if best["map50"] >= 0 else None,
+        "best_val": best["val"],
+        "final_val": final_val,
+        "total_runtime_sec": total_runtime,
+        "mean_round_sec": total_runtime / max(1, rounds),
         "history": history,
     }

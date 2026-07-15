@@ -205,6 +205,10 @@ if __name__ == "__main__":
             "total_optimizer_steps": opt_steps,
             "best_round": result["best_round"],
             "best_val_map50": result["best_val_map50"],
+            "best_val": result.get("best_val"),
+            "final_val_map50": (result.get("final_val") or {}).get("map50"),
+            "total_runtime_sec": round(result.get("total_runtime_sec", 0), 1),
+            "mean_round_sec": round(result.get("mean_round_sec", 0), 1),
             # test fields stay null until --eval-test: tuning compares val only
             "map50": None,
             "map50_95": None,
