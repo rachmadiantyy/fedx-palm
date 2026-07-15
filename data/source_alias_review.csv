@@ -1,0 +1,10 @@
+source_a,source_b,decision,note
+frame1,framesawit39,confirmed_alias,Same video/source sequence
+frame10kombinasi,framesawit6,different_source,Different physical bunch and scene; dHash false positive
+frame11,framesawit16,different_source,Different bunch arrangement and object shape
+framementah12,framesawit22,different_source,Different physical bunches and background; dHash false positive
+framementah12,framesawit34,different_source,Different number and arrangement of bunches
+framementah17,framesawit42,different_source,Different physical bunch shapes and scene; similar composition only
+framementah3,framesawit2,different_source,Different number and arrangement of physical bunches
+framementah7,framesawit2,different_source,Different bunches arrangement and background
+framementah7,framesawit34,different_source,Different number

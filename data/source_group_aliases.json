@@ -1,0 +1,17 @@
+{
+  "groups": {
+    "frame1": [
+      "frame1",
+      "framesawit39"
+    ]
+  },
+  "source_to_group": {
+    "framesawit39": "frame1"
+  },
+  "stats": {
+    "confirmed_pairs": 1,
+    "groups": 1,
+    "largest_group": 2,
+    "review_file": "data\\source_alias_review.csv"
+  }
+}
