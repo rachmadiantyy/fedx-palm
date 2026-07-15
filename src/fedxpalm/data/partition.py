@@ -136,7 +136,15 @@ def partition_and_write(
     out_root = splits_dir / root_name
     out_root.mkdir(parents=True, exist_ok=True)
 
+    # Merge with an existing manifest instead of starting from {}: running
+    # e.g. `--k 4` used to rewrite manifest.json with ONLY the k=4 entry,
+    # silently dropping every other K's entry from a prior full sweep.
+    manifest_path = out_root / "manifest.json"
     manifest = {}
+    if manifest_path.exists():
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+
     for kk in k_values:
         assignment = dirichlet_partition(
             train_images, train_labels, ds_cfg["nc"], kk, alpha, seed
@@ -153,7 +161,9 @@ def partition_and_write(
             if st["classes_missing"]:
                 print(f"  WARNING K={kk} client {cid}: zero boxes for class(es) "
                       f"{st['classes_missing']} -- alpha={alpha} may be too extreme for this K")
-        manifest[kk] = {
+        # str key: json.load round-trips keys as strings, so int keys here
+        # would coexist with (not replace) the same K's old string entry
+        manifest[str(kk)] = {
             "path": str(out_path),
             "sizes": sizes,
             "dirichlet_alpha": alpha,
@@ -161,7 +171,7 @@ def partition_and_write(
             "clients": clients,
         }
 
-    with open(out_root / "manifest.json", "w") as f:
+    with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
     return out_root
 

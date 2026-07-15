@@ -22,10 +22,14 @@ def main() -> None:
         print(f"No results/b2_k{args.k}_seed*.json found -- run scripts/06 first.")
         return
 
-    runs = []
+    runs, val_only = [], []
     for p in paths:
         with open(p) as f:
             r = json.load(f)
+        if r.get("map50") is None:
+            # tuning run: test never evaluated (compare via best_val_map50 instead)
+            val_only.append(f"{Path(p).name} (val mAP@0.5={r.get('best_val_map50')})")
+            continue
         runs.append({
             "file": Path(p).name, "seed": r.get("seed"),
             "map50": r["map50"], "map50_95": r["map50_95"],
@@ -33,6 +37,11 @@ def main() -> None:
             "best_round": r.get("best_round"), "rounds": r.get("communication_rounds"),
             "local_epochs": r.get("local_epochs"), "lr0": r.get("learning_rate"),
         })
+    if val_only:
+        print("Skipped val-only tuning runs (no test eval):\n  " + "\n  ".join(val_only))
+    if not runs:
+        print("No runs with test metrics yet -- rerun the final config with --eval-test.")
+        return
 
     csv_path = f"{args.results_dir}/b2_k{args.k}_summary.csv"
     with open(csv_path, "w", newline="") as f:
