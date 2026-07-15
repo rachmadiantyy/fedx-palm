@@ -7,6 +7,7 @@ callback -- the server doesn't need to know which one it's driving.
 from __future__ import annotations
 
 import json
+import shutil
 import time
 from pathlib import Path
 
@@ -23,6 +24,8 @@ def run_federated_training(
     rounds: int,
     out_dir: str,
     round_extra_log: dict | None = None,
+    eval_fn=None,
+    eval_every: int = 1,
 ) -> dict:
     """Runs `rounds` of FedAvg. `client_round_fn(client_id, data_yaml, global_weights_path,
     round_idx, out_dir) -> (state_dict, extra_info_dict)`.
@@ -30,12 +33,21 @@ def run_federated_training(
     Writes `global_round_{t}.pt` checkpoints and a `history.json` log of
     per-round metrics (whatever `extra_info_dict` each client returns, e.g.
     epsilon for DP runs) to `out_dir`.
+
+    `eval_fn(weights_path) -> metrics dict` (expected keys at least
+    "map50"/"map50_95") is called on the aggregated global model every
+    `eval_every` rounds against the *validation* split. The best round by
+    val map50 is tracked and its checkpoint copied to `best_global.pt`;
+    the last round's checkpoint is copied to `final_global.pt`. Final test
+    evaluation stays the caller's job (val is for selection only, so the
+    test set never influences which checkpoint gets picked).
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     global_weights_path = init_weights_path
     history = []
+    best = {"round": None, "map50": -1.0, "weights": None}
 
     for t in range(rounds):
         round_start = time.time()
@@ -59,8 +71,20 @@ def run_federated_training(
         round_record = {
             "round": t,
             "elapsed_sec": time.time() - round_start,
+            "checkpoint": global_weights_path,
             "clients": client_infos,
         }
+
+        if eval_fn is not None and (t % eval_every == 0 or t == rounds - 1):
+            val_metrics = eval_fn(global_weights_path)
+            round_record["val"] = val_metrics
+            if float(val_metrics.get("map50", -1.0)) > best["map50"]:
+                best = {"round": t, "map50": float(val_metrics["map50"]),
+                        "weights": str(out_dir / "best_global.pt")}
+                shutil.copy2(global_weights_path, best["weights"])
+            print(f"[round {t + 1}/{rounds}] val mAP@0.5={val_metrics.get('map50', float('nan')):.3f} "
+                  f"(best so far: {best['map50']:.3f} @ round {best['round']})")
+
         if round_extra_log:
             round_record.update(round_extra_log)
         history.append(round_record)
@@ -70,4 +94,13 @@ def run_federated_training(
         print(f"[round {t + 1}/{rounds}] aggregated {len(state_dicts)} clients "
               f"in {round_record['elapsed_sec']:.1f}s -> {global_weights_path}")
 
-    return {"final_weights": global_weights_path, "history": history}
+    final_copy = str(out_dir / "final_global.pt")
+    shutil.copy2(global_weights_path, final_copy)
+
+    return {
+        "final_weights": final_copy,
+        "best_weights": best["weights"] or final_copy,  # no eval_fn -> fall back to final
+        "best_round": best["round"] if best["round"] is not None else rounds - 1,
+        "best_val_map50": best["map50"] if best["map50"] >= 0 else None,
+        "history": history,
+    }

@@ -5,9 +5,37 @@ call the high-level `YOLO(path).train(...)` API.
 """
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 from fedxpalm.federated.trainer_utils import build_trainer_from_checkpoint
+
+
+def read_local_train_log(run_dir: str | Path) -> dict:
+    """Last-epoch train losses + learning rate from Ultralytics' results.csv.
+
+    Returns e.g. {"train/box_loss": ..., "train/cls_loss": ..., "train/dfl_loss":
+    ..., "lr/pg0": ...} (keys as written by Ultralytics), or {} if the csv is
+    missing -- callers log this into history.json per round per client, which
+    is what makes client-drift/divergence diagnosable after the fact.
+    """
+    csv_path = Path(run_dir) / "results.csv"
+    if not csv_path.exists():
+        return {}
+    with open(csv_path, newline="") as f:
+        rows = list(csv.DictReader(f))
+    if not rows:
+        return {}
+    last = rows[-1]
+    out = {}
+    for key, val in last.items():
+        key = key.strip()
+        if key.startswith(("train/", "lr/")) or key == "epoch":
+            try:
+                out[key] = float(val)
+            except (TypeError, ValueError):
+                pass
+    return out
 
 
 def train_client_round(
@@ -35,6 +63,13 @@ def train_client_round(
         momentum=hyp.get("momentum", 0.9),
         weight_decay=hyp.get("weight_decay", 0.0005),
         patience=hyp.get("patience", 100),
+        # Ultralytics defaults warmup_epochs to 3.0 -- with epochs_per_round=2
+        # the *entire* local run then happens inside the LR/momentum warmup
+        # ramp, every round, so the configured lr0 is never actually reached.
+        # Default stays 3.0 (reproduces prior runs); tune via fl_config/CLI.
+        warmup_epochs=hyp.get("warmup_epochs", 3.0),
+        seed=int(hyp.get("seed", 0)),
+        deterministic=True,
         device=device,
         project=out_dir,
         name=run_name,
