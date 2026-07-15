@@ -37,6 +37,40 @@ _spec = importlib.util.spec_from_file_location("_fedx_split", _split_path)
 _split = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_split)
 _parse_bunch_id = _split._parse_bunch_id
+_parse_source_frame = _split._parse_source_frame
+load_source_aliases = _split.load_source_aliases
+
+
+def load_review_decisions(path: Path = Path("data/source_alias_review.csv")) -> dict[tuple[str, str], str]:
+    """(source_a, source_b) -> decision, from the human review file."""
+    import csv
+    if not path.exists():
+        return {}
+    with open(path, newline="") as f:
+        return {(r["source_a"].strip(), r["source_b"].strip()): (r.get("decision") or "uncertain").strip()
+                for r in csv.DictReader(f)}
+
+
+def classify_candidates(near_dupes: list[dict], decisions: dict) -> dict:
+    """Split raw dHash candidates into confirmed / reviewed-false-positive /
+    uncertain, by the review decision of their source-prefix pair. Raw
+    candidates whose pair was reviewed as different_source do NOT gate the
+    audit; anything unreviewed does."""
+    confirmed, false_pos, uncertain = [], [], []
+    for c in near_dupes:
+        src_a, _ = _parse_source_frame(c["a"].split("/", 1)[1])
+        src_b, _ = _parse_source_frame(c["b"].split("/", 1)[1])
+        key = (src_a, src_b) if (src_a, src_b) in decisions else (src_b, src_a)
+        decision = decisions.get(key, "unreviewed")
+        if decision == "confirmed_alias":
+            confirmed.append(c)
+        elif decision == "different_source":
+            false_pos.append(c)
+        else:
+            uncertain.append({**c, "decision": decision})
+    return {"confirmed_cross_split_duplicates": confirmed,
+            "reviewed_false_positives": false_pos,
+            "uncertain_or_unreviewed": uncertain}
 
 
 def md5_of(path: Path) -> str:
@@ -122,8 +156,17 @@ def main() -> int:
             print("[!] Pillow not installed -- skipping perceptual near-duplicate scan "
                   "(pip install pillow to enable)")
 
+    aliases = load_source_aliases()
+    decisions = load_review_decisions()
+    if aliases:
+        print(f"[aliases] {len(aliases)} source->group mapping(s) loaded "
+              f"({len(set(aliases.values()))} groups)")
+    if decisions:
+        print(f"[review] {len(decisions)} reviewed source pair(s) loaded")
+
     report = {"splits_dir": str(splits_dir), "splits": {}, "leakage": {}, "bunch_id_mapping_samples": {}}
     bunch_to_splits: dict[str, set] = defaultdict(set)
+    group_to_splits: dict[str, set] = defaultdict(set)
     hash_to_locations: dict[str, list[str]] = defaultdict(list)
     phash_index: list[tuple[int, str, str]] = []
     rng = random.Random(0)
@@ -150,6 +193,7 @@ def main() -> int:
                         n_boxes += 1
             bunch = _parse_bunch_id(img)
             bunch_to_splits[bunch].add(split)
+            group_to_splits[aliases.get(bunch, bunch)].add(split)
             bunch_sizes[bunch] += 1
             if not args.skip_hash:
                 hash_to_locations[md5_of(img)].append(f"{split}/{img.name}")
@@ -173,17 +217,36 @@ def main() -> int:
         report["bunch_id_mapping_samples"][split] = {p.name: _parse_bunch_id(p) for p in sample}
 
     cross_bunches = {b: sorted(s) for b, s in bunch_to_splits.items() if len(s) > 1}
+    cross_groups = {g: sorted(s) for g, s in group_to_splits.items() if len(s) > 1}
     dup_files = ({h: locs for h, locs in hash_to_locations.items()
                   if len({loc.split("/", 1)[0] for loc in locs}) > 1}
                  if not args.skip_hash else None)
     near_dupes = (near_duplicates(phash_index, args.hamming)
                   if pil_ok and not args.skip_phash else None)
+
+    # Raw dHash candidates are NOT a pass/fail gate by themselves: each
+    # candidate is classified by the human review decision of its source
+    # pair. Reviewed false positives (different_source) don't gate; anything
+    # confirmed as an alias that still straddles splits, or not yet
+    # reviewed, does.
+    classified = classify_candidates(near_dupes or [], decisions)
+
+    passed = (not cross_groups
+              and not cross_bunches
+              and not dup_files
+              and not classified["confirmed_cross_split_duplicates"]
+              and not classified["uncertain_or_unreviewed"])
     report["leakage"] = {
         "bunches_in_multiple_splits": cross_bunches,
+        "source_groups_in_multiple_splits": cross_groups,
         "duplicate_files_across_splits": dup_files,
-        "near_duplicates_across_splits": near_dupes,
+        "raw_dhash_candidates": near_dupes,
+        "raw_dhash_candidate_count": len(near_dupes) if near_dupes is not None else None,
+        "confirmed_cross_split_duplicates": classified["confirmed_cross_split_duplicates"],
+        "reviewed_false_positives_count": len(classified["reviewed_false_positives"]),
+        "uncertain_or_unreviewed": classified["uncertain_or_unreviewed"],
         "phash_hamming_threshold": args.hamming if near_dupes is not None else None,
-        "passed": not cross_bunches and not dup_files and not near_dupes,
+        "passed": passed,
     }
 
     out = Path(args.out)
@@ -202,15 +265,23 @@ def main() -> int:
                      + "".join(f" {s['class_boxes'][n]} |" for n in names))
     lines.append("")
     lines.append(f"- Bunch_ids in >1 split: **{len(cross_bunches)}** (must be 0)")
+    lines.append(f"- Source groups (alias-aware) in >1 split: **{len(cross_groups)}** (must be 0)")
+    for g, s in list(cross_groups.items())[:10]:
+        lines.append(f"    - group `{g}` spans {s}")
     if dup_files is not None:
         lines.append(f"- Exact-duplicate files across splits (MD5): **{len(dup_files)}** (must be 0)")
     if near_dupes is not None:
-        lines.append(f"- Near-duplicate images across splits (dHash, Hamming<={args.hamming}): "
-                     f"**{len(near_dupes)}** (must be 0)")
-        for pair in near_dupes[:20]:
-            lines.append(f"    - {pair['a']}  <->  {pair['b']}  (hamming {pair['hamming']})")
-        if len(near_dupes) > 20:
-            lines.append(f"    - ... and {len(near_dupes) - 20} more (see JSON)")
+        conf = classified["confirmed_cross_split_duplicates"]
+        unrev = classified["uncertain_or_unreviewed"]
+        lines.append(f"- Raw dHash candidates across splits (Hamming<={args.hamming}): "
+                     f"**{len(near_dupes)}** (informational -- gated via review below)")
+        lines.append(f"    - confirmed cross-split duplicates: **{len(conf)}** (must be 0)")
+        lines.append(f"    - reviewed false positives (different_source): "
+                     f"{len(classified['reviewed_false_positives'])} (do not gate)")
+        lines.append(f"    - uncertain / unreviewed: **{len(unrev)}** (must be 0 -- "
+                     f"review via scripts/13 + data/source_alias_review.csv)")
+        for pair in (conf + unrev)[:20]:
+            lines.append(f"        - {pair['a']}  <->  {pair['b']}  (hamming {pair['hamming']})")
     lines.append(f"- **Leakage audit: {'PASSED' if report['leakage']['passed'] else 'FAILED'}**")
     for split, s in report["splits"].items():
         if s["classes_with_zero"]:

@@ -39,6 +39,7 @@ all of which follow `frame<anything>-<frame position digits>-...`.
 from __future__ import annotations
 
 import argparse
+import json
 import random
 import re
 import shutil
@@ -50,6 +51,9 @@ import yaml
 _RF_HASH_SUFFIX = re.compile(r"\.rf\.", re.IGNORECASE)
 _FRAME_BUNCH_ID = re.compile(r"^(frame[^-]+)-", re.IGNORECASE)
 _FRAME_BUNCH_ID_NO_HYPHEN = re.compile(r"^(frame[a-z0-9]+)", re.IGNORECASE)
+_SOURCE_FRAME = re.compile(r"^(frame[^-]+)-(\d+)", re.IGNORECASE)
+
+DEFAULT_ALIASES_PATH = "data/source_group_aliases.json"
 
 
 def _parse_bunch_id(image_path: Path) -> str:
@@ -61,6 +65,37 @@ def _parse_bunch_id(image_path: Path) -> str:
     if m:
         return m.group(1)
     return stem_before_hash  # fallback for any filename that isn't "frame...": treat as its own bunch
+
+
+def _parse_source_frame(image_name: str) -> tuple[str, int | None]:
+    """('framesawit39', 18) from 'framesawit39-18-_png.rf.<hash>.jpg';
+    frame number None when the name has no numeric frame position."""
+    stem_before_hash = _RF_HASH_SUFFIX.split(image_name, maxsplit=1)[0]
+    m = _SOURCE_FRAME.match(stem_before_hash)
+    if m:
+        return m.group(1), int(m.group(2))
+    return _parse_bunch_id(Path(image_name)), None
+
+
+def load_source_aliases(path: str | Path = DEFAULT_ALIASES_PATH) -> dict[str, str]:
+    """source/bunch_id -> source_group representative, from the mapping built
+    by scripts/14_build_source_groups.py out of *human-confirmed* aliases
+    (data/source_alias_review.csv). Empty dict when no mapping exists yet --
+    grouping then falls back to raw bunch_id, i.e. prior behavior.
+
+    Why this exists: the same physical source video can be exported under
+    two different filename prefixes (e.g. framesawit39-N frames turned out
+    to be near-duplicates of frame1-(N-k) frames -- Hamming 0 dHash pairs
+    with a consistent frame offset), so distinct bunch_ids do NOT guarantee
+    distinct sources. Only reviewed, confirmed aliases belong here; raw
+    perceptual-hash candidates must never feed this file automatically.
+    """
+    p = Path(path)
+    if not p.exists():
+        return {}
+    with open(p) as f:
+        data = json.load(f)
+    return data.get("source_to_group", {})
 
 
 def _collect_pairs(dataset_dir: Path) -> list[tuple[Path, Path | None]]:
@@ -134,7 +169,16 @@ def audit_class_distribution(output_dir: Path, class_names: list[str], splits: t
     return counts
 
 
-def leakage_free_split(cfg_path: str = "configs/dataset.yaml") -> Path:
+def leakage_free_split(cfg_path: str = "configs/dataset.yaml", dry_run: bool = False,
+                       aliases_path: str | Path = DEFAULT_ALIASES_PATH) -> Path | dict:
+    """Group-level split. The grouping key is the source_group (bunch_id run
+    through the confirmed-alias mapping when data/source_group_aliases.json
+    exists), so every frame and augmented copy of the same physical source --
+    even under a different filename prefix -- lands in exactly one split.
+
+    dry_run=True computes the assignment and returns/prints the resulting
+    per-split image counts and class distribution WITHOUT touching any file
+    (use to preview sizes before committing to a regenerated split)."""
     with open(cfg_path) as f:
         cfg = yaml.safe_load(f)
 
@@ -143,6 +187,12 @@ def leakage_free_split(cfg_path: str = "configs/dataset.yaml") -> Path:
     ratios = cfg["split_ratios"]
     rng = random.Random(cfg["split_seed"])
 
+    aliases = load_source_aliases(aliases_path)
+    if aliases:
+        n_merged = len(set(aliases.values()))
+        print(f"Applying {len(aliases)} confirmed source-alias mappings "
+              f"({n_merged} source groups) from {aliases_path}")
+
     pairs = _collect_pairs(dataset_dir)
     if not pairs:
         raise FileNotFoundError(
@@ -150,9 +200,13 @@ def leakage_free_split(cfg_path: str = "configs/dataset.yaml") -> Path:
             "Run scripts/01_download_dataset.py first."
         )
 
+    def group_key(img_path: Path) -> str:
+        bunch = _parse_bunch_id(img_path)
+        return aliases.get(bunch, bunch)
+
     bunches: dict[str, list[tuple[Path, Path | None]]] = defaultdict(list)
     for img_path, lbl_path in pairs:
-        bunches[_parse_bunch_id(img_path)].append((img_path, lbl_path))
+        bunches[group_key(img_path)].append((img_path, lbl_path))
 
     # Stratify by each bunch's dominant class: split bunches of each class
     # separately by the target ratios, so a minority class (e.g. Empty
@@ -181,11 +235,51 @@ def leakage_free_split(cfg_path: str = "configs/dataset.yaml") -> Path:
                 split_of_bunch[bunch_id] = split_name
             cursor += count
 
+    if dry_run:
+        # Preview only: per-split image counts + class instance distribution,
+        # computed from the in-memory assignment. No file is touched.
+        sizes = {name: 0 for name in ratios}
+        class_dist: dict[str, Counter] = {name: Counter() for name in ratios}
+        group_counts = {name: 0 for name in ratios}
+        for bunch_id, items in bunches.items():
+            split_name = split_of_bunch[bunch_id]
+            sizes[split_name] += len(items)
+            group_counts[split_name] += 1
+            for _img, lbl in items:
+                if lbl is not None and lbl.exists():
+                    for line in lbl.read_text().splitlines():
+                        line = line.strip()
+                        if line:
+                            class_dist[split_name][int(line.split()[0])] += 1
+        total = sum(sizes.values())
+        print(f"[DRY RUN] {len(bunches)} source groups / {total} images would split as:")
+        names = cfg["names"]
+        for name in ratios:
+            print(f"  {name}: {sizes[name]} images ({sizes[name] / total:.1%}), "
+                  f"{group_counts[name]} source groups")
+        header = f"{'Class':<16}" + "".join(f"{s:>10}" for s in ratios)
+        print(header)
+        print("-" * len(header))
+        for class_id, cname in enumerate(names):
+            row = [class_dist[s].get(class_id, 0) for s in ratios]
+            flag = "  <-- ZERO in a split!" if any(v == 0 for v in row) else ""
+            print(f"{cname:<16}" + "".join(f"{v:>10}" for v in row) + flag)
+        return {"sizes": sizes, "groups": group_counts,
+                "class_dist": {s: dict(c) for s, c in class_dist.items()}}
+
     # Wipe any previous split output first -- otherwise stale files from an
     # earlier run (e.g. before a bunch_id extraction fix, or a different
     # split_ratios/seed) linger alongside the new copies, and the bunch that
     # owns them appears to "leak" across splits when it's really just old +
     # new files coexisting under the same split_name directories.
+    # Guard: never wipe a directory that contains the human review/alias
+    # files -- hours of manual review must not be deletable by a config typo
+    # (e.g. output_dir accidentally set to "data").
+    for protected in (Path(aliases_path), Path("data/source_alias_review.csv")):
+        if protected.exists() and protected.resolve().is_relative_to(output_dir.resolve()):
+            raise RuntimeError(
+                f"Refusing to wipe {output_dir}: it contains the review file {protected}. "
+                f"Point output_dir somewhere else (e.g. data/splits_v2).")
     if output_dir.exists():
         shutil.rmtree(output_dir)
     for split_name in ratios:
@@ -205,16 +299,16 @@ def leakage_free_split(cfg_path: str = "configs/dataset.yaml") -> Path:
                 dst_lbl.write_text("")  # background image, no boxes
             assigned[split_name] += 1
 
-    # leakage audit: assert no bunch_id appears in more than one split
-    # (trivially true here since split_of_bunch assigns exactly one split
-    # per bunch_id, but re-derive it from the written files to catch any
-    # regression in the assignment/materialization logic above)
+    # leakage audit: assert no source group (alias-aware) appears in more
+    # than one split (trivially true here since split_of_bunch assigns
+    # exactly one split per group, but re-derive it from the written files
+    # to catch any regression in the assignment/materialization logic above)
     seen = defaultdict(set)
     for split_name in ratios:
         for img_path in (output_dir / split_name / "images").glob("*"):
-            seen[_parse_bunch_id(img_path)].add(split_name)
+            seen[group_key(img_path)].add(split_name)
     leaked = {b: s for b, s in seen.items() if len(s) > 1}
-    assert not leaked, f"Leakage detected for bunch_ids: {leaked}"
+    assert not leaked, f"Leakage detected for source groups: {leaked}"
 
     total_images = sum(assigned.values())
     data_yaml = {
@@ -243,6 +337,8 @@ if __name__ == "__main__":
     parser.add_argument("--audit-only", action="store_true",
                          help="skip re-splitting, just re-run the class-distribution audit "
                               "on an existing data/splits/ (e.g. after manually editing files)")
+    parser.add_argument("--dry-run", action="store_true",
+                         help="preview the (alias-aware) assignment sizes without writing files")
     args = parser.parse_args()
 
     if args.audit_only:
@@ -250,4 +346,4 @@ if __name__ == "__main__":
             _cfg = yaml.safe_load(f)
         audit_class_distribution(Path(_cfg["output_dir"]), _cfg["names"], tuple(_cfg["split_ratios"].keys()))
     else:
-        leakage_free_split(args.config)
+        leakage_free_split(args.config, dry_run=args.dry_run)
