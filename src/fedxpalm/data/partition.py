@@ -81,11 +81,27 @@ def dirichlet_partition(
     return client_samples
 
 
+def _parse_bunch_id_standalone():
+    """Load split.py's _parse_bunch_id by file path -- NOT via the fedxpalm
+    package -- so this module keeps working when spec-loaded standalone or on
+    a machine without torch (the package __init__ imports torch)."""
+    import importlib.util
+    p = Path(__file__).resolve().parent / "split.py"
+    spec = importlib.util.spec_from_file_location("_fedx_split_for_partition", p)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod._parse_bunch_id
+
+
 def _client_stats(stems: list[str], labels_dir: Path, num_classes: int) -> dict:
     """Per-client audit info: bounding-box count per class, total boxes, and
     the (unique) bunch_ids covered -- so partition skew is inspectable from
     the manifest alone, without re-reading thousands of label files."""
-    from fedxpalm.data.split import _parse_bunch_id  # local import: avoids a cycle at module load
+    global _parse_bunch_id_cached
+    try:
+        _parse_bunch_id = _parse_bunch_id_cached
+    except NameError:
+        _parse_bunch_id = _parse_bunch_id_cached = _parse_bunch_id_standalone()
 
     class_counts = Counter()
     for stem in stems:

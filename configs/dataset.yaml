@@ -19,7 +19,10 @@
 # "frame1".
 
 roboflow:
-  api_key: "Ej0bSMpeSri3ky0IYkOU"   # move to $ROBOFLOW_API_KEY before committing/sharing this repo further
+  # API key is NOT stored here: set the ROBOFLOW_API_KEY environment variable
+  # before running scripts/01_download_dataset.py. (A key that previously
+  # lived in this file also exists in git history -- rotate it in the
+  # Roboflow dashboard.)
   workspace: "dydy-worker"
   project: "palm-fruit-ripeness-detection-f6sac-ccb2z"
   version: 2

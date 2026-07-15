@@ -18,7 +18,13 @@ def download_dataset(cfg_path: str = "configs/dataset.yaml") -> Path:
         cfg = yaml.safe_load(f)
 
     rf_cfg = cfg["roboflow"]
-    api_key = os.environ.get("ROBOFLOW_API_KEY", rf_cfg["api_key"])
+    api_key = os.environ.get("ROBOFLOW_API_KEY") or rf_cfg.get("api_key")
+    if not api_key:
+        raise SystemExit(
+            "ROBOFLOW_API_KEY is not set. Export it first, e.g.\n"
+            "  Windows:  set ROBOFLOW_API_KEY=<your key>\n"
+            "  Linux:    export ROBOFLOW_API_KEY=<your key>\n"
+            "(the key is deliberately no longer stored in configs/dataset.yaml)")
 
     from roboflow import Roboflow
 
