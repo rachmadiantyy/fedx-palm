@@ -37,6 +37,40 @@ import torch
 from ultralytics.models.yolo.detect.train import DetectionTrainer
 
 
+class SeededDetectionTrainer(DetectionTrainer):
+    """DetectionTrainer whose dataloader actually honors ``args.seed``.
+
+    Ultralytics 8.4.x seeds the global RNGs from ``args.seed`` (``init_seeds``
+    in ``BaseTrainer.__init__``), but ``ultralytics/data/build.py`` hands the
+    DataLoader a ``torch.Generator`` seeded with the CONSTANT
+    ``6148914691236517205 + RANK``, and ``get_dataloader`` never forwards the
+    experiment seed. The shuffle order comes from that generator, and so do
+    the dataloader workers' base seeds (drawn from it at iterator creation),
+    which in turn drive every augmentation RNG inside the workers. With the
+    same init weights, partition, optimizer, and deterministic mode, two runs
+    that differ ONLY in ``args.seed`` therefore produce tensor-identical
+    weights -- observed for real on B2 K=4 seed 42 vs seed 123
+    (total |dw| = 0.0 across the full state_dict).
+
+    Fix: re-seed the loader's generator from ``args.seed`` right after the
+    loader is built and before its first iterator is created, so shuffle
+    order AND worker seeds derive from the experiment seed. site-packages
+    stays untouched.
+    """
+
+    def get_dataloader(self, dataset_path, batch_size=16, rank=0, mode="train"):
+        loader = super().get_dataloader(dataset_path, batch_size, rank, mode)
+        generator = getattr(loader, "generator", None)
+        if generator is not None:
+            # +1 offsets the val loader so it never shares a stream with train
+            generator.manual_seed(int(getattr(self.args, "seed", 0)) + (0 if mode == "train" else 1))
+        else:
+            print("[SeededDetectionTrainer] WARNING: dataloader has no generator "
+                  "attribute -- shuffle/worker seeding may not follow args.seed "
+                  "on this Ultralytics version; verify with scripts/18_seed_smoke_test.py")
+        return loader
+
+
 def build_trainer_from_checkpoint(global_weights_path: str, overrides: dict) -> DetectionTrainer:
     """`overrides['model']` should still be set to `global_weights_path` (kept
     for Ultralytics' own bookkeeping/logging), but the actual module used for
@@ -47,6 +81,6 @@ def build_trainer_from_checkpoint(global_weights_path: str, overrides: dict) -> 
 
     ckpt = torch.load(global_weights_path, map_location="cpu", weights_only=False)
     model = ckpt["model"].float()
-    trainer = DetectionTrainer(overrides=overrides)
+    trainer = SeededDetectionTrainer(overrides=overrides)
     trainer.model = model
     return trainer

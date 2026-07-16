@@ -6,9 +6,23 @@ call the high-level `YOLO(path).train(...)` API.
 from __future__ import annotations
 
 import csv
+import zlib
 from pathlib import Path
 
 from fedxpalm.federated.trainer_utils import build_trainer_from_checkpoint
+
+
+def effective_seed(base_seed: int, round_idx: int, client_id) -> int:
+    """Deterministic, machine-independent local seed, distinct per
+    (experiment seed, round, client).
+
+    A single constant seed re-used every round would give every client the
+    same shuffle/augmentation stream in every round; deriving from the
+    triple keeps runs with the same experiment seed bit-reproducible while
+    making rounds/clients (and different experiment seeds) actually differ.
+    crc32 is standardized, so the value is stable across OS/Python builds.
+    """
+    return zlib.crc32(f"{int(base_seed)}-{int(round_idx)}-{client_id}".encode()) % (2**31 - 1)
 
 
 def read_local_train_log(run_dir: str | Path) -> dict:
@@ -68,7 +82,9 @@ def train_client_round(
         # ramp, every round, so the configured lr0 is never actually reached.
         # Default stays 3.0 (reproduces prior runs); tune via fl_config/CLI.
         warmup_epochs=hyp.get("warmup_epochs", 3.0),
-        seed=int(hyp.get("seed", 0)),
+        # per-(seed, round, client) -- recorded in the checkpoint's train_args;
+        # consumed by SeededDetectionTrainer to drive shuffle + augmentation
+        seed=effective_seed(hyp.get("seed", 0), round_idx, client_id),
         deterministic=True,
         device=device,
         project=out_dir,

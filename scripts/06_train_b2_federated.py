@@ -35,7 +35,7 @@ import yaml  # noqa: E402
 import fedxpalm  # noqa: E402,F401 (applies the GroupNorm-safe `fuse()` patch)
 from fedxpalm.data.partition import partition_and_write  # noqa: E402
 from fedxpalm.eval.detection_metrics import evaluate_detector  # noqa: E402
-from fedxpalm.federated.client import read_local_train_log, train_client_round  # noqa: E402
+from fedxpalm.federated.client import effective_seed, read_local_train_log, train_client_round  # noqa: E402
 from fedxpalm.federated.client_data import materialize_clients  # noqa: E402
 from fedxpalm.federated.server import run_federated_training  # noqa: E402
 
@@ -55,6 +55,7 @@ def make_client_round_fn(hyp, device, rounds, lr_round_decay=False):
         state_dict = torch.load(weights_path, map_location="cpu", weights_only=False)["model"].state_dict()
         info = read_local_train_log(Path(weights_path).parent.parent)
         info["lr0_this_round"] = round_hyp["lr0"]
+        info["effective_seed"] = effective_seed(round_hyp.get("seed", 0), round_idx, client_id)
         return state_dict, info
 
     return client_round_fn
