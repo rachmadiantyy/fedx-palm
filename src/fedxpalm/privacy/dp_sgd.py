@@ -9,9 +9,22 @@ epsilon accounting, for both freeze=None and freeze=backbone) against a
 synthetic dataset on CPU in a network-restricted sandbox -- re-verify the
 first real run on your GPU box, since Ultralytics' internal APIs can shift
 between point releases.
+
+Privacy accounting is PERSISTENT PER CLIENT across communication rounds: the
+caller passes the client's saved accountant state in and stores the updated
+state back out after each round (see scripts/_dp_sweep_common.py). A fresh
+PrivacyEngine is created each round (model/optimizer are rebuilt from the new
+global weights), but its accountant is restored from the client's saved state
+first, so `get_epsilon` returns the epsilon accumulated over ALL of that
+client's local optimizer steps since round 0 -- not just the current round.
+Epsilon is therefore monotonically non-decreasing round over round. Because
+each image lives on exactly one client, epsilons are NEVER summed across
+clients; the sweep reports per-client epsilon and the maximum as a
+conservative summary.
 """
 from __future__ import annotations
 
+import torch
 from opacus import PrivacyEngine
 
 from fedxpalm.federated.trainer_utils import build_trainer_from_checkpoint
@@ -19,6 +32,43 @@ from fedxpalm.models.groupnorm import disable_inplace_ops
 from fedxpalm.privacy.opacus_patch import patch_opacus_for_dict_datasets
 
 patch_opacus_for_dict_datasets()
+
+
+def _restore_accountant(privacy_engine: PrivacyEngine, saved_state) -> None:
+    """Load a client's saved accountant state into this round's engine so the
+    privacy budget keeps accumulating instead of restarting at zero. Tries the
+    Opacus state_dict API first, then falls back to restoring the raw history
+    list (robust across Opacus point releases)."""
+    if not saved_state:
+        return
+    try:
+        privacy_engine.accountant.load_state_dict(saved_state)
+        return
+    except Exception:
+        history = saved_state.get("history") if isinstance(saved_state, dict) else None
+        if history is not None:
+            privacy_engine.accountant.history = list(history)
+
+
+def _dump_accountant(privacy_engine: PrivacyEngine) -> dict:
+    try:
+        return privacy_engine.accountant.state_dict()
+    except Exception:
+        return {"history": list(getattr(privacy_engine.accountant, "history", []))}
+
+
+def _cumulative_steps(privacy_engine: PrivacyEngine) -> int:
+    """Total optimizer steps the accountant has recorded across all rounds.
+    History entries are (noise_multiplier, sample_rate, num_steps)-shaped for
+    both the PRV and RDP accountants."""
+    history = getattr(privacy_engine.accountant, "history", [])
+    total = 0
+    for entry in history:
+        try:
+            total += int(entry[2])
+        except (TypeError, IndexError, ValueError):
+            pass
+    return total
 
 
 def train_client_round_dp(
@@ -31,12 +81,15 @@ def train_client_round_dp(
     out_dir: str,
     device: str = "0",
     freeze_stages: list[int] | None = None,
+    accountant_state: dict | None = None,
 ) -> tuple[dict, dict]:
     """Fine-tunes `global_weights_path` on one client with per-sample DP-SGD.
 
-    Returns (state_dict, info) where state_dict has clean (non-Opacus-prefixed)
-    keys ready for fedavg(), and info carries {epsilon, steps, sigma, n_samples}
-    for the round's history log.
+    `accountant_state` is this client's saved privacy-accountant state from the
+    previous round (None on round 0). Returns (state_dict, info) where
+    state_dict has clean (non-Opacus-prefixed) keys ready for fedavg(), and
+    info carries the per-round/per-client privacy log plus `accountant_state`
+    (the updated state to persist for next round).
     """
     run_name = f"r{round_idx}_client{client_id}_dp"
     overrides = dict(
@@ -49,6 +102,7 @@ def train_client_round_dp(
         lr0=hyp.get("lr0", 0.01),
         momentum=hyp.get("momentum", 0.9),
         weight_decay=hyp.get("weight_decay", 0.0005),
+        warmup_epochs=hyp.get("warmup_epochs", 0.0),
         device=device,
         workers=hyp.get("workers", 4),
         amp=False,          # Opacus does not officially support mixed precision
@@ -64,6 +118,15 @@ def train_client_round_dp(
     disable_inplace_ops(trainer.model)  # in case a fresh (non-DP-prepared) checkpoint slips in
     trainer._setup_train()
 
+    # trainable/frozen accounting for the E1/E2 audit -- the optimizer must
+    # only ever receive parameters with requires_grad=True (Ultralytics'
+    # `freeze` sets requires_grad=False on model.<i>.* for the frozen stages).
+    n_trainable = sum(p.numel() for p in trainer.model.parameters() if p.requires_grad)
+    n_frozen = sum(p.numel() for p in trainer.model.parameters() if not p.requires_grad)
+    opt_param_ids = {id(p) for grp in trainer.optimizer.param_groups for p in grp["params"]}
+    opt_has_frozen = any((not p.requires_grad) and id(p) in opt_param_ids
+                         for p in trainer.model.parameters())
+
     privacy_engine = PrivacyEngine(accountant=dp_hyp.get("accountant", "prv"))
     dp_model, dp_optimizer, dp_loader = privacy_engine.make_private(
         module=trainer.model,
@@ -73,9 +136,17 @@ def train_client_round_dp(
         max_grad_norm=dp_hyp["max_grad_norm"],
         poisson_sampling=True,
     )
+    # resume this client's privacy budget from prior rounds BEFORE stepping,
+    # so get_epsilon() below is cumulative over the whole run
+    _restore_accountant(privacy_engine, accountant_state)
+    steps_before = _cumulative_steps(privacy_engine)
+
+    sample_rate = float(getattr(dp_loader, "sample_rate",
+                                hyp["batch_size"] / max(1, len(dp_loader.dataset))))
 
     dp_model.train()
     n_steps = 0
+    nan_inf_detected = False
     for _epoch in range(hyp["epochs_per_round"]):
         for batch in dp_loader:
             if len(batch["img"]) == 0:  # Poisson sampling can draw an empty batch
@@ -91,20 +162,38 @@ def train_client_round_dp(
             batch = trainer.preprocess_batch(batch)
             dp_optimizer.zero_grad()
             loss, _loss_items = dp_model(batch)
-            loss.sum().backward()
+            total_loss = loss.sum()
+            if not torch.isfinite(total_loss):
+                nan_inf_detected = True
+            total_loss.backward()
             dp_optimizer.step()
             n_steps += 1
 
     epsilon = privacy_engine.get_epsilon(delta=dp_hyp["delta"])
+    cumulative_steps = _cumulative_steps(privacy_engine)
     state_dict = {k.replace("_module.", "", 1): v.detach().clone() for k, v in dp_model.state_dict().items()}
 
     info = {
-        "epsilon": float(epsilon),
-        "delta": dp_hyp["delta"],
+        "round": round_idx,
+        "client_id": client_id,
         "sigma": dp_hyp["sigma"],
         "max_grad_norm": dp_hyp["max_grad_norm"],
-        "steps": n_steps,
+        "delta": dp_hyp["delta"],
         "n_samples": len(dp_loader.dataset),
+        "sample_rate_q": sample_rate,
+        "steps_this_round": n_steps,
+        "cumulative_steps": cumulative_steps,
+        "epsilon": float(epsilon),                 # cumulative over all rounds so far
+        "nan_inf": bool(nan_inf_detected),
+        "clip_fraction": None,                     # not measured (would require per-sample-norm hooks)
+        "clip_fraction_note": "not_measured",
         "frozen": freeze_stages is not None,
+        "n_trainable_params": int(n_trainable),
+        "n_frozen_params": int(n_frozen),
+        "optimizer_has_frozen_params": bool(opt_has_frozen),  # must be False
+        "accountant_state": _dump_accountant(privacy_engine),
     }
+    # sanity: the accountant must have grown by exactly this round's steps
+    if cumulative_steps != steps_before + n_steps:
+        info["accountant_step_mismatch"] = {"before": steps_before, "round": n_steps, "after": cumulative_steps}
     return state_dict, info
