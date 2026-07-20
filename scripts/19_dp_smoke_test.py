@@ -32,6 +32,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 BACKBONE_MAX_STAGE = 10  # model.0..model.10 = backbone; 11..22 neck; 23 head
 
+# Parameters that are frozen BY ARCHITECTURE, not a methodology error:
+# Ultralytics always freezes the DFL fixed conv (weight = arange(reg_max),
+# never trained) in every YOLO run, DP or not. A frozen param whose name
+# matches one of these is expected; anything else that is frozen-but-in-the-
+# optimizer is a real problem (a param that should train but won't).
+EXPECTED_FROZEN_PATTERNS = ("dfl.conv",)
+
+
+def _classify_frozen(names):
+    expected = [n for n in names if any(p in n for p in EXPECTED_FROZEN_PATTERNS)]
+    unexpected = [n for n in names if not any(p in n for p in EXPECTED_FROZEN_PATTERNS)]
+    return expected, unexpected
+
 
 def _run(variant, device, imgsz, batch, sigma, rounds, tag_suffix, workers):
     from _dp_sweep_common import run_dp_sweep  # noqa: E402
@@ -78,9 +91,16 @@ def audit_freeze(init_weights, final_weights):
             backbone_changed = backbone_changed or differs
         else:
             neck_head_changed = neck_head_changed or differs
+    # DFL fixed conv must be byte-identical before/after: proof the DPOptimizer
+    # never updated the architectural constant despite it sitting in a group.
+    dfl_changed = False
+    for k in sd1:
+        if "dfl.conv" in k and k in sd0 and sd0[k].shape == sd1[k].shape:
+            if not torch.equal(sd0[k].float(), sd1[k].float()):
+                dfl_changed = True
     n_bn = sum(1 for m in model1.modules() if isinstance(m, nn.modules.batchnorm._BatchNorm))
     n_gn = sum(1 for m in model1.modules() if isinstance(m, nn.GroupNorm))
-    return backbone_changed, neck_head_changed, n_bn, n_gn
+    return backbone_changed, neck_head_changed, n_bn, n_gn, dfl_changed
 
 
 def analyze(variant, tag_suffix):
@@ -114,6 +134,8 @@ def analyze(variant, tag_suffix):
     r1, r2 = history[0]["clients"], history[1]["clients"]
     per_client_rows = []
     seen_cumulatives = {}
+    expected_frozen_seen, unexpected_frozen_seen = set(), set()
+    frozen_names_available = False
     for cid in r1:
         e1 = r1[cid]["epsilon"]; e2 = r2[cid]["epsilon"]
         s1 = r1[cid]["cumulative_steps"]; s2 = r2[cid]["cumulative_steps"]
@@ -128,14 +150,28 @@ def analyze(variant, tag_suffix):
             failures.append(f"client {cid}: cumulative {s2} != {st1}+{st2}")
         if r1[cid]["nan_inf"] or r2[cid]["nan_inf"]:
             failures.append(f"client {cid}: NaN/Inf detected")
-        if r1[cid].get("optimizer_has_frozen_params") or r2[cid].get("optimizer_has_frozen_params"):
-            failures.append(f"client {cid}: optimizer received frozen params")
+        # frozen-in-optimizer: fail only on UNEXPECTED names (DFL fixed conv is allowlisted)
+        for rr in (r1[cid], r2[cid]):
+            names = rr.get("frozen_in_optimizer")
+            if names is None:
+                continue  # pre-patch artifact: no names logged (see note below)
+            frozen_names_available = True
+            exp, unexp = _classify_frozen(names)
+            expected_frozen_seen.update(exp)
+            unexpected_frozen_seen.update(unexp)
         seen_cumulatives[cid] = s2
 
     # accountants not shared: with different dataset sizes, per-client cumulative
     # steps must not all be identical
     if len(set(seen_cumulatives.values())) == 1 and len(seen_cumulatives) > 1:
         failures.append("all clients share identical cumulative steps -- accountants may be shared")
+
+    # only UNEXPECTED frozen-in-optimizer params fail the audit
+    if unexpected_frozen_seen:
+        failures.append(f"unexpected frozen params in optimizer: {sorted(unexpected_frozen_seen)}")
+    if not frozen_names_available:
+        print("[!] this run's logs predate the frozen-name patch (only a boolean was logged); "
+              "rerun the 2-round smoke with the patched dp_sgd.py to capture exact names.")
 
     # best checkpoint from validation
     val_maps = [(r["round"], (r.get("val") or {}).get("map50")) for r in history]
@@ -153,12 +189,15 @@ def analyze(variant, tag_suffix):
     freeze_info = None
     init_w = "models/base_groupnorm.pt"
     if Path(init_w).exists() and Path(record["final_weights"]).exists():
-        bb_changed, nh_changed, n_bn, n_gn = audit_freeze(init_w, record["final_weights"])
-        freeze_info = (bb_changed, nh_changed, n_bn, n_gn)
+        bb_changed, nh_changed, n_bn, n_gn, dfl_changed = audit_freeze(init_w, record["final_weights"])
+        freeze_info = (bb_changed, nh_changed, n_bn, n_gn, dfl_changed)
         if n_bn != 0:
             failures.append(f"{n_bn} BatchNorm layers remain (must be 0)")
         if n_gn == 0:
             failures.append("no GroupNorm layers found")
+        # architectural constant must never be updated, in either variant
+        if dfl_changed:
+            failures.append("DFL fixed conv weight CHANGED (must stay constant)")
         if variant == "partial":
             if bb_changed:
                 failures.append("E2: backbone weights CHANGED (must be frozen/identical)")
@@ -170,20 +209,25 @@ def analyze(variant, tag_suffix):
     else:
         print(f"[!] skip freeze audit: missing {init_w} or {record['final_weights']}")
 
-    _report(failures, per_client_rows, record, freeze_info, variant)
+    _report(failures, per_client_rows, record, freeze_info, variant,
+            sorted(expected_frozen_seen), sorted(unexpected_frozen_seen))
     return not failures
 
 
-def _report(failures, rows, record=None, freeze_info=None, variant=None):
+def _report(failures, rows, record=None, freeze_info=None, variant=None,
+            expected_frozen=None, unexpected_frozen=None):
     if rows:
         print(f"\nPer-client epsilon table ({variant}):")
         print(f"{'client':<8}{'n':>7}{'q':>9}{'st_r1':>7}{'eps_r1':>10}{'st_r2':>7}{'cum_r2':>8}{'eps_r2':>10}")
         for cid, n, q, st1, e1, st2, s2, e2 in rows:
             print(f"{cid:<8}{n:>7}{q:>9.4f}{st1:>7}{e1:>10.4f}{st2:>7}{s2:>8}{e2:>10.4f}")
+    if expected_frozen is not None:
+        print(f"\nfrozen-in-optimizer (expected/architectural): {expected_frozen or 'none'}")
+        print(f"frozen-in-optimizer (UNEXPECTED): {unexpected_frozen or 'none'}")
     if freeze_info is not None:
-        bb, nh, n_bn, n_gn = freeze_info
-        print(f"\nfreeze/norm audit: backbone_changed={bb}  neck_head_changed={nh}  "
-              f"BatchNorm={n_bn}  GroupNorm={n_gn}")
+        bb, nh, n_bn, n_gn, dfl_changed = freeze_info
+        print(f"freeze/norm audit: backbone_changed={bb}  neck_head_changed={nh}  "
+              f"DFL_changed={dfl_changed}  BatchNorm={n_bn}  GroupNorm={n_gn}")
     if record is not None:
         print(f"test_evaluated={record.get('test_evaluated')}  "
               f"epsilon_max={record.get('epsilon_max_over_clients')}  best_round={record.get('best_round')}")

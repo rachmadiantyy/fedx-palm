@@ -118,14 +118,23 @@ def train_client_round_dp(
     disable_inplace_ops(trainer.model)  # in case a fresh (non-DP-prepared) checkpoint slips in
     trainer._setup_train()
 
-    # trainable/frozen accounting for the E1/E2 audit -- the optimizer must
-    # only ever receive parameters with requires_grad=True (Ultralytics'
-    # `freeze` sets requires_grad=False on model.<i>.* for the frozen stages).
+    # trainable/frozen accounting for the E1/E2 audit. We log the NAMES of any
+    # requires_grad=False parameter that still sits in an optimizer param group
+    # (not just a boolean), because Ultralytics ALWAYS freezes the DFL fixed
+    # conv (`model.23.dfl.conv.weight`) -- an architectural constant set to
+    # arange(reg_max), never trained, in every YOLO run including B1/B2. That
+    # is expected, not a methodology error; the smoke test allowlists it and
+    # only fails on *unexpected* frozen params. Opacus/PyTorch never update a
+    # requires_grad=False param anyway (it gets no per-sample grad), so the
+    # constant stays constant -- verified separately by the DFL-unchanged check.
+    name_by_id = {id(p): n for n, p in trainer.model.named_parameters()}
     n_trainable = sum(p.numel() for p in trainer.model.parameters() if p.requires_grad)
     n_frozen = sum(p.numel() for p in trainer.model.parameters() if not p.requires_grad)
-    opt_param_ids = {id(p) for grp in trainer.optimizer.param_groups for p in grp["params"]}
-    opt_has_frozen = any((not p.requires_grad) and id(p) in opt_param_ids
-                         for p in trainer.model.parameters())
+    frozen_in_optimizer = sorted({
+        name_by_id.get(id(p), "<unknown>")
+        for grp in trainer.optimizer.param_groups for p in grp["params"]
+        if not p.requires_grad
+    })
 
     privacy_engine = PrivacyEngine(accountant=dp_hyp.get("accountant", "prv"))
     dp_model, dp_optimizer, dp_loader = privacy_engine.make_private(
@@ -190,7 +199,10 @@ def train_client_round_dp(
         "frozen": freeze_stages is not None,
         "n_trainable_params": int(n_trainable),
         "n_frozen_params": int(n_frozen),
-        "optimizer_has_frozen_params": bool(opt_has_frozen),  # must be False
+        # exact names of requires_grad=False params still in the optimizer; the
+        # DFL fixed conv is expected here (architectural), anything else is not.
+        "frozen_in_optimizer": frozen_in_optimizer,
+        "optimizer_has_frozen_params": bool(frozen_in_optimizer),  # kept for back-compat
         "accountant_state": _dump_accountant(privacy_engine),
     }
     # sanity: the accountant must have grown by exactly this round's steps
