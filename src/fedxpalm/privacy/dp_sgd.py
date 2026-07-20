@@ -210,7 +210,16 @@ def train_client_round_dp(
             dp_optimizer.step()
             n_steps += 1
 
-    epsilon = privacy_engine.get_epsilon(delta=dp_hyp["delta"])
+    # sigma == 0 is the "DP mechanism ablation: clipping-only diagnostic":
+    # per-sample clipping still runs, but with no Gaussian noise there is NO
+    # finite (epsilon, delta) guarantee -- epsilon must not be reported as a
+    # DP number (and the PRV accountant cannot evaluate sigma=0 anyway).
+    if dp_hyp["sigma"] > 0:
+        epsilon = float(privacy_engine.get_epsilon(delta=dp_hyp["delta"]))
+        privacy_guarantee = "dp_sgd"
+    else:
+        epsilon = None
+        privacy_guarantee = "not_applicable_no_noise"
     cumulative_steps = _cumulative_steps(privacy_engine)
     state_dict = {k.replace("_module.", "", 1): v.detach().clone() for k, v in dp_model.state_dict().items()}
 
@@ -224,7 +233,8 @@ def train_client_round_dp(
         "sample_rate_q": sample_rate,
         "steps_this_round": n_steps,
         "cumulative_steps": cumulative_steps,
-        "epsilon": float(epsilon),                 # cumulative over all rounds so far
+        "epsilon": epsilon,                        # cumulative over all rounds; None when sigma=0
+        "privacy_guarantee": privacy_guarantee,    # "dp_sgd" | "not_applicable_no_noise"
         "nan_inf": bool(nan_inf_detected),
         "clip_fraction": None,                     # not measured (would require per-sample-norm hooks)
         "clip_fraction_note": "not_measured",

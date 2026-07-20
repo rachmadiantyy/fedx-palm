@@ -106,10 +106,14 @@ def run_dp_sweep(variant: str, device: str = "0", k_override: int | None = None,
                 eval_fn=eval_fn, eval_every=eval_every,
             )
 
-            # per-client CUMULATIVE epsilon from the final round's client logs
+            # per-client CUMULATIVE epsilon from the final round's client logs.
+            # sigma == 0 (clipping-only diagnostic) reports epsilon = None for
+            # every client -- no finite DP guarantee exists, so epsilon_max is
+            # None too and the run must NOT appear on the privacy-utility curve.
             final_round = result["history"][-1]
             eps_per_client = {cid: info.get("epsilon") for cid, info in final_round["clients"].items()}
-            epsilon_max = max(eps_per_client.values()) if eps_per_client else None
+            eps_values = [v for v in eps_per_client.values() if v is not None]
+            epsilon_max = max(eps_values) if eps_values else None
             nan_inf_any = any(info.get("nan_inf") for r in result["history"] for info in r["clients"].values())
 
             record = {
@@ -120,6 +124,8 @@ def run_dp_sweep(variant: str, device: str = "0", k_override: int | None = None,
                 "best_val_map50": result["best_val_map50"],
                 "epsilon_per_client_final": eps_per_client,
                 "epsilon_max_over_clients": epsilon_max,
+                "privacy_guarantee": "dp_sgd" if sigma > 0 else "not_applicable_no_noise",
+                "clipping_only_diagnostic": sigma == 0,
                 "delta": dp_hyp["delta"], "max_grad_norm": dp_hyp["max_grad_norm"],
                 "nan_inf_any": nan_inf_any,
                 "best_weights": result["best_weights"],
