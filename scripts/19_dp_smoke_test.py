@@ -33,11 +33,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 BACKBONE_MAX_STAGE = 10  # model.0..model.10 = backbone; 11..22 neck; 23 head
 
 
-def _run(variant, device, imgsz, batch, sigma, rounds, tag_suffix):
+def _run(variant, device, imgsz, batch, sigma, rounds, tag_suffix, workers):
     from _dp_sweep_common import run_dp_sweep  # noqa: E402
+    # workers=0: keep dataloading in the main process. Opacus' _dict_safe_init
+    # collate fn is a local (unpicklable) closure, so a spawned DataLoader
+    # worker (workers>0) crashes on Windows -- workers=0 avoids it. Smoke path
+    # only; the real E1/E2 runs use the fl_config worker count unchanged.
     return run_dp_sweep(variant, device=device, k_override=4, sigma_override=sigma,
                         rounds_override=rounds, imgsz_override=imgsz, batch_override=batch,
-                        tag_suffix=tag_suffix)
+                        tag_suffix=tag_suffix, workers_override=workers)
 
 
 def _stage_of(param_key: str) -> int | None:
@@ -198,6 +202,9 @@ def main() -> int:
     parser.add_argument("--sigma", type=float, default=1.0)
     parser.add_argument("--rounds", type=int, default=2, help="must be >= 2 to test accumulation")
     parser.add_argument("--tag-suffix", default="smoke2r")
+    parser.add_argument("--workers", type=int, default=0,
+                        help="dataloader workers for the smoke run (default 0: avoids the Windows "
+                             "unpicklable-collate crash; does not affect the real E1/E2 pipeline)")
     parser.add_argument("--skip-run", action="store_true", help="analyze existing outputs only")
     args = parser.parse_args()
 
@@ -211,7 +218,8 @@ def main() -> int:
         print(f"  DP smoke test -- variant={v}")
         print("=" * 72)
         if not args.skip_run:
-            _run(v, args.device, args.imgsz, args.batch, args.sigma, args.rounds, args.tag_suffix)
+            _run(v, args.device, args.imgsz, args.batch, args.sigma, args.rounds,
+                 args.tag_suffix, args.workers)
         ok = analyze(v, args.tag_suffix)
         all_ok = all_ok and ok
     return 0 if all_ok else 1

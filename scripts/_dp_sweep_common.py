@@ -45,8 +45,15 @@ def make_dp_client_round_fn(hyp, dp_hyp, device, freeze_stages, accountant_state
 def run_dp_sweep(variant: str, device: str = "0", k_override: int | None = None,
                   sigma_override: float | None = None, rounds_override: int | None = None,
                   imgsz_override: int | None = None, batch_override: int | None = None,
-                  tag_suffix: str = "", eval_every: int = 1):
+                  tag_suffix: str = "", eval_every: int = 1, workers_override: int | None = None):
     """variant: 'full' (E1) or 'partial' (E2), matching configs/dp_config.yaml's `variants` keys.
+
+    `workers_override` sets the dataloader worker count (default None = leave the
+    fl_config value, i.e. unchanged for the real E1/E2 runs). The smoke test
+    passes 0 to avoid a Windows-only crash: Opacus' `_dict_safe_init` wraps the
+    loader with a locally-defined collate fn that can't be pickled when the
+    DataLoader spawns worker processes (workers>0) under Windows' spawn start
+    method. workers=0 keeps dataloading in the main process, sidestepping it.
 
     Returns the list of per-cell result dicts (also written to results/).
     """
@@ -63,6 +70,8 @@ def run_dp_sweep(variant: str, device: str = "0", k_override: int | None = None,
     hyp = dict(fl_cfg["local_training"], imgsz=imgsz)
     if batch_override:
         hyp["batch_size"] = batch_override
+    if workers_override is not None:
+        hyp["workers"] = workers_override
     rounds = rounds_override or fl_cfg["federated"]["rounds"]
     k_values = [k_override] if k_override is not None else fl_cfg["clients"]["k_values"]
     sigma_values = [sigma_override] if sigma_override is not None else dp_cfg["dp_sgd"]["noise_multiplier_values"]
