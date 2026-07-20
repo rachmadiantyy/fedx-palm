@@ -71,6 +71,38 @@ def _cumulative_steps(privacy_engine: PrivacyEngine) -> int:
     return total
 
 
+def _strip_frozen_from_optimizer(optimizer, model) -> list[str]:
+    """Remove every requires_grad=False parameter from the optimizer's
+    param_groups, BEFORE Opacus wraps it, so the DPOptimizer holds exactly the
+    trainable set.
+
+    Ultralytics' build_optimizer places ALL model parameters into its three
+    groups (decay weights / norm weights / biases) without checking
+    requires_grad -- freezing (E2's backbone, or the always-frozen DFL fixed
+    conv) only zeroes their grads, it does not remove them from the groups.
+    That is inert at runtime (a param with no grad is never updated -- the E2
+    smoke confirmed backbone_changed=False even pre-filter), but a clean
+    partial-DP implementation should hand Opacus only the trainable
+    parameters. Filtering is done IN PLACE on the existing groups: each
+    group's hyperparameters (lr, momentum, weight_decay, ...) are untouched
+    and Ultralytics' grouping is preserved; groups left empty are dropped.
+
+    Returns the names of the removed parameters.
+    """
+    name_by_id = {id(p): n for n, p in model.named_parameters()}
+    removed = []
+    new_groups = []
+    for grp in optimizer.param_groups:
+        kept = [p for p in grp["params"] if p.requires_grad]
+        removed.extend(name_by_id.get(id(p), "<unknown>")
+                       for p in grp["params"] if not p.requires_grad)
+        if kept:
+            grp["params"] = kept
+            new_groups.append(grp)
+    optimizer.param_groups[:] = new_groups
+    return sorted(removed)
+
+
 def train_client_round_dp(
     global_weights_path: str,
     client_data_yaml: str,
@@ -118,23 +150,23 @@ def train_client_round_dp(
     disable_inplace_ops(trainer.model)  # in case a fresh (non-DP-prepared) checkpoint slips in
     trainer._setup_train()
 
-    # trainable/frozen accounting for the E1/E2 audit. We log the NAMES of any
-    # requires_grad=False parameter that still sits in an optimizer param group
-    # (not just a boolean), because Ultralytics ALWAYS freezes the DFL fixed
-    # conv (`model.23.dfl.conv.weight`) -- an architectural constant set to
-    # arange(reg_max), never trained, in every YOLO run including B1/B2. That
-    # is expected, not a methodology error; the smoke test allowlists it and
-    # only fails on *unexpected* frozen params. Opacus/PyTorch never update a
-    # requires_grad=False param anyway (it gets no per-sample grad), so the
-    # constant stays constant -- verified separately by the DFL-unchanged check.
+    # Strip every requires_grad=False parameter (E2's frozen backbone AND the
+    # always-frozen DFL fixed conv) out of the optimizer BEFORE Opacus wraps
+    # it, so the DPOptimizer holds exactly -- and only -- the trainable set.
+    removed_frozen = _strip_frozen_from_optimizer(trainer.optimizer, trainer.model)
+
+    # Post-filter audit (set comparison, by param identity):
+    #   trainable model params  ==  params in optimizer groups
+    # missing_trainable_params and unexpected_frozen_params must both be [].
     name_by_id = {id(p): n for n, p in trainer.model.named_parameters()}
     n_trainable = sum(p.numel() for p in trainer.model.parameters() if p.requires_grad)
     n_frozen = sum(p.numel() for p in trainer.model.parameters() if not p.requires_grad)
-    frozen_in_optimizer = sorted({
-        name_by_id.get(id(p), "<unknown>")
-        for grp in trainer.optimizer.param_groups for p in grp["params"]
-        if not p.requires_grad
-    })
+    trainable_ids = {id(p) for p in trainer.model.parameters() if p.requires_grad}
+    optimizer_ids = {id(p) for grp in trainer.optimizer.param_groups for p in grp["params"]}
+    missing_trainable = sorted(name_by_id[i] for i in trainable_ids - optimizer_ids)
+    frozen_in_optimizer = sorted(
+        name_by_id.get(i, "<unknown>") for i in optimizer_ids - trainable_ids
+    )
 
     privacy_engine = PrivacyEngine(accountant=dp_hyp.get("accountant", "prv"))
     dp_model, dp_optimizer, dp_loader = privacy_engine.make_private(
@@ -199,10 +231,16 @@ def train_client_round_dp(
         "frozen": freeze_stages is not None,
         "n_trainable_params": int(n_trainable),
         "n_frozen_params": int(n_frozen),
-        # exact names of requires_grad=False params still in the optimizer; the
-        # DFL fixed conv is expected here (architectural), anything else is not.
-        "frozen_in_optimizer": frozen_in_optimizer,
-        "optimizer_has_frozen_params": bool(frozen_in_optimizer),  # kept for back-compat
+        # optimizer<->model set audit (post-filter): both lists must be empty
+        "missing_trainable_params": missing_trainable,
+        "unexpected_frozen_params": frozen_in_optimizer,
+        "frozen_in_optimizer": frozen_in_optimizer,               # back-compat alias
+        "optimizer_has_frozen_params": bool(frozen_in_optimizer),  # back-compat
+        # what the pre-Opacus filter stripped out (frozen backbone stages on E2,
+        # plus the DFL fixed conv on both variants); count + capped name sample
+        "removed_frozen_from_optimizer_count": len(removed_frozen),
+        "removed_frozen_from_optimizer_sample": removed_frozen[:12]
+            + ([f"...(+{len(removed_frozen) - 12} more)"] if len(removed_frozen) > 12 else []),
         "accountant_state": _dump_accountant(privacy_engine),
     }
     # sanity: the accountant must have grown by exactly this round's steps

@@ -150,15 +150,28 @@ def analyze(variant, tag_suffix):
             failures.append(f"client {cid}: cumulative {s2} != {st1}+{st2}")
         if r1[cid]["nan_inf"] or r2[cid]["nan_inf"]:
             failures.append(f"client {cid}: NaN/Inf detected")
-        # frozen-in-optimizer: fail only on UNEXPECTED names (DFL fixed conv is allowlisted)
+        # optimizer<->model set audit.
+        # Post-filter runs (have removed_frozen_from_optimizer_count): the
+        # optimizer must contain EXACTLY the trainable set -- any frozen param
+        # left (even the DFL fixed conv) means the pre-Opacus filter failed,
+        # and any missing trainable param means the filter dropped too much.
+        # Pre-filter artifacts: fall back to the allowlist (DFL expected).
         for rr in (r1[cid], r2[cid]):
             names = rr.get("frozen_in_optimizer")
             if names is None:
                 continue  # pre-patch artifact: no names logged (see note below)
             frozen_names_available = True
-            exp, unexp = _classify_frozen(names)
-            expected_frozen_seen.update(exp)
-            unexpected_frozen_seen.update(unexp)
+            post_filter = "removed_frozen_from_optimizer_count" in rr
+            missing = rr.get("missing_trainable_params") or []
+            if missing:
+                failures.append(f"client {cid}: trainable params MISSING from optimizer: {missing[:8]}")
+            if post_filter:
+                if names:
+                    failures.append(f"client {cid}: frozen params still in optimizer after filter: {names[:8]}")
+            else:
+                exp, unexp = _classify_frozen(names)
+                expected_frozen_seen.update(exp)
+                unexpected_frozen_seen.update(unexp)
         seen_cumulatives[cid] = s2
 
     # accountants not shared: with different dataset sizes, per-client cumulative
