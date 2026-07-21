@@ -71,6 +71,25 @@ def _cumulative_steps(privacy_engine: PrivacyEngine) -> int:
     return total
 
 
+def _per_sample_grad_norms(dp_optimizer) -> "torch.Tensor":
+    """Pre-clipping per-sample gradient L2 norm for the current micro-batch.
+
+    Must be called AFTER loss.backward() (so every param's `.grad_sample` is
+    populated) and BEFORE dp_optimizer.step() (which calls
+    clip_and_accumulate() internally and discards these norms without
+    exposing them). Replicates Opacus DPOptimizer.clip_and_accumulate()'s own
+    formula verbatim, using only its public `grad_samples` property -- so
+    this is guaranteed to match what Opacus actually clips on, without
+    monkey-patching or duplicating any clipping DECISION logic, only
+    reading the same per-sample norms it computes internally.
+    """
+    grad_samples = dp_optimizer.grad_samples  # list of (batch, *param_shape) tensors, one per param
+    if not grad_samples or len(grad_samples[0]) == 0:
+        return torch.zeros(0)
+    per_param_norms = [g.reshape(len(g), -1).norm(2, dim=-1) for g in grad_samples]
+    return torch.stack(per_param_norms, dim=1).norm(2, dim=1).detach().cpu()
+
+
 def _strip_frozen_from_optimizer(optimizer, model) -> list[str]:
     """Remove every requires_grad=False parameter from the optimizer's
     param_groups, BEFORE Opacus wraps it, so the DPOptimizer holds exactly the
@@ -115,6 +134,7 @@ def train_client_round_dp(
     freeze_stages: list[int] | None = None,
     accountant_state: dict | None = None,
     max_steps: int | None = None,
+    collect_grad_norms: bool = False,
 ) -> tuple[dict, dict]:
     """Fine-tunes `global_weights_path` on one client with per-sample DP-SGD.
 
@@ -124,9 +144,13 @@ def train_client_round_dp(
     normal; unused by any real E1/E2 sweep call site) -- for
     scripts/20_dp_freeze_audit.py's fast diagnostic, which needs only a
     couple of real optimizer steps against the production code path, not a
-    full epoch. Returns (state_dict, info) where state_dict has clean
-    (non-Opacus-prefixed) keys ready for fedavg(), and info carries the
-    per-round/per-client privacy log plus `accountant_state` (the updated
+    full epoch. `collect_grad_norms` (default False = zero added cost, unused
+    by any real E1/E2 sweep call site) records pre-clipping per-sample
+    gradient L2 norms every step and returns summary statistics in
+    info["grad_norm_stats"] -- for scripts/23_diag_b_clipping_only.py's
+    clipping-severity diagnostic. Returns (state_dict, info) where state_dict
+    has clean (non-Opacus-prefixed) keys ready for fedavg(), and info carries
+    the per-round/per-client privacy log plus `accountant_state` (the updated
     state to persist for next round).
     """
     run_name = f"r{round_idx}_client{client_id}_dp"
@@ -194,6 +218,7 @@ def train_client_round_dp(
     dp_model.train()
     n_steps = 0
     nan_inf_detected = False
+    observed_norms = [] if collect_grad_norms else None
     for _epoch in range(hyp["epochs_per_round"]):
         for batch in dp_loader:
             if len(batch["img"]) == 0:  # Poisson sampling can draw an empty batch
@@ -213,12 +238,39 @@ def train_client_round_dp(
             if not torch.isfinite(total_loss):
                 nan_inf_detected = True
             total_loss.backward()
+            if collect_grad_norms:
+                # must read BEFORE step(): step() -> pre_step() -> clip_and_accumulate()
+                # computes this same quantity internally then discards it
+                observed_norms.append(_per_sample_grad_norms(dp_optimizer))
             dp_optimizer.step()
             n_steps += 1
             if max_steps is not None and n_steps >= max_steps:
                 break
         if max_steps is not None and n_steps >= max_steps:
             break
+
+    grad_norm_stats = None
+    if collect_grad_norms and observed_norms:
+        all_norms = torch.cat([n for n in observed_norms if n.numel() > 0])
+        if all_norms.numel() > 0:
+            c = dp_hyp["max_grad_norm"]
+            # "fraction of samples with norm > C" and "clipping fraction" are the
+            # SAME quantity under L2 clipping (clip_factor = min(C/norm, 1) < 1
+            # iff norm > C) -- both reported since they were asked for
+            # separately, but they are mathematically identical by construction,
+            # not two independent measurements.
+            frac_above_c = float((all_norms > c).float().mean())
+            grad_norm_stats = {
+                "n_samples_observed": int(all_norms.numel()),
+                "median": float(all_norms.median()),
+                "p75": float(torch.quantile(all_norms, 0.75)),
+                "p90": float(torch.quantile(all_norms, 0.90)),
+                "p95": float(torch.quantile(all_norms, 0.95)),
+                "max": float(all_norms.max()),
+                "fraction_norm_above_C": frac_above_c,
+                "clip_fraction": frac_above_c,
+                "clip_fraction_note": "identical to fraction_norm_above_C by construction (L2 clipping)",
+            }
 
     # sigma == 0 is the "DP mechanism ablation: clipping-only diagnostic":
     # per-sample clipping still runs, but with no Gaussian noise there is NO
@@ -246,8 +298,9 @@ def train_client_round_dp(
         "epsilon": epsilon,                        # cumulative over all rounds; None when sigma=0
         "privacy_guarantee": privacy_guarantee,    # "dp_sgd" | "not_applicable_no_noise"
         "nan_inf": bool(nan_inf_detected),
-        "clip_fraction": None,                     # not measured (would require per-sample-norm hooks)
-        "clip_fraction_note": "not_measured",
+        "clip_fraction": grad_norm_stats["clip_fraction"] if grad_norm_stats else None,
+        "clip_fraction_note": "see grad_norm_stats" if grad_norm_stats else "not_measured (collect_grad_norms=False)",
+        "grad_norm_stats": grad_norm_stats,  # None unless collect_grad_norms=True
         "frozen": freeze_stages is not None,
         "n_trainable_params": int(n_trainable),
         "n_frozen_params": int(n_frozen),
