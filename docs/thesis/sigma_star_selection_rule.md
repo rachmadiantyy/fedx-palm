@@ -6,10 +6,11 @@ the sweep results it will be applied to. Do not edit after sweep results are
 produced; if a change is ever unavoidable, record it as an explicit amendment
 with its own rationale, never as a silent rewrite.
 
-> **AMENDMENT 1 IS IN EFFECT** (see below). The original threshold in this
-> section (tau = 0.70) is superseded by tau = 0.83. The original text is
-> preserved unchanged for the amendment trail; git history shows both
-> versions were committed BEFORE any 40-round DP sweep run existed.
+> **AMENDMENT 2 IS IN EFFECT** (see below). The original threshold (tau =
+> 0.70) and Amendment 1 (tau = 0.83) are both superseded by tau = 0.85.
+> All earlier texts are preserved unchanged for the amendment trail; git
+> history shows every version was committed BEFORE any 40-round DP sweep
+> run existed.
 
 ## Utility threshold (operational research threshold) — ORIGINAL (superseded)
 
@@ -32,7 +33,7 @@ sigma* = the LARGEST sigma in the candidate grid satisfying ALL of:
 
 ---
 
-# AMENDMENT 1 (in effect) — threshold revised 0.70 -> 0.83
+# AMENDMENT 1 (superseded by Amendment 2) — threshold revised 0.70 -> 0.83
 
 Recorded and committed BEFORE any 40-round DP sweep run was executed.
 Rationale: tau = 0.70 sits too far below the research's utility goal. The
@@ -53,7 +54,7 @@ tau = 0.83 is an **operational research threshold** (~95% utility retention
 against the B2 multi-seed mean), NOT a universal model-quality category. Its
 purpose is to keep DP utility close to the federated non-DP baseline.
 
-## Selection rule (Amendment 1, in effect)
+## Selection rule (Amendment 1 — superseded)
 
 sigma* = the LARGEST sigma in the candidate grid satisfying ALL of:
 
@@ -61,6 +62,53 @@ sigma* = the LARGEST sigma in the candidate grid satisfying ALL of:
 2. training completed normally
 3. nan_inf = False
 4. validation metrics finite/valid
+
+## Pre-registered fallbacks (Amendment 1 — superseded)
+
+- If NO sigma reaches E2 mAP@0.5 >= 0.83: pick the sigma with the highest E2
+  best-validation mAP@0.5, and state explicitly that the operational utility
+  threshold was not reached.
+- Tie (at reporting precision): pick the LARGER sigma.
+
+---
+
+# AMENDMENT 2 (in effect) — threshold revised 0.83 -> 0.85
+
+Recorded and committed BEFORE any 40-round DP core sweep was executed.
+
+Rationale: the research target is to keep Partial DP-SGD (E2) utility close
+to the federated non-private baseline B2, whose multi-seed mean
+best-validation mAP@0.5 is 0.8775. mAP@0.5 >= 0.85 is therefore set as the
+research's operational utility target/criterion.
+
+Important framing (binding for the thesis text):
+
+- tau = 0.85 is NOT a universal object-detection quality standard.
+- The threshold is NO LONGER derived from the "95% retention = 0.83"
+  formula. Numerically 0.85 does represent very high retention against B2,
+  but the primary reason for choosing it is the research's utility target of
+  keeping performance near 0.85.
+
+## Selection rule (Amendment 2, IN EFFECT)
+
+sigma* = the LARGEST sigma in the candidate grid satisfying ALL of:
+
+1. E2 best-validation mAP@0.5 >= 0.85
+2. training completed normally
+3. nan_inf = False
+4. validation metrics finite/valid
+
+E1 is NOT part of the threshold conditions; E1 IS evaluated at the SAME
+sigma* as E2 (matched privacy comparison).
+
+## Pre-registered fallbacks (Amendment 2)
+
+- If NO sigma reaches E2 mAP@0.5 >= 0.85: pick the sigma with the highest E2
+  best-validation mAP@0.5, and state explicitly that the operational utility
+  target of 0.85 was not reached.
+- Tie (at reporting precision): pick the LARGER sigma.
+
+All E1 and E2 sweep results at every sigma remain fully reported.
 
 Notes:
 
@@ -72,12 +120,9 @@ Notes:
   full; sigma* selection complements, and does not replace, the
   privacy-utility curve analysis.
 
-## Pre-registered fallbacks (Amendment 1)
+---
 
-- If NO sigma reaches E2 mAP@0.5 >= 0.83: pick the sigma with the highest E2
-  best-validation mAP@0.5, and state explicitly that the operational utility
-  threshold was not reached.
-- Tie (at reporting precision): pick the LARGER sigma.
+# General protocol (applies under every amendment)
 
 ## Multi-seed confirmation (after sigma* is fixed)
 
