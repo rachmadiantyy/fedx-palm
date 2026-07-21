@@ -23,6 +23,17 @@ import fedxpalm  # noqa: F401 (applies the GroupNorm-safe `fuse()` patch)
 from fedxpalm.eval.detection_metrics import evaluate_detector
 from fedxpalm.federated.server import run_federated_training
 from fedxpalm.privacy.dp_sgd import train_client_round_dp
+from fedxpalm.privacy.freeze_audit import audit_freeze
+
+# Fields train_client_round_dp() computes every round per client (dp_sgd.py)
+# but that, before this fix, were only ever surfaced by the smoke test and
+# silently dropped for real sweep runs -- present in each round's
+# history.json entry, but never rolled up into the top-level results/*.json.
+_FREEZE_OPT_AUDIT_FIELDS = (
+    "n_trainable_params", "n_frozen_params", "missing_trainable_params",
+    "frozen_in_optimizer", "unexpected_frozen_params", "optimizer_has_frozen_params",
+    "removed_frozen_from_optimizer_count",
+)
 
 
 def make_dp_client_round_fn(hyp, dp_hyp, device, freeze_stages, accountant_states):
@@ -116,6 +127,47 @@ def run_dp_sweep(variant: str, device: str = "0", k_override: int | None = None,
             epsilon_max = max(eps_values) if eps_values else None
             nan_inf_any = any(info.get("nan_inf") for r in result["history"] for info in r["clients"].values())
 
+            # Freeze/optimizer audit: round 0's per-client dict is representative
+            # (freeze/optimizer-group membership is a static function of
+            # freeze_stages + architecture, not of training progress), verified
+            # by an explicit cross-round consistency check rather than assumed --
+            # storing this for all 40 rounds x K clients would bloat history.json
+            # for no benefit if it never changes.
+            round0_clients = result["history"][0]["clients"]
+            per_client_freeze_audit = {
+                cid: {f: info.get(f) for f in _FREEZE_OPT_AUDIT_FIELDS}
+                for cid, info in round0_clients.items()
+            }
+            audit_consistent = True
+            inconsistent_rounds = set()
+            for r in result["history"]:
+                for cid, info in r["clients"].items():
+                    ref = per_client_freeze_audit.get(cid, {})
+                    if any(info.get(f) != ref.get(f) for f in _FREEZE_OPT_AUDIT_FIELDS):
+                        audit_consistent = False
+                        inconsistent_rounds.add(r["round"])
+            if not audit_consistent:
+                print(f"WARNING: freeze/optimizer audit fields changed across rounds "
+                      f"{sorted(inconsistent_rounds)} -- inspect {out_dir}/history.json directly; "
+                      f"per_client_freeze_audit below reflects round 0 only.")
+
+            # Weight-change audit: diff the shared init checkpoint against this
+            # run's final aggregated global model. Valid across the WHOLE run
+            # (not just round 0): frozen params never enter any client's
+            # optimizer, so FedAvg over identical per-client copies keeps them
+            # bit-identical end to end -- if the backbone changed anywhere, in
+            # any client, in any round, or in the aggregation itself, this diff
+            # catches it without needing a per-round snapshot.
+            try:
+                bb_changed, nh_changed, n_bn, n_gn, dfl_changed = audit_freeze(
+                    "models/base_groupnorm.pt", result["final_weights"])
+                weight_change_audit = {
+                    "backbone_changed": bb_changed, "neck_head_changed": nh_changed,
+                    "dfl_changed": dfl_changed, "batchnorm_count": n_bn, "groupnorm_count": n_gn,
+                }
+            except Exception as e:
+                weight_change_audit = {"error": str(e)}
+
             record = {
                 "variant": variant, "k": k, "sigma": sigma, "rounds": rounds,
                 "imgsz": imgsz, "batch_size": hyp["batch_size"],
@@ -128,6 +180,9 @@ def run_dp_sweep(variant: str, device: str = "0", k_override: int | None = None,
                 "clipping_only_diagnostic": sigma == 0,
                 "delta": dp_hyp["delta"], "max_grad_norm": dp_hyp["max_grad_norm"],
                 "nan_inf_any": nan_inf_any,
+                "per_client_freeze_audit_round0": per_client_freeze_audit,
+                "freeze_audit_consistent_across_rounds": audit_consistent,
+                "weight_change_audit": weight_change_audit,
                 "best_weights": result["best_weights"],
                 "final_weights": result["final_weights"],
                 # test intentionally NOT evaluated in the sweep

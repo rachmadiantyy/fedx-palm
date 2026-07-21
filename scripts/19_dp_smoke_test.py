@@ -24,26 +24,25 @@ Assertions:
   - E1: no BatchNorm remains / GroupNorm present in the trained checkpoint
 """
 import argparse
+import importlib.util
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-BACKBONE_MAX_STAGE = 10  # model.0..model.10 = backbone; 11..22 neck; 23 head
-
-# Parameters that are frozen BY ARCHITECTURE, not a methodology error:
-# Ultralytics always freezes the DFL fixed conv (weight = arange(reg_max),
-# never trained) in every YOLO run, DP or not. A frozen param whose name
-# matches one of these is expected; anything else that is frozen-but-in-the-
-# optimizer is a real problem (a param that should train but won't).
-EXPECTED_FROZEN_PATTERNS = ("dfl.conv",)
-
-
-def _classify_frozen(names):
-    expected = [n for n in names if any(p in n for p in EXPECTED_FROZEN_PATTERNS)]
-    unexpected = [n for n in names if not any(p in n for p in EXPECTED_FROZEN_PATTERNS)]
-    return expected, unexpected
+# Loaded by file path (not `from fedxpalm.privacy... import`) so this script's
+# --skip-run analysis path doesn't force fedxpalm/__init__.py's eager
+# torch/ultralytics import merely to reach the pure-Python classification
+# helper -- same convention as scripts/02 and 11's direct load of split.py.
+_freeze_audit_path = Path(__file__).resolve().parent.parent / "src" / "fedxpalm" / "privacy" / "freeze_audit.py"
+_spec = importlib.util.spec_from_file_location("_fedx_freeze_audit", _freeze_audit_path)
+_freeze_audit = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_freeze_audit)
+BACKBONE_MAX_STAGE = _freeze_audit.BACKBONE_MAX_STAGE
+EXPECTED_FROZEN_PATTERNS = _freeze_audit.EXPECTED_FROZEN_PATTERNS
+_classify_frozen = _freeze_audit.classify_frozen
+audit_freeze = _freeze_audit.audit_freeze
 
 
 def _run(variant, device, imgsz, batch, sigma, rounds, tag_suffix, workers):
@@ -55,52 +54,6 @@ def _run(variant, device, imgsz, batch, sigma, rounds, tag_suffix, workers):
     return run_dp_sweep(variant, device=device, k_override=4, sigma_override=sigma,
                         rounds_override=rounds, imgsz_override=imgsz, batch_override=batch,
                         tag_suffix=tag_suffix, workers_override=workers)
-
-
-def _stage_of(param_key: str) -> int | None:
-    # keys look like "model.5.cv1.conv.weight"
-    parts = param_key.split(".")
-    if len(parts) >= 2 and parts[0] == "model" and parts[1].isdigit():
-        return int(parts[1])
-    return None
-
-
-def _load_state(path):
-    import torch
-    ckpt = torch.load(path, map_location="cpu", weights_only=False)
-    model = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
-    return model.state_dict(), model
-
-
-def audit_freeze(init_weights, final_weights):
-    """Returns (backbone_changed, neck_head_changed, n_bn, n_gn)."""
-    import torch
-    import torch.nn as nn
-
-    sd0, _ = _load_state(init_weights)
-    sd1, model1 = _load_state(final_weights)
-    backbone_changed = neck_head_changed = False
-    for k in sd1:
-        if k not in sd0 or sd0[k].shape != sd1[k].shape:
-            continue
-        stage = _stage_of(k)
-        if stage is None:
-            continue
-        differs = not torch.equal(sd0[k].float(), sd1[k].float())
-        if stage <= BACKBONE_MAX_STAGE:
-            backbone_changed = backbone_changed or differs
-        else:
-            neck_head_changed = neck_head_changed or differs
-    # DFL fixed conv must be byte-identical before/after: proof the DPOptimizer
-    # never updated the architectural constant despite it sitting in a group.
-    dfl_changed = False
-    for k in sd1:
-        if "dfl.conv" in k and k in sd0 and sd0[k].shape == sd1[k].shape:
-            if not torch.equal(sd0[k].float(), sd1[k].float()):
-                dfl_changed = True
-    n_bn = sum(1 for m in model1.modules() if isinstance(m, nn.modules.batchnorm._BatchNorm))
-    n_gn = sum(1 for m in model1.modules() if isinstance(m, nn.GroupNorm))
-    return backbone_changed, neck_head_changed, n_bn, n_gn, dfl_changed
 
 
 def analyze(variant, tag_suffix):

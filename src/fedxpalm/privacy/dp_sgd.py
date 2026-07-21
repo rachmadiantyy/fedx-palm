@@ -114,14 +114,20 @@ def train_client_round_dp(
     device: str = "0",
     freeze_stages: list[int] | None = None,
     accountant_state: dict | None = None,
+    max_steps: int | None = None,
 ) -> tuple[dict, dict]:
     """Fine-tunes `global_weights_path` on one client with per-sample DP-SGD.
 
     `accountant_state` is this client's saved privacy-accountant state from the
-    previous round (None on round 0). Returns (state_dict, info) where
-    state_dict has clean (non-Opacus-prefixed) keys ready for fedavg(), and
-    info carries the per-round/per-client privacy log plus `accountant_state`
-    (the updated state to persist for next round).
+    previous round (None on round 0). `max_steps` caps the number of DP
+    optimizer steps taken (default None = run the full epochs_per_round as
+    normal; unused by any real E1/E2 sweep call site) -- for
+    scripts/20_dp_freeze_audit.py's fast diagnostic, which needs only a
+    couple of real optimizer steps against the production code path, not a
+    full epoch. Returns (state_dict, info) where state_dict has clean
+    (non-Opacus-prefixed) keys ready for fedavg(), and info carries the
+    per-round/per-client privacy log plus `accountant_state` (the updated
+    state to persist for next round).
     """
     run_name = f"r{round_idx}_client{client_id}_dp"
     overrides = dict(
@@ -209,6 +215,10 @@ def train_client_round_dp(
             total_loss.backward()
             dp_optimizer.step()
             n_steps += 1
+            if max_steps is not None and n_steps >= max_steps:
+                break
+        if max_steps is not None and n_steps >= max_steps:
+            break
 
     # sigma == 0 is the "DP mechanism ablation: clipping-only diagnostic":
     # per-sample clipping still runs, but with no Gaussian noise there is NO
