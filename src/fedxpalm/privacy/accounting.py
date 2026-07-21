@@ -26,9 +26,31 @@ def compute_epsilon(
     return acct.get_epsilon(delta=delta)
 
 
+def training_sample_rate(n_samples: int, batch_size: int) -> float:
+    """The EXACT sample rate the training pipeline's accountant sees.
+
+    Opacus' `DPDataLoader.from_data_loader` (used by `make_private` with
+    poisson_sampling=True) sets `sample_rate = 1 / len(original_loader)`
+    = 1 / ceil(n / batch) -- NOT batch/n. The two differ slightly whenever n
+    is not divisible by batch (e.g. n=775, b=4: 1/194=0.005155 vs
+    4/775=0.005161), and that difference was the residual between an earlier
+    naive offline estimate and the actual smoke epsilons.
+    """
+    import math
+    return 1.0 / math.ceil(n_samples / batch_size)
+
+
 def estimate_steps(n_samples: int, batch_size: int, epochs_per_round: int, rounds: int) -> int:
-    """Total local SGD steps a client takes over the whole federated run."""
-    steps_per_epoch = max(1, round(n_samples / batch_size))
+    """EXPECTED total local DP optimizer steps over the whole federated run,
+    matching the training pipeline: ceil(n/batch) batches per epoch (the
+    Poisson DPDataLoader's expected batch count). The ACTUAL count is
+    slightly lower because the training loop skips Poisson draws that come
+    back empty or with zero ground-truth boxes -- data-dependent and not
+    predictable offline, so this estimate is a conservative upper bound
+    (offline epsilon >= actual epsilon). Final epsilons are always taken
+    from the actual accountant in the run's history."""
+    import math
+    steps_per_epoch = math.ceil(n_samples / batch_size)
     return steps_per_epoch * epochs_per_round * rounds
 
 
@@ -45,9 +67,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     steps = estimate_steps(args.n_samples, args.batch_size, args.epochs_per_round, args.rounds)
-    sample_rate = args.batch_size / args.n_samples
-    print(f"n_samples={args.n_samples} batch_size={args.batch_size} -> sample_rate={sample_rate:.4f}, "
-          f"{steps} total local steps over {args.rounds} rounds")
+    sample_rate = training_sample_rate(args.n_samples, args.batch_size)
+    print(f"n_samples={args.n_samples} batch_size={args.batch_size} -> sample_rate={sample_rate:.6f} "
+          f"(= 1/ceil(n/b), matching Opacus DPDataLoader), "
+          f"{steps} expected local steps over {args.rounds} rounds")
     for sigma in args.sigmas:
         eps = compute_epsilon(sigma, sample_rate, steps, args.delta)
         print(f"  sigma={sigma:>4} -> epsilon={eps:.3f} (delta={args.delta})")
