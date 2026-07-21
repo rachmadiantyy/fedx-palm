@@ -82,6 +82,12 @@ def train_client_round(
         # ramp, every round, so the configured lr0 is never actually reached.
         # Default stays 3.0 (reproduces prior runs); tune via fl_config/CLI.
         warmup_epochs=hyp.get("warmup_epochs", 3.0),
+        # Stage freezing for the genuinely-non-DP partial-frozen control
+        # (scripts/21_diag_a_partial_nodp.py). Absent from every B2 hyp dict
+        # (fl_config's local_training has no freeze_stages key), so this
+        # resolves to None = Ultralytics' own default = exact locked-B2
+        # behavior; only the diagnostic passes a list here.
+        freeze=hyp.get("freeze_stages"),
         # per-(seed, round, client) -- recorded in the checkpoint's train_args;
         # consumed by SeededDetectionTrainer to drive shuffle + augmentation
         seed=effective_seed(hyp.get("seed", 0), round_idx, client_id),
