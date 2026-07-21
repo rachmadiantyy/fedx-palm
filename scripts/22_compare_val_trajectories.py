@@ -81,8 +81,27 @@ def main() -> int:
         m95_b = rb["map50_95"] if rb else None
         delta = (m50_a - m50_b) if isinstance(m50_a, (int, float)) and isinstance(m50_b, (int, float)) else None
         print(f"{rd:>6} | {fmt(m50_a):>16} {fmt(m95_a):>18} | {fmt(m50_b):>16} {fmt(m95_b):>18} | {fmt(delta):>13}")
-        comparison_rows.append({"round": rd, f"{args.a_label}_map50": m50_a, f"{args.a_label}_map50_95": m95_a,
-                                f"{args.b_label}_map50": m50_b, f"{args.b_label}_map50_95": m95_b, "delta_map50": delta})
+        comparison_rows.append({
+            "round": rd,
+            f"{args.a_label}_map50": m50_a, f"{args.a_label}_map50_95": m95_a,
+            f"{args.a_label}_precision": ra["precision"] if ra else None,
+            f"{args.a_label}_recall": ra["recall"] if ra else None,
+            f"{args.b_label}_map50": m50_b, f"{args.b_label}_map50_95": m95_b,
+            f"{args.b_label}_precision": rb["precision"] if rb else None,
+            f"{args.b_label}_recall": rb["recall"] if rb else None,
+            "delta_map50": delta,
+        })
+
+    # separate table for precision/recall -- keeps each table narrow/readable
+    print()
+    header2 = (f"{'round':>6} | {args.a_label+' P':>12} {args.a_label+' R':>10} | "
+              f"{args.b_label+' P':>12} {args.b_label+' R':>10}")
+    print(header2)
+    print("-" * len(header2))
+    for row in comparison_rows:
+        print(f"{row['round']:>6} | {fmt(row[f'{args.a_label}_precision']):>12} "
+              f"{fmt(row[f'{args.a_label}_recall']):>10} | "
+              f"{fmt(row[f'{args.b_label}_precision']):>12} {fmt(row[f'{args.b_label}_recall']):>10}")
 
     valid_a = [r[f"{args.a_label}_map50"] for r in comparison_rows if r[f"{args.a_label}_map50"] is not None]
     valid_b = [r[f"{args.b_label}_map50"] for r in comparison_rows if r[f"{args.b_label}_map50"] is not None]

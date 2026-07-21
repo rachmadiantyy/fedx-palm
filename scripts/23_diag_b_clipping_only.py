@@ -49,9 +49,20 @@ Outputs (all NEW namespace -- nothing under any B1/B2/E1/E2/diag_a path):
 
   python scripts/23_diag_b_clipping_only.py --device 0
 
-This is a DIAGNOSTIC: its numbers are not thesis results, must not enter any
-results table or privacy-utility curve, and its epsilon is always null (no
-DP guarantee exists at sigma=0).
+--sigma (default 0.0) turns this same script into "Diagnostic C" when set to
+the real E2 sigma (e.g. --sigma 0.5 --tag sigma0.5): the EXACT same
+clipping-only config/instrumentation, but with noise turned on, isolating
+what adding Gaussian noise changes relative to Diagnostic B's clean
+clipping-only baseline (rather than clipping+noise vs no-DP-at-all, which
+conflates both effects). The output PATH prefix stays "diag_b_clipping_only"
+(same script, same mechanism) -- the run's actual identity (B vs C) is
+recorded in the results JSON's "diagnostic" field and epsilon_max_over_clients
+(None for B, a real number for C), and --tag keeps the files apart on disk.
+
+This is a DIAGNOSTIC: its numbers are not thesis results and must not enter
+any results table or privacy-utility curve. At sigma=0 (Diagnostic B),
+epsilon is always null (no DP guarantee exists); at sigma>0 (Diagnostic C),
+epsilon is real but still not a locked-configuration result.
 """
 import argparse
 import json
@@ -80,6 +91,12 @@ def main() -> int:
                         help="default: fl_config local_training.lr0 (0.01, the value A0 confirmed healthy)")
     parser.add_argument("--max-grad-norm", type=float, default=None,
                         help="override configs/dp_config.yaml dp_sgd.max_grad_norm (default: 1.0, per spec -- C tuning is a LATER step)")
+    parser.add_argument("--sigma", type=float, default=0.0,
+                        help="noise multiplier (default 0.0 = clipping-only diagnostic B, no privacy "
+                             "guarantee). Passing e.g. --sigma 0.5 turns this into 'diagnostic C': the "
+                             "exact same clipping-only config/instrumentation but with the real E2 "
+                             "sigma=0.5 noise added, to isolate noise's effect from clipping's -- use "
+                             "--tag to route it to its own output path")
     parser.add_argument("--tag", default="")
     parser.add_argument("--workers", type=int, default=0,
                         help="dataloader workers (default 0: matches the validated E1/E2 DP scripts and "
@@ -109,7 +126,7 @@ def main() -> int:
 
     max_grad_norm = args.max_grad_norm if args.max_grad_norm is not None else dp_cfg["dp_sgd"]["max_grad_norm"]
     dp_hyp = {
-        "sigma": 0.0,  # forced -- this IS the clipping-only diagnostic, not read from any sweep grid
+        "sigma": args.sigma,  # default 0.0 = clipping-only; --sigma > 0 isolates noise's added effect
         "max_grad_norm": max_grad_norm,
         "delta": dp_cfg["dp_sgd"]["delta"],
         "accountant": dp_cfg["dp_sgd"]["accountant"],
@@ -141,10 +158,12 @@ def main() -> int:
         # VALIDATION only; this script has no test-eval path anywhere
         return evaluate_detector(weights_path, data_yaml, split="val", imgsz=imgsz, device=args.device)
 
-    print(f"Diagnostic B [tag='{args.tag or '(none)'}']: clipping-only control -- "
+    diag_label = "B (clipping-only)" if args.sigma == 0.0 else f"C (clipping + noise, sigma={args.sigma})"
+    print(f"Diagnostic {diag_label} [tag='{args.tag or '(none)'}'] -- "
           f"{args.rounds} rounds, K=4, freeze={freeze_stages}, imgsz={imgsz}, batch={hyp['batch_size']}, "
-          f"lr0={hyp['lr0']}, C={max_grad_norm}, sigma=0.0 (NO noise, NO privacy guarantee), "
-          f"workers={hyp['workers']} -> {out_dir}")
+          f"lr0={hyp['lr0']}, C={max_grad_norm}, sigma={args.sigma}"
+          + (" (NO noise, NO privacy guarantee)" if args.sigma == 0.0 else " (finite DP guarantee)")
+          + f", workers={hyp['workers']} -> {out_dir}")
     result = run_federated_training(
         client_round_fn, client_data_yamls, client_sample_counts,
         init_weights_path="models/base_groupnorm.pt", rounds=args.rounds, out_dir=out_dir,
@@ -188,16 +207,27 @@ def main() -> int:
             else:
                 print(f"{h['round']:>6}{cid:>8}  (no grad_norm_stats -- instrumentation did not run)")
 
+    # per-client cumulative epsilon from the final round (None for every client
+    # when sigma=0, per dp_sgd.py's existing guard -- unchanged, just read here
+    # instead of hardcoded, so --sigma > 0 diagnostic-C runs report it correctly)
+    final_round_clients = result["history"][-1]["clients"]
+    eps_per_client = {cid: info.get("epsilon") for cid, info in final_round_clients.items()}
+    eps_values = [v for v in eps_per_client.values() if v is not None]
+    epsilon_max = max(eps_values) if eps_values else None
+
     record = {
-        "diagnostic": "B_clipping_only_control",
-        "note": "DIAGNOSTIC ONLY -- not a thesis result; sigma=0 has NO finite privacy guarantee",
+        "diagnostic": "B_clipping_only_control" if args.sigma == 0.0 else "C_clipping_plus_noise",
+        "note": ("DIAGNOSTIC ONLY -- not a thesis result; sigma=0 has NO finite privacy guarantee"
+                if args.sigma == 0.0 else
+                "DIAGNOSTIC ONLY -- not a thesis result (short-round noise-isolation run)"),
         "rounds": args.rounds, "seed": args.seed, "k": 4,
         "freeze_stages": freeze_stages, "imgsz": imgsz, "batch_size": hyp["batch_size"],
         "lr0": hyp["lr0"], "momentum": hyp.get("momentum"), "weight_decay": hyp.get("weight_decay"),
         "epochs_per_round": hyp["epochs_per_round"], "warmup_epochs": 0.0,
-        "sigma": 0.0, "max_grad_norm": max_grad_norm, "delta": dp_hyp["delta"],
-        "dp": True, "opacus": True, "clipping": True, "noise": False,
-        "epsilon": None, "epsilon_max": None, "privacy_guarantee": "not_applicable_no_noise",
+        "sigma": args.sigma, "max_grad_norm": max_grad_norm, "delta": dp_hyp["delta"],
+        "dp": True, "opacus": True, "clipping": True, "noise": args.sigma > 0.0,
+        "epsilon_per_client_final": eps_per_client, "epsilon_max_over_clients": epsilon_max,
+        "privacy_guarantee": "dp_sgd" if args.sigma > 0.0 else "not_applicable_no_noise",
         "val_per_round": [{"round": rd, "map50": m50, "map50_95": m95, "precision": p, "recall": r}
                           for rd, m50, m95, p, r in val_rows],
         "best_round": result["best_round"], "best_val_map50": result["best_val_map50"],
