@@ -43,6 +43,13 @@ state_dicts), which is why 19/20's exact-equality audits remain valid there.
 
   python scripts/21_diag_a_partial_nodp.py --device 0
 
+LR/freeze overrides (--lr0, --freeze-stages) and --tag are ADDITIVE: omitted,
+behavior and output paths are byte-identical to the original A0 reference run
+(runs/diag_a_partial_nodp/k4_seed42/, results/diag_a_partial_nodp_seed42.json)
+-- so A0 is never re-run or overwritten by a later A1/A2/freeze-relaxation
+diagnostic. Each --tag writes to its own runs/.../k4_seed{S}_{tag}/ and
+results/..._seed{S}_{tag}.json.
+
 This is a DIAGNOSTIC: its numbers are not thesis results and must not enter
 any results table or privacy-utility curve.
 """
@@ -108,6 +115,17 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--imgsz", type=int, default=None, help="default: fl_config model.imgsz (960)")
     parser.add_argument("--batch", type=int, default=None, help="default: fl_config local_training.batch_size (8)")
+    parser.add_argument("--lr0", type=float, default=None,
+                        help="override fl_config local_training.lr0 (0.01) -- Step 1 LR sweep, "
+                             "freeze_stages/K/partition/batch/imgsz/momentum/wd all held fixed")
+    parser.add_argument("--freeze-stages", type=int, nargs="*", default=None,
+                        help="override dp_config variants.partial.freeze_stages (default: read from "
+                             "configs/dp_config.yaml, same as E2). Pass stage indices e.g. --freeze-stages "
+                             "0 1 2 3 4 for a shallower freeze, or --freeze-stages with NO values for no "
+                             "freeze at all (Step 2 progressive-unfreeze diagnostics)")
+    parser.add_argument("--tag", default="",
+                         help="output-path suffix so LR/freeze variants never collide with the A0 "
+                              "reference run or each other, e.g. --tag lr0.001")
     args = parser.parse_args()
 
     with open("configs/dataset.yaml") as f:
@@ -117,7 +135,8 @@ def main() -> int:
     with open("configs/dp_config.yaml") as f:
         dp_cfg = yaml.safe_load(f)
 
-    freeze_stages = dp_cfg["variants"]["partial"]["freeze_stages"]  # same source E2 reads
+    freeze_stages = (args.freeze_stages if args.freeze_stages is not None
+                     else dp_cfg["variants"]["partial"]["freeze_stages"])  # same source E2 reads, unless overridden
     splits_dir = Path(ds_cfg["output_dir"])
     data_yaml = str(splits_dir / "data.yaml")
     imgsz = args.imgsz or fl_cfg["model"]["imgsz"]
@@ -125,6 +144,8 @@ def main() -> int:
                warmup_epochs=0.0, freeze_stages=freeze_stages)
     if args.batch:
         hyp["batch_size"] = args.batch
+    if args.lr0 is not None:
+        hyp["lr0"] = args.lr0
 
     manifest_path = splits_dir / "federated_partitions" / "manifest.json"
     with open(manifest_path) as f:
@@ -133,7 +154,8 @@ def main() -> int:
     client_data_yamls = {cid: str(clients_dir / f"client{cid}" / "data.yaml") for cid in manifest["sizes"]}
     client_sample_counts = dict(manifest["sizes"])
 
-    out_dir = f"runs/diag_a_partial_nodp/k4_seed{args.seed}"
+    suffix = f"_{args.tag}" if args.tag else ""
+    out_dir = f"runs/diag_a_partial_nodp/k4_seed{args.seed}{suffix}"
 
     def client_round_fn(client_id, data_yaml_c, global_weights_path, round_idx, out_dir_c):
         import torch
@@ -147,9 +169,10 @@ def main() -> int:
         # VALIDATION only; this script has no test-eval path anywhere
         return evaluate_detector(weights_path, data_yaml, split="val", imgsz=imgsz, device=args.device)
 
-    print(f"Diagnostic A: partial NO-DP frozen-backbone control -- "
-          f"{args.rounds} rounds, K=4, freeze={freeze_stages}, imgsz={imgsz}, "
-          f"batch={hyp['batch_size']}, lr0={hyp['lr0']}, warmup=0, NO Opacus/clipping/noise")
+    print(f"Diagnostic A [tag='{args.tag or '(none, A0 reference paths)'}']: partial NO-DP "
+          f"frozen-backbone control -- {args.rounds} rounds, K=4, freeze={freeze_stages}, "
+          f"imgsz={imgsz}, batch={hyp['batch_size']}, lr0={hyp['lr0']}, warmup=0, "
+          f"NO Opacus/clipping/noise -> {out_dir}")
     result = run_federated_training(
         client_round_fn, client_data_yamls, client_sample_counts,
         init_weights_path="models/base_groupnorm.pt", rounds=args.rounds, out_dir=out_dir,
@@ -179,13 +202,49 @@ def main() -> int:
     for r, s in train.items():
         print(f"  {r:<10} max|d|={s['max_abs_diff']:.2e}  changed={s['params_changed']}/{s['params_total']}")
 
-    val_rows = [(h["round"], (h.get("val") or {}).get("map50"), (h.get("val") or {}).get("map50_95"))
+    val_rows = [(h["round"], (h.get("val") or {}).get("map50"), (h.get("val") or {}).get("map50_95"),
+                (h.get("val") or {}).get("precision"), (h.get("val") or {}).get("recall"))
                 for h in result["history"]]
     print("\n--- validation progression ---")
-    print(f"{'round':>6}{'mAP50':>10}{'mAP50-95':>11}")
-    for rd, m50, m95 in val_rows:
-        print(f"{rd:>6}{(m50 if m50 is not None else float('nan')):>10.4f}"
-              f"{(m95 if m95 is not None else float('nan')):>11.4f}")
+    print(f"{'round':>6}{'mAP50':>10}{'mAP50-95':>11}{'precision':>11}{'recall':>9}")
+    for rd, m50, m95, p, r in val_rows:
+        def _f(x):
+            return x if x is not None else float("nan")
+        print(f"{rd:>6}{_f(m50):>10.4f}{_f(m95):>11.4f}{_f(p):>11.4f}{_f(r):>9.4f}")
+
+    # objective (not interpreted) trend descriptor: first vs best vs last round
+    map50_vals = [m for _, m, *_ in val_rows if m is not None]
+    if len(map50_vals) >= 2:
+        first, last, best = map50_vals[0], map50_vals[-1], max(map50_vals)
+        if last >= best - 1e-6:
+            trend = "IMPROVING (or flat) through the last round -- more rounds might help"
+        elif last <= first + 1e-3:
+            trend = "STAGNANT/DEGRADING -- best was reached early then val did not sustain it"
+        else:
+            trend = "PEAKED then partially receded"
+        print(f"trend: first={first:.4f} best={best:.4f} last={last:.4f} -> {trend}")
+
+    # per-client per-round training losses -- already computed by
+    # read_local_train_log() and already present in history.json (nothing was
+    # lost), just not previously surfaced by this script's own console/JSON
+    # output. Keys are exactly as Ultralytics writes them in results.csv.
+    print("\n--- per-client training losses (from results.csv via read_local_train_log) ---")
+    print(f"{'round':>6}{'client':>8}{'box_loss':>11}{'cls_loss':>11}{'dfl_loss':>11}{'lr/pg0':>10}")
+    train_loss_rows = []
+    for h in result["history"]:
+        for cid, info in h["clients"].items():
+            row = {
+                "round": h["round"], "client_id": cid,
+                "box_loss": info.get("train/box_loss"),
+                "cls_loss": info.get("train/cls_loss"),
+                "dfl_loss": info.get("train/dfl_loss"),
+                "lr_pg0": info.get("lr/pg0"),
+            }
+            train_loss_rows.append(row)
+            def _f2(x):
+                return x if x is not None else float("nan")
+            print(f"{row['round']:>6}{row['client_id']:>8}{_f2(row['box_loss']):>11.4f}"
+                  f"{_f2(row['cls_loss']):>11.4f}{_f2(row['dfl_loss']):>11.4f}{_f2(row['lr_pg0']):>10.5f}")
 
     failures = []
     if backbone_changed:
@@ -207,7 +266,9 @@ def main() -> int:
         "lr0": hyp["lr0"], "momentum": hyp.get("momentum"), "weight_decay": hyp.get("weight_decay"),
         "epochs_per_round": hyp["epochs_per_round"], "warmup_epochs": 0.0,
         "dp": False, "opacus": False, "clipping": False, "noise": False, "accountant": None,
-        "val_per_round": [{"round": rd, "map50": m50, "map50_95": m95} for rd, m50, m95 in val_rows],
+        "val_per_round": [{"round": rd, "map50": m50, "map50_95": m95, "precision": p, "recall": r}
+                          for rd, m50, m95, p, r in val_rows],
+        "train_losses_per_client_round": train_loss_rows,
         "best_round": result["best_round"], "best_val_map50": result["best_val_map50"],
         "audit_base_to_round0_quantization": quant,
         "audit_round0_to_final": train,
@@ -217,7 +278,7 @@ def main() -> int:
         "test_evaluated": False,
         "history": str(Path(out_dir) / "history.json"),
     }
-    out_json = f"results/diag_a_partial_nodp_seed{args.seed}.json"
+    out_json = f"results/diag_a_partial_nodp_seed{args.seed}{suffix}.json"
     Path("results").mkdir(exist_ok=True)
     with open(out_json, "w") as f:
         json.dump(record, f, indent=2)
