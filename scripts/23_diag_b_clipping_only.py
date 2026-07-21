@@ -24,6 +24,10 @@ Everything else matches the healthy A0 configuration exactly:
                  batch 8, imgsz 960, warmup 0 (same as A0)
   - max_grad_norm: configs/dp_config.yaml dp_sgd.max_grad_norm (C=1.0)
   - sigma:       0.0 (forced; NOT read from dp_config's sweep grid)
+  - workers:     0 by default (matches 19_dp_smoke_test.py and the validated
+                 E1/E2 DP scripts -- Opacus' locally-defined collate fn
+                 can't be pickled into spawned workers on Windows, so
+                 workers>0 crashes before training starts)
   - accountant:  threaded per client round-to-round (same mechanism as the
                  real E1/E2 sweep), but epsilon is never computed at sigma=0
   - eval:        VALIDATION split only, every round; no test-eval path exists
@@ -77,6 +81,10 @@ def main() -> int:
     parser.add_argument("--max-grad-norm", type=float, default=None,
                         help="override configs/dp_config.yaml dp_sgd.max_grad_norm (default: 1.0, per spec -- C tuning is a LATER step)")
     parser.add_argument("--tag", default="")
+    parser.add_argument("--workers", type=int, default=0,
+                        help="dataloader workers (default 0: matches the validated E1/E2 DP scripts and "
+                             "scripts/19_dp_smoke_test.py -- workers>0 crashes on Windows because Opacus' "
+                             "locally-defined collate fn can't be pickled into spawned workers)")
     args = parser.parse_args()
 
     if args.rounds > 5:
@@ -93,7 +101,7 @@ def main() -> int:
     splits_dir = Path(ds_cfg["output_dir"])
     data_yaml = str(splits_dir / "data.yaml")
     imgsz = args.imgsz or fl_cfg["model"]["imgsz"]
-    hyp = dict(fl_cfg["local_training"], imgsz=imgsz, warmup_epochs=0.0)
+    hyp = dict(fl_cfg["local_training"], imgsz=imgsz, warmup_epochs=0.0, workers=args.workers)
     if args.batch:
         hyp["batch_size"] = args.batch
     if args.lr0 is not None:
@@ -135,7 +143,8 @@ def main() -> int:
 
     print(f"Diagnostic B [tag='{args.tag or '(none)'}']: clipping-only control -- "
           f"{args.rounds} rounds, K=4, freeze={freeze_stages}, imgsz={imgsz}, batch={hyp['batch_size']}, "
-          f"lr0={hyp['lr0']}, C={max_grad_norm}, sigma=0.0 (NO noise, NO privacy guarantee) -> {out_dir}")
+          f"lr0={hyp['lr0']}, C={max_grad_norm}, sigma=0.0 (NO noise, NO privacy guarantee), "
+          f"workers={hyp['workers']} -> {out_dir}")
     result = run_federated_training(
         client_round_fn, client_data_yamls, client_sample_counts,
         init_weights_path="models/base_groupnorm.pt", rounds=args.rounds, out_dir=out_dir,
