@@ -86,7 +86,17 @@ def main() -> int:
     parser.add_argument("--rounds", type=int, default=5, help="diagnostic max is 5; override discouraged")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--imgsz", type=int, default=None, help="default: fl_config model.imgsz (960)")
-    parser.add_argument("--batch", type=int, default=None, help="default: fl_config local_training.batch_size (8)")
+    parser.add_argument("--batch", type=int, default=None,
+                        help="legacy alias for --logical-batch (default: fl_config local_training.batch_size, 8)")
+    parser.add_argument("--logical-batch", type=int, default=None,
+                        help="logical (Poisson) batch size driving sample_rate/expected_batch_size (default: "
+                             "fl_config local_training.batch_size, 8). Use with --physical-batch to keep the "
+                             "logical batch large for SNR while capping per-step GPU memory, via Opacus "
+                             "BatchMemoryManager -- same mechanism already validated in scripts/25's probes")
+    parser.add_argument("--physical-batch", type=int, default=None,
+                        help="physical per-step batch actually placed on device (default: same as the "
+                             "resolved logical batch, i.e. no BatchMemoryManager -- byte-identical to the "
+                             "original unwrapped path)")
     parser.add_argument("--lr0", type=float, default=None,
                         help="default: fl_config local_training.lr0 (0.01, the value A0 confirmed healthy)")
     parser.add_argument("--max-grad-norm", type=float, default=None,
@@ -126,9 +136,19 @@ def main() -> int:
     splits_dir = Path(ds_cfg["output_dir"])
     data_yaml = str(splits_dir / "data.yaml")
     imgsz = args.imgsz or fl_cfg["model"]["imgsz"]
-    hyp = dict(fl_cfg["local_training"], imgsz=imgsz, warmup_epochs=0.0, workers=args.workers)
-    if args.batch:
-        hyp["batch_size"] = args.batch
+    default_batch = fl_cfg["local_training"]["batch_size"]
+    logical_batch = args.logical_batch or args.batch or default_batch
+    physical_batch = args.physical_batch or logical_batch  # default: no BatchMemoryManager needed
+    if physical_batch > logical_batch:
+        print(f"FAIL: --physical-batch ({physical_batch}) must not exceed --logical-batch ({logical_batch})")
+        return 1
+    # only engage BatchMemoryManager when actually needed -- when physical ==
+    # logical, physical_batch_size stays None, byte-identical to the
+    # previously-validated (unwrapped) path
+    physical_batch_size_arg = physical_batch if physical_batch < logical_batch else None
+
+    hyp = dict(fl_cfg["local_training"], imgsz=imgsz, warmup_epochs=0.0, workers=args.workers,
+               batch_size=logical_batch)
     if args.lr0 is not None:
         hyp["lr0"] = args.lr0
 
@@ -158,6 +178,7 @@ def main() -> int:
             device=args.device, freeze_stages=freeze_stages,
             accountant_state=accountant_states.get(client_id),
             collect_grad_norms=True,
+            physical_batch_size=physical_batch_size_arg,
         )
         accountant_states[client_id] = info.pop("accountant_state")
         return state_dict, info
@@ -168,7 +189,8 @@ def main() -> int:
 
     diag_label = "B (clipping-only)" if args.sigma == 0.0 else f"C (clipping + noise, sigma={args.sigma})"
     print(f"Diagnostic {diag_label} [tag='{args.tag or '(none)'}'] -- "
-          f"{args.rounds} rounds, K=4, freeze={freeze_stages}, imgsz={imgsz}, batch={hyp['batch_size']}, "
+          f"{args.rounds} rounds, K=4, freeze={freeze_stages}, imgsz={imgsz}, "
+          f"logical_batch={logical_batch}, physical_batch={physical_batch}, "
           f"lr0={hyp['lr0']}, C={max_grad_norm}, sigma={args.sigma}"
           + (" (NO noise, NO privacy guarantee)" if args.sigma == 0.0 else " (finite DP guarantee)")
           + f", workers={hyp['workers']} -> {out_dir}")
@@ -229,7 +251,9 @@ def main() -> int:
                 if args.sigma == 0.0 else
                 "DIAGNOSTIC ONLY -- not a thesis result (short-round noise-isolation run)"),
         "rounds": args.rounds, "seed": args.seed, "k": 4,
-        "freeze_stages": freeze_stages, "imgsz": imgsz, "batch_size": hyp["batch_size"],
+        "freeze_stages": freeze_stages, "imgsz": imgsz,
+        "batch_size": logical_batch,  # kept for backward compat with earlier B/C records (== logical_batch_size)
+        "logical_batch_size": logical_batch, "physical_batch_size": physical_batch,
         "lr0": hyp["lr0"], "momentum": hyp.get("momentum"), "weight_decay": hyp.get("weight_decay"),
         "epochs_per_round": hyp["epochs_per_round"], "warmup_epochs": 0.0,
         "sigma": args.sigma, "max_grad_norm": max_grad_norm, "delta": dp_hyp["delta"],
