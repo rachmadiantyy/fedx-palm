@@ -56,11 +56,53 @@ measurement. The two trainable regions under the CURRENT E2 config are
 neck (stages 11-22) and head (stage 23, DFL excluded since it stays frozen
 even in the trainable regions -- see freeze_audit.py's stage map).
 
+TASK 1 FINDING (baseline logical batch=8): the real probe reported
+expected_batch_size=7, not 8. Traced to Opacus's OWN source, not a repo
+bug: `DPDataLoader.from_data_loader` sets `sample_rate = 1/len(data_loader)`,
+and a standard (non-drop-last) DataLoader has `len() = ceil(n/batch)`. For
+client0 (n=860, batch=8): len=ceil(860/8)=108, sample_rate=1/108=0.009259.
+`PrivacyEngine.make_private` then sets
+`expected_batch_size = int(len(dataset) * sample_rate)` -- note the `int()`
+TRUNCATION (not round) -- `int(860 * 1/108) = int(7.963) = 7`. Verified this
+reproduces exactly for all 4 clients (n=860/775/5305/1997) at batch=8, all
+of which round down to expected_batch_size=7 under this formula. This is
+expected, intentional Opacus behavior (a structural consequence of deriving
+a Poisson sample_rate from a discretized "epoch length", not specific to
+this dataset), NOT an implementation or accounting error -- left unchanged.
+It also does not explain the noise domination: the ~12% gap between 7 and 8
+is negligible next to the observed ~100-190x noise_to_signal ratio.
+
+LOGICAL-BATCH SWEEP (this task): --logical-batch/--physical-batch let the
+Poisson sample_rate/expected_batch_size be computed for a LARGER logical
+batch (32, 64, ...) while the physical per-step compute stays capped (<=8,
+for GPU memory), via Opacus's own `BatchMemoryManager` -- wired into
+train_client_round_dp() as an additive, opt-in `physical_batch_size` kwarg
+(default None = unwrapped, unused by any real E1/E2 call site, so their
+behavior is byte-for-byte unchanged). BatchMemoryManager splits each Poisson
+logical draw into <=physical_batch_size chunks; Opacus's own skip-step
+queue makes clip_and_accumulate() fire (and accumulate into p.summed_grad)
+on EVERY physical chunk, while add_noise() (and a real step) fires only
+ONCE per logical group -- verified end-to-end on a real model: the
+accumulated actual_sampled_batch_size correctly reflects the FULL logical
+batch (not just the last physical chunk -- an easy mistake, caught and
+fixed during verification: reading `grad_samples` after the ALREADY-run
+clip call, or without tracking accumulation across skipped calls, silently
+under-reports it), and model parameters remain BYTE-IDENTICAL across
+multiple physical iterations spanning multiple logical steps.
+
+Reports "projected" privacy-accounting inputs (sample rate q, expected
+total local steps) for each logical batch size via this repo's own
+accounting helper (fedxpalm.privacy.accounting) -- NOT a final epsilon,
+which is only ever computed by the same PRV accountant during a real
+(or previously-run) training call, per instruction.
+
 Outputs (NEW namespace, no B1/B2/E1/E2/diag_a/diag_b path touched, no
 checkpoint saved anywhere -- every parameter update is a no-op):
-  results/diag_noise_signal_probe_seed{seed}.json
+  results/diag_noise_signal_probe_client{id}_sigma{sigma}_logB{L}_physB{P}.json
 
-  python scripts/25_diag_noise_signal_probe.py --device 0
+  python scripts/25_diag_noise_signal_probe.py --device 0                                    # baseline, logical=physical=8
+  python scripts/25_diag_noise_signal_probe.py --device 0 --logical-batch 32 --physical-batch 8
+  python scripts/25_diag_noise_signal_probe.py --device 0 --logical-batch 64 --physical-batch 8
 
 This is a DIAGNOSTIC: no training occurs (zero parameter updates, verified),
 no test split is read, and nothing here changes C, sigma, or lr0 for any
@@ -77,10 +119,11 @@ import torch  # noqa: E402
 import yaml  # noqa: E402
 
 import fedxpalm  # noqa: E402,F401 (applies the GroupNorm-safe `fuse()` patch)
+from fedxpalm.privacy.accounting import estimate_steps, training_sample_rate  # noqa: E402
 from fedxpalm.privacy.dp_sgd import train_client_round_dp  # noqa: E402
 from fedxpalm.privacy.freeze_audit import BACKBONE_MAX_STAGE, stage_of  # noqa: E402
 
-_captured = {"steps": [], "name_by_id": {}}
+_captured = {"steps": [], "name_by_id": {}, "_accum_bs": 0}
 
 
 def _region_of(name: str) -> str:
@@ -113,10 +156,24 @@ def _install_probe():
     orig_make_private = pe_mod.PrivacyEngine.make_private
 
     def wrapped_clip(self):
+        # With BatchMemoryManager (physical_batch_size set), clip_and_accumulate()
+        # fires on EVERY physical micro-batch, accumulating into p.summed_grad,
+        # while add_noise() only fires once per LOGICAL group. `self.grad_samples`
+        # at this point reflects only the CURRENT physical chunk (p.grad_sample was
+        # reset to None after the previous clip call), so the actual accumulated
+        # logical batch size must be tracked across calls, not read once here --
+        # verified: reading it naively under-reports by ~4x at logical=32/physical=8.
+        # p.summed_grad is None exactly when a NEW logical group starts (Opacus's
+        # own zero_grad() only resets it to None when the PREVIOUS step wasn't skipped).
+        starting_new_group = self.params[0].summed_grad is None
+        this_call_bs = len(self.grad_samples[0]) if self.grad_samples and len(self.grad_samples) > 0 else 0
+        if starting_new_group:
+            _captured["_accum_bs"] = 0
+        _captured["_accum_bs"] += this_call_bs
         orig_clip(self)  # real Opacus clipping -- p.summed_grad now holds the real clipped/summed gradient
         _captured["_pending"] = {
             "expected_batch_size": self.expected_batch_size,
-            "actual_sampled_batch_size": len(self.grad_samples[0]) if self.grad_samples else 0,
+            "actual_sampled_batch_size": _captured["_accum_bs"],  # running total across physical chunks
             "pre_noise": {id(p): p.summed_grad.detach().clone() for p in self.params},
         }
 
@@ -157,7 +214,14 @@ def main() -> int:
     parser.add_argument("--max-grad-norm", type=float, default=None, help="default: configs/dp_config.yaml (C=1.0)")
     parser.add_argument("--lr0", type=float, default=None, help="default: fl_config local_training.lr0 (0.01)")
     parser.add_argument("--imgsz", type=int, default=None)
-    parser.add_argument("--batch", type=int, default=None)
+    parser.add_argument("--batch", type=int, default=None, help="legacy alias for --logical-batch")
+    parser.add_argument("--logical-batch", type=int, default=None,
+                        help="logical (Poisson) batch size driving sample_rate/expected_batch_size "
+                             "(default: fl_config local_training.batch_size = 8, i.e. the validated baseline)")
+    parser.add_argument("--physical-batch", type=int, default=None,
+                        help="physical per-step batch actually placed on device, capped for GPU memory "
+                             "(default: same as the resolved logical batch, i.e. no BatchMemoryManager -- "
+                             "byte-identical to the original baseline probe path)")
     parser.add_argument("--base-weights", default="models/base_groupnorm.pt")
     parser.add_argument("--out-dir", default="runs/_diag_noise_signal_probe_scratch",
                         help="scratch dir for Ultralytics' own run artifacts; NOT a real experiment path")
@@ -186,9 +250,19 @@ def main() -> int:
 
     freeze_stages = dp_cfg["variants"]["partial"]["freeze_stages"]  # same source as A0/E2/Diag B: [0..10]
     imgsz = args.imgsz or fl_cfg["model"]["imgsz"]
-    hyp = dict(fl_cfg["local_training"], imgsz=imgsz, warmup_epochs=0.0, workers=0)
-    if args.batch:
-        hyp["batch_size"] = args.batch
+
+    default_batch = fl_cfg["local_training"]["batch_size"]
+    logical_batch = args.logical_batch or args.batch or default_batch
+    physical_batch = args.physical_batch or logical_batch  # default: no BatchMemoryManager needed
+    if physical_batch > logical_batch:
+        print(f"FAIL: --physical-batch ({physical_batch}) must not exceed --logical-batch ({logical_batch})")
+        return 1
+    # only engage BatchMemoryManager when actually needed -- when physical ==
+    # logical, physical_batch_size stays None, byte-identical to the
+    # originally-validated (unwrapped) baseline path
+    physical_batch_size_arg = physical_batch if physical_batch < logical_batch else None
+
+    hyp = dict(fl_cfg["local_training"], imgsz=imgsz, warmup_epochs=0.0, workers=0, batch_size=logical_batch)
     if args.lr0 is not None:
         hyp["lr0"] = args.lr0
     max_grad_norm = args.max_grad_norm if args.max_grad_norm is not None else dp_cfg["dp_sgd"]["max_grad_norm"]
@@ -197,10 +271,20 @@ def main() -> int:
         "delta": dp_cfg["dp_sgd"]["delta"], "accountant": dp_cfg["dp_sgd"]["accountant"],
     }
 
-    print(f"Noise/signal probe: client={client_id} (n={manifest['sizes'][client_id]})  freeze={freeze_stages}  "
-          f"lr0={hyp['lr0']}  C={max_grad_norm}  sigma={args.sigma}  batch={hyp['batch_size']}  "
+    n_client = manifest["sizes"][client_id]
+    projected_q = training_sample_rate(n_client, logical_batch)
+    print(f"Noise/signal probe: client={client_id} (n={n_client})  freeze={freeze_stages}  "
+          f"lr0={hyp['lr0']}  C={max_grad_norm}  sigma={args.sigma}  "
+          f"logical_batch={logical_batch}  physical_batch={physical_batch}  "
           f"imgsz={imgsz}  steps={args.steps}")
+    print(f"projected sample_rate q = {projected_q:.6f} (NOT a final epsilon -- see note below)")
     print("(optimizer update is a NO-OP for this entire run -- verified below)")
+
+    # If physical_batch_size_arg is set, max_steps counts PHYSICAL iterations
+    # (see dp_sgd.py's note), so request generous headroom to guarantee
+    # args.steps full LOGICAL groups complete, then truncate to args.steps below.
+    physical_per_logical = -(-logical_batch // physical_batch)  # ceil division
+    max_steps_arg = args.steps * physical_per_logical + physical_per_logical if physical_batch_size_arg else args.steps
 
     restore = _install_probe()
     try:
@@ -208,10 +292,15 @@ def main() -> int:
             global_weights_path=args.base_weights, client_data_yaml=data_yaml,
             hyp=hyp, dp_hyp=dp_hyp, round_idx=0, client_id=f"probe_{client_id}",
             out_dir=args.out_dir, device=args.device, freeze_stages=freeze_stages,
-            accountant_state=None, max_steps=args.steps,
+            accountant_state=None, max_steps=max_steps_arg,
+            physical_batch_size=physical_batch_size_arg,
         )
     finally:
         restore()
+
+    # keep only the requested number of logical steps (extra ones may have
+    # been captured due to the generous max_steps headroom above)
+    _captured["steps"] = _captured["steps"][:args.steps]
 
     if not _captured["steps"]:
         print("FAIL: no DP optimizer steps were observed (empty dataloader or all batches skipped)")
@@ -261,20 +350,40 @@ def main() -> int:
     # fact that this script never touches/saves any model file at all here.
     weight_update_occurred = False  # no train_client_round_dp state_dict is ever persisted by this script
 
+    # projected privacy-accounting inputs ONLY -- q and an expected step count
+    # for a full run at this logical batch size; NOT an epsilon. Final epsilon
+    # must come from the same PRV accountant during an actual (or previously
+    # completed) training call, per instruction -- never computed here.
+    rounds = fl_cfg["federated"]["rounds"]
+    epochs_per_round = fl_cfg["local_training"]["epochs_per_round"]
+    projected_expected_steps = estimate_steps(n_client, logical_batch, epochs_per_round, rounds)
+    projected_accounting = {
+        "sample_rate_q": projected_q,
+        "expected_total_local_steps_full_run": projected_expected_steps,
+        "epochs_per_round": epochs_per_round, "communication_rounds": rounds,
+        "epsilon": None,
+        "epsilon_note": "NOT COMPUTED -- q/steps only, per instruction; requires the same PRV "
+                        "accountant run over an actual (or previously completed) training call",
+    }
+
     record = {
         "diagnostic": "noise_signal_probe",
         "note": "DIAGNOSTIC ONLY -- not a thesis result; zero parameter updates occurred (verified)",
         "client_id": client_id, "freeze_stages": freeze_stages,
         "lr0": hyp["lr0"], "max_grad_norm": max_grad_norm, "sigma": args.sigma,
-        "batch_size": hyp["batch_size"], "imgsz": imgsz,
+        "logical_batch_size": logical_batch, "physical_batch_size": physical_batch, "imgsz": imgsz,
         "weight_update_occurred": weight_update_occurred,
+        "projected_privacy_accounting_inputs": projected_accounting,
         "steps": step_records,
     }
-    out_json = f"results/diag_noise_signal_probe_client{client_id}_sigma{args.sigma}.json"
+    out_json = (f"results/diag_noise_signal_probe_client{client_id}_sigma{args.sigma}"
+               f"_logB{logical_batch}_physB{physical_batch}.json")
     Path("results").mkdir(exist_ok=True)
     with open(out_json, "w") as f:
         json.dump(record, f, indent=2)
-    print(f"\nSaved {out_json}")
+    print(f"\nprojected_total_local_steps (full 40-round run @ logical_batch={logical_batch}): "
+          f"{projected_expected_steps}  (epsilon NOT computed -- see note in JSON)")
+    print(f"Saved {out_json}")
     print("Do NOT change C, sigma, or lr0 based on this probe alone -- report back for the next step.")
     return 0
 

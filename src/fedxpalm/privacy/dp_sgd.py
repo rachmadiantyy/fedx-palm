@@ -135,6 +135,7 @@ def train_client_round_dp(
     accountant_state: dict | None = None,
     max_steps: int | None = None,
     collect_grad_norms: bool = False,
+    physical_batch_size: int | None = None,
 ) -> tuple[dict, dict]:
     """Fine-tunes `global_weights_path` on one client with per-sample DP-SGD.
 
@@ -148,7 +149,16 @@ def train_client_round_dp(
     by any real E1/E2 sweep call site) records pre-clipping per-sample
     gradient L2 norms every step and returns summary statistics in
     info["grad_norm_stats"] -- for scripts/23_diag_b_clipping_only.py's
-    clipping-severity diagnostic. Returns (state_dict, info) where state_dict
+    clipping-severity diagnostic. `physical_batch_size` (default None =
+    unwrapped, unused by any real E1/E2 sweep call site) wraps the DP
+    dataloader in Opacus's own `BatchMemoryManager` so the LOGICAL batch
+    (hyp["batch_size"], which drives the Poisson sample_rate/expected batch
+    size) can exceed the PHYSICAL batch actually placed on the device --
+    for scripts/25_diag_noise_signal_probe.py's logical-batch-size sweep.
+    clip_and_accumulate()/add_noise() still fire exactly once per LOGICAL
+    batch (Opacus's own skip-step accounting), so this changes nothing about
+    per-round semantics other than how many physical forward/backward calls
+    it takes to reach one logical step. Returns (state_dict, info) where state_dict
     has clean (non-Opacus-prefixed) keys ready for fedavg(), and info carries
     the per-round/per-client privacy log plus `accountant_state` (the updated
     state to persist for next round).
@@ -215,39 +225,59 @@ def train_client_round_dp(
     sample_rate = float(getattr(dp_loader, "sample_rate",
                                 hyp["batch_size"] / max(1, len(dp_loader.dataset))))
 
+    # NOTE: when physical_batch_size is set, `active_loader` yields PHYSICAL
+    # micro-batches, so `n_steps`/`max_steps` below count physical iterations,
+    # not logical ones -- clip_and_accumulate()/add_noise() (and thus a real
+    # step) still only fire once per LOGICAL group (Opacus's own skip-step
+    # queue), so max_steps can cut off mid-logical-group, silently discarding
+    # that group's partial accumulation without ever completing a step for
+    # it. Harmless for a diagnostic that requests generous headroom and reads
+    # its OWN step count (e.g. via a step-completion hook), rather than
+    # relying on max_steps to mean "N logical steps" -- not currently an
+    # issue for any real E1/E2 call site, since none of them pass
+    # physical_batch_size.
+    if physical_batch_size is not None:
+        from opacus.utils.batch_memory_manager import BatchMemoryManager
+        batch_ctx = BatchMemoryManager(data_loader=dp_loader, max_physical_batch_size=physical_batch_size,
+                                       optimizer=dp_optimizer)
+    else:
+        from contextlib import nullcontext
+        batch_ctx = nullcontext(dp_loader)  # identical to the pre-existing unwrapped loop when unset
+
     dp_model.train()
     n_steps = 0
     nan_inf_detected = False
     observed_norms = [] if collect_grad_norms else None
-    for _epoch in range(hyp["epochs_per_round"]):
-        for batch in dp_loader:
-            if len(batch["img"]) == 0:  # Poisson sampling can draw an empty batch
-                continue
-            if len(batch["cls"]) == 0:
-                # A batch with images but zero ground-truth boxes across all of them
-                # (small Poisson draw landing entirely on an unlabeled/background image)
-                # leaves Ultralytics' box-regression branch (model.23.cv2.*) disconnected
-                # from the loss graph -- Opacus then raises "Per sample gradient is not
-                # initialized" since those parameters never got a backward pass. Skipping
-                # is safe: such a batch carries no positive detection signal anyway.
-                continue
-            batch = trainer.preprocess_batch(batch)
-            dp_optimizer.zero_grad()
-            loss, _loss_items = dp_model(batch)
-            total_loss = loss.sum()
-            if not torch.isfinite(total_loss):
-                nan_inf_detected = True
-            total_loss.backward()
-            if collect_grad_norms:
-                # must read BEFORE step(): step() -> pre_step() -> clip_and_accumulate()
-                # computes this same quantity internally then discards it
-                observed_norms.append(_per_sample_grad_norms(dp_optimizer))
-            dp_optimizer.step()
-            n_steps += 1
+    with batch_ctx as active_loader:
+        for _epoch in range(hyp["epochs_per_round"]):
+            for batch in active_loader:
+                if len(batch["img"]) == 0:  # Poisson sampling can draw an empty batch
+                    continue
+                if len(batch["cls"]) == 0:
+                    # A batch with images but zero ground-truth boxes across all of them
+                    # (small Poisson draw landing entirely on an unlabeled/background image)
+                    # leaves Ultralytics' box-regression branch (model.23.cv2.*) disconnected
+                    # from the loss graph -- Opacus then raises "Per sample gradient is not
+                    # initialized" since those parameters never got a backward pass. Skipping
+                    # is safe: such a batch carries no positive detection signal anyway.
+                    continue
+                batch = trainer.preprocess_batch(batch)
+                dp_optimizer.zero_grad()
+                loss, _loss_items = dp_model(batch)
+                total_loss = loss.sum()
+                if not torch.isfinite(total_loss):
+                    nan_inf_detected = True
+                total_loss.backward()
+                if collect_grad_norms:
+                    # must read BEFORE step(): step() -> pre_step() -> clip_and_accumulate()
+                    # computes this same quantity internally then discards it
+                    observed_norms.append(_per_sample_grad_norms(dp_optimizer))
+                dp_optimizer.step()
+                n_steps += 1
+                if max_steps is not None and n_steps >= max_steps:
+                    break
             if max_steps is not None and n_steps >= max_steps:
                 break
-        if max_steps is not None and n_steps >= max_steps:
-            break
 
     grad_norm_stats = None
     if collect_grad_norms and observed_norms:
