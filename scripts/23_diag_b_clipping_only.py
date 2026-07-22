@@ -102,6 +102,13 @@ def main() -> int:
                         help="dataloader workers (default 0: matches the validated E1/E2 DP scripts and "
                              "scripts/19_dp_smoke_test.py -- workers>0 crashes on Windows because Opacus' "
                              "locally-defined collate fn can't be pickled into spawned workers)")
+    parser.add_argument("--freeze-stages", type=int, nargs="*", default=None,
+                        help="override configs/dp_config.yaml variants.partial.freeze_stages (default: "
+                             "read from there, i.e. P0/current-E2 [0..10]). Pass explicit stage indices "
+                             "for a different trainable subset, e.g. P2 (frozen: all except 16,19,22,23)")
+    parser.add_argument("--subset-label", default="P0",
+                        help="label for this trainable-subset candidate (P0/P1/P2/...) -- purely for "
+                             "output filename/record clarity, does not affect the probe itself")
     args = parser.parse_args()
 
     if args.rounds > 5:
@@ -114,7 +121,8 @@ def main() -> int:
     with open("configs/dp_config.yaml") as f:
         dp_cfg = yaml.safe_load(f)
 
-    freeze_stages = dp_cfg["variants"]["partial"]["freeze_stages"]  # same source as A0/E2: [0..10]
+    freeze_stages = (args.freeze_stages if args.freeze_stages is not None
+                    else dp_cfg["variants"]["partial"]["freeze_stages"])  # default: same source as A0/E2
     splits_dir = Path(ds_cfg["output_dir"])
     data_yaml = str(splits_dir / "data.yaml")
     imgsz = args.imgsz or fl_cfg["model"]["imgsz"]
@@ -173,8 +181,8 @@ def main() -> int:
     # weight/freeze audit -- DP path returns live fp32 state_dicts (no EMA/fp16
     # cast, unlike Diagnostic A's non-DP path), so exact equality is the right
     # test here, same as the E1/E2 audits.
-    bb_changed, nh_changed, n_bn, n_gn, dfl_changed = audit_freeze(
-        "models/base_groupnorm.pt", result["final_weights"])
+    frozen_changed, trainable_changed, n_bn, n_gn, dfl_changed = audit_freeze(
+        "models/base_groupnorm.pt", result["final_weights"], freeze_stages=freeze_stages)
 
     val_rows = [(h["round"], (h.get("val") or {}).get("map50"), (h.get("val") or {}).get("map50_95"),
                 (h.get("val") or {}).get("precision"), (h.get("val") or {}).get("recall"))
@@ -186,7 +194,7 @@ def main() -> int:
             return x if x is not None else float("nan")
         print(f"{rd:>6}{_f(m50):>10.4f}{_f(m95):>11.4f}{_f(p):>11.4f}{_f(r):>9.4f}")
 
-    print(f"\nweight/norm audit: backbone_changed={bb_changed}  neck_head_changed={nh_changed}  "
+    print(f"\nweight/norm audit: frozen_changed={frozen_changed}  trainable_changed={trainable_changed}  "
           f"dfl_changed={dfl_changed}  BatchNorm={n_bn}  GroupNorm={n_gn}")
 
     # clipping-severity table, per round per client
@@ -231,7 +239,9 @@ def main() -> int:
         "val_per_round": [{"round": rd, "map50": m50, "map50_95": m95, "precision": p, "recall": r}
                           for rd, m50, m95, p, r in val_rows],
         "best_round": result["best_round"], "best_val_map50": result["best_val_map50"],
-        "backbone_changed": bb_changed, "neck_head_changed": nh_changed, "dfl_changed": dfl_changed,
+        "subset_label": args.subset_label,
+        "frozen_region_changed": frozen_changed, "trainable_region_changed": trainable_changed,
+        "dfl_changed": dfl_changed,
         "batchnorm_count": n_bn, "groupnorm_count": n_gn,
         "clipping_severity_per_client_round": clip_rows,
         "nan_inf_any": nan_inf_any,
