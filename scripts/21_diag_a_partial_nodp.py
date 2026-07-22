@@ -50,6 +50,18 @@ behavior and output paths are byte-identical to the original A0 reference run
 diagnostic. Each --tag writes to its own runs/.../k4_seed{S}_{tag}/ and
 results/..._seed{S}_{tag}.json.
 
+The weight/freeze audit and n_trainable/n_frozen counts are derived from
+THIS run's own --freeze-stages (not a hardcoded backbone/neck_head split),
+required for candidates like P1 (freeze=[0..22], only stage 23 trainable):
+a fixed split would lump the (now frozen) neck together with the (trainable)
+head into one "changed" bucket, unable to verify the frozen part actually
+stayed frozen. n_trainable/n_frozen are computed by applying Ultralytics'
+own freeze-name-matching logic to a fresh parameter list -- NOT read from
+the returned global checkpoint's requires_grad, which is not reliable here:
+only state_dict VALUES flow through FedAvg aggregation, never Parameter
+objects, so the global model's requires_grad reflects whatever
+base_groupnorm.pt had at save time, not what was frozen locally per client.
+
 This is a DIAGNOSTIC: its numbers are not thesis results and must not enter
 any results table or privacy-utility curve.
 """
@@ -68,7 +80,6 @@ from fedxpalm.federated.client import read_local_train_log, train_client_round  
 from fedxpalm.federated.server import run_federated_training  # noqa: E402
 from fedxpalm.privacy.freeze_audit import load_state, stage_of  # noqa: E402
 
-BACKBONE_MAX_STAGE = 10
 # Frozen tolerance covers a worst-case single fp16 boundary flip on a
 # large-magnitude weight (ulp is ~2e-3 for |w| in [2,4)) -- EMA rounding drift
 # itself is ~5e-7 and normally fully absorbed by the fp16 cast, so the
@@ -79,24 +90,34 @@ FROZEN_TOL = 3e-3
 TRAINED_MIN = 1e-2
 
 
-def region_of(key: str) -> str | None:
+def region_of(key: str, freeze_stages: list[int]) -> str | None:
+    """"frozen"/"trainable" derived from THIS run's actual freeze_stages, not
+    a hardcoded backbone/neck_head boundary -- required for P1 (freeze=[0..22],
+    only stage 23 trainable) and P2-style subsets, where the frozen region
+    spans backbone AND most of the neck, not just stages 0-10. Using a fixed
+    boundary here would silently lump a frozen region (e.g. neck under P1)
+    together with the trainable region into one bucket, making a "changed"
+    verdict on that bucket uninformative about whether the frozen part
+    actually stayed frozen -- exactly what P1's audit needs to catch.
+    """
     if "dfl.conv" in key:
         return "dfl"
     stage = stage_of(key)
     if stage is None:
         return None
-    return "backbone" if stage <= BACKBONE_MAX_STAGE else "neck_head"
+    return "frozen" if stage in freeze_stages else "trainable"
 
 
-def region_diff_stats(sd_a, sd_b) -> dict:
-    """Per-region max|diff| and changed-param counts between two state_dicts."""
+def region_diff_stats(sd_a, sd_b, freeze_stages: list[int]) -> dict:
+    """Per-region (frozen/trainable/dfl) max|diff| and changed-param counts
+    between two state_dicts, for THIS run's freeze_stages."""
     import torch
     stats = {r: {"max_abs_diff": 0.0, "params_changed": 0, "params_total": 0}
-             for r in ("backbone", "neck_head", "dfl")}
+             for r in ("frozen", "trainable", "dfl")}
     for k in sd_b:
         if k not in sd_a or sd_a[k].shape != sd_b[k].shape:
             continue
-        region = region_of(k)
+        region = region_of(k, freeze_stages)
         if region is None:
             continue
         a, b = sd_a[k].float(), sd_b[k].float()
@@ -187,15 +208,17 @@ def main() -> int:
     n_bn = sum(1 for m in final_model.modules() if isinstance(m, nn.modules.batchnorm._BatchNorm))
     n_gn = sum(1 for m in final_model.modules() if isinstance(m, nn.GroupNorm))
 
-    quant = region_diff_stats(base_sd, round0_sd)     # expected: one-time fp16 quantization only
-    train = region_diff_stats(round0_sd, final_sd)    # the real frozen/trained evidence
+    quant = region_diff_stats(base_sd, round0_sd, freeze_stages)     # expected: one-time fp16 quantization only
+    train = region_diff_stats(round0_sd, final_sd, freeze_stages)    # the real frozen/trained evidence
 
-    bb, nh, dfl = train["backbone"], train["neck_head"], train["dfl"]
-    backbone_changed = bb["max_abs_diff"] > FROZEN_TOL
-    neck_head_changed = nh["max_abs_diff"] >= TRAINED_MIN and nh["params_changed"] > 0
+    fr, tr, dfl = train["frozen"], train["trainable"], train["dfl"]
+    frozen_changed = fr["max_abs_diff"] > FROZEN_TOL
+    trainable_changed = tr["max_abs_diff"] >= TRAINED_MIN and tr["params_changed"] > 0
     dfl_changed = dfl["max_abs_diff"] > FROZEN_TOL
 
-    print("\n--- weight audit: base -> round0 (expected: fp16 quantization only) ---")
+    print(f"\nfreeze_stages for this run: {freeze_stages}  "
+          f"(frozen params_total={fr['params_total']}, trainable params_total={tr['params_total']})")
+    print("--- weight audit: base -> round0 (expected: fp16 quantization only) ---")
     for r, s in quant.items():
         print(f"  {r:<10} max|d|={s['max_abs_diff']:.2e}  changed={s['params_changed']}/{s['params_total']}")
     print("--- weight audit: round0 -> final (the frozen/trained evidence) ---")
@@ -247,16 +270,33 @@ def main() -> int:
                   f"{_f2(row['cls_loss']):>11.4f}{_f2(row['dfl_loss']):>11.4f}{_f2(row['lr_pg0']):>10.5f}")
 
     failures = []
-    if backbone_changed:
-        failures.append(f"backbone changed round0->final (max|d|={bb['max_abs_diff']:.2e} > {FROZEN_TOL})")
-    if not neck_head_changed:
-        failures.append(f"neck/head did NOT train (max|d|={nh['max_abs_diff']:.2e})")
+    if frozen_changed:
+        failures.append(f"frozen region (stages {freeze_stages}) changed round0->final "
+                        f"(max|d|={fr['max_abs_diff']:.2e} > {FROZEN_TOL})")
+    if not trainable_changed:
+        failures.append(f"trainable region did NOT train (max|d|={tr['max_abs_diff']:.2e})")
     if dfl_changed:
         failures.append(f"DFL changed round0->final (max|d|={dfl['max_abs_diff']:.2e})")
     if n_bn != 0:
         failures.append(f"BatchNorm={n_bn} (must be 0)")
     if n_gn == 0:
         failures.append("GroupNorm=0 (must be >0)")
+
+    # NOTE: requires_grad is NOT reliable on final_model here -- it is never
+    # touched by server.py/client.py (only state_dict VALUES flow through
+    # FedAvg aggregation, not Parameter objects), so the global checkpoint's
+    # requires_grad is whatever base_groupnorm.pt had at save time (all
+    # trainable except DFL), regardless of what freeze_stages was applied
+    # LOCALLY inside each client's own rebuilt trainer. Compute the true
+    # trainable/frozen counts by applying the SAME freeze-name-matching logic
+    # Ultralytics' own BaseTrainer._setup_train() uses, on a fresh copy.
+    n_trainable, n_frozen = 0, 0
+    freeze_names = [f"model.{s}." for s in freeze_stages] + [".dfl"]
+    for name, p in final_model.named_parameters():
+        if any(x in name for x in freeze_names):
+            n_frozen += p.numel()
+        else:
+            n_trainable += p.numel()
 
     record = {
         "diagnostic": "A_partial_nodp_frozen_backbone_control",
@@ -266,13 +306,14 @@ def main() -> int:
         "lr0": hyp["lr0"], "momentum": hyp.get("momentum"), "weight_decay": hyp.get("weight_decay"),
         "epochs_per_round": hyp["epochs_per_round"], "warmup_epochs": 0.0,
         "dp": False, "opacus": False, "clipping": False, "noise": False, "accountant": None,
+        "n_trainable_params": int(n_trainable), "n_frozen_params": int(n_frozen),
         "val_per_round": [{"round": rd, "map50": m50, "map50_95": m95, "precision": p, "recall": r}
                           for rd, m50, m95, p, r in val_rows],
         "train_losses_per_client_round": train_loss_rows,
         "best_round": result["best_round"], "best_val_map50": result["best_val_map50"],
         "audit_base_to_round0_quantization": quant,
         "audit_round0_to_final": train,
-        "backbone_changed": backbone_changed, "neck_head_changed": neck_head_changed,
+        "frozen_region_changed": frozen_changed, "trainable_region_changed": trainable_changed,
         "dfl_changed": dfl_changed, "batchnorm_count": n_bn, "groupnorm_count": n_gn,
         "mechanism_failures": failures,
         "test_evaluated": False,
