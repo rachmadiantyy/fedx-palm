@@ -209,6 +209,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="0")
     parser.add_argument("--client", default=None, help="client id from the K=4 partition (default: first one found)")
+    parser.add_argument("--freeze-stages", type=int, nargs="*", default=None,
+                        help="override configs/dp_config.yaml variants.partial.freeze_stages (default: read "
+                             "from there, i.e. P0/current-E2 [0..10]). Pass explicit stage indices for P1 "
+                             "(head-only: 0 1 2 ... 22) or P2 (graph-justified: all except 16,19,22,23)")
+    parser.add_argument("--subset-label", default="P0",
+                        help="label for this trainable-subset candidate (P0/P1/P2/...) -- purely for output "
+                             "filename/record clarity, does not affect the probe itself")
     parser.add_argument("--steps", type=int, default=2, help="DP optimizer steps to probe (1-2 per spec)")
     parser.add_argument("--sigma", type=float, default=0.5, help="matches the real E2 collapsed run")
     parser.add_argument("--max-grad-norm", type=float, default=None, help="default: configs/dp_config.yaml (C=1.0)")
@@ -248,7 +255,8 @@ def main() -> int:
     if not Path(data_yaml).exists():
         print(f"FAIL: {data_yaml} not found"); return 1
 
-    freeze_stages = dp_cfg["variants"]["partial"]["freeze_stages"]  # same source as A0/E2/Diag B: [0..10]
+    freeze_stages = (args.freeze_stages if args.freeze_stages is not None
+                    else dp_cfg["variants"]["partial"]["freeze_stages"])  # default: same source as A0/E2/Diag B
     imgsz = args.imgsz or fl_cfg["model"]["imgsz"]
 
     default_batch = fl_cfg["local_training"]["batch_size"]
@@ -369,6 +377,7 @@ def main() -> int:
     record = {
         "diagnostic": "noise_signal_probe",
         "note": "DIAGNOSTIC ONLY -- not a thesis result; zero parameter updates occurred (verified)",
+        "subset_label": args.subset_label,
         "client_id": client_id, "freeze_stages": freeze_stages,
         "lr0": hyp["lr0"], "max_grad_norm": max_grad_norm, "sigma": args.sigma,
         "logical_batch_size": logical_batch, "physical_batch_size": physical_batch, "imgsz": imgsz,
@@ -377,7 +386,7 @@ def main() -> int:
         "steps": step_records,
     }
     out_json = (f"results/diag_noise_signal_probe_client{client_id}_sigma{args.sigma}"
-               f"_logB{logical_batch}_physB{physical_batch}.json")
+               f"_logB{logical_batch}_physB{physical_batch}_{args.subset_label}.json")
     Path("results").mkdir(exist_ok=True)
     with open(out_json, "w") as f:
         json.dump(record, f, indent=2)
