@@ -324,7 +324,7 @@ def main() -> int:
     with open(out_json, "w") as f:
         json.dump(record, f, indent=2)
 
-    print(f"\nbackbone_changed={backbone_changed}  neck_head_changed={neck_head_changed}  "
+    print(f"\nfrozen_region_changed={frozen_changed}  trainable_region_changed={trainable_changed}  "
           f"dfl_changed={dfl_changed}  BatchNorm={n_bn}  GroupNorm={n_gn}")
     print(f"best val mAP50={result['best_val_map50']} @ round {result['best_round']}")
     print(f"Saved {out_json}")
