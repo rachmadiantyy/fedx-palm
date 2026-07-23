@@ -126,6 +126,12 @@ def main() -> int:
                              "using the measured, pre-registered per-tensor thresholds, and enables "
                              "per-stage clip-fraction / signal-norm / noise-norm instrumentation. "
                              "Default None = existing flat path, byte-identical")
+    parser.add_argument("--epochs-per-round", type=int, default=None,
+                        help="override fl_config local_training.epochs_per_round (default: 2, the value "
+                             "every existing B/C run has used). For communication-frequency experiments "
+                             "(e.g. Experiment G: --rounds 10 --epochs-per-round 1, matched in total "
+                             "optimizer steps/client to the --rounds 5 default-epochs reference) -- does "
+                             "not change any other hyperparameter")
     args = parser.parse_args()
 
     if args.rounds > 5:
@@ -158,6 +164,8 @@ def main() -> int:
                batch_size=logical_batch)
     if args.lr0 is not None:
         hyp["lr0"] = args.lr0
+    if args.epochs_per_round is not None:
+        hyp["epochs_per_round"] = args.epochs_per_round
 
     max_grad_norm = args.max_grad_norm if args.max_grad_norm is not None else dp_cfg["dp_sgd"]["max_grad_norm"]
     dp_hyp = {
