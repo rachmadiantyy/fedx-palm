@@ -188,6 +188,11 @@ def _install_probe():
         result = orig_make_private(self, *args, **kwargs)
         dp_model_ret, dp_optimizer_ret, _ = result
         _captured["name_by_id"] = {id(p): n.replace("_module.", "", 1) for n, p in dp_model_ret.named_parameters()}
+        # snapshot every live parameter tensor so byte-identity can be
+        # VERIFIED at the end (torch.equal against the returned state_dict),
+        # not merely argued from the no-op mechanism
+        _captured["initial_params"] = {n.replace("_module.", "", 1): p.detach().clone().cpu()
+                                       for n, p in dp_model_ret.named_parameters()}
         # the ONLY behavior modification: neutralize the real parameter
         # update so every observed step is provably a no-op on the model
         dp_optimizer_ret.original_optimizer.step = lambda *a, **kw: None
@@ -296,7 +301,7 @@ def main() -> int:
 
     restore = _install_probe()
     try:
-        train_client_round_dp(
+        final_state, _probe_info = train_client_round_dp(
             global_weights_path=args.base_weights, client_data_yaml=data_yaml,
             hyp=hyp, dp_hyp=dp_hyp, round_idx=0, client_id=f"probe_{client_id}",
             out_dir=args.out_dir, device=args.device, freeze_stages=freeze_stages,
@@ -344,19 +349,46 @@ def main() -> int:
             f"noise={region_stats[r]['noise_norm']:.3f})"
             for r in ("backbone", "neck", "head", "dfl") if region_stats[r]["n_params"] > 0))
 
+        # per-STAGE breakdown (finer than the neck/head regions above --
+        # e.g. P2's trainable stages 16/19/22 are all "neck" but behave
+        # differently, per the Phase A per-stage gradient-norm audit)
+        by_stage: dict = {}
+        for pid in s["pre_noise"]:
+            st = stage_of(name_by_id.get(pid, ""))
+            by_stage.setdefault(st, []).append(pid)
+        stage_stats = {}
+        for st, ids in sorted(by_stage.items(), key=lambda kv: (kv[0] is None, kv[0])):
+            sig_s = _norm([s["pre_noise"][i] for i in ids])
+            noi_s = _norm([s["noise"][i] for i in ids])
+            stage_stats[str(st)] = {
+                "n_param_tensors": len(ids), "signal_norm": sig_s, "noise_norm": noi_s,
+                "ratio": (noi_s / sig_s if sig_s > 0 else None),
+            }
+        print(f"       per-stage:  " + ", ".join(
+            f"s{st}(sig={v['signal_norm']:.3f}, noise={v['noise_norm']:.3f})"
+            for st, v in stage_stats.items()))
+
         step_records.append({
             "step": i, "expected_batch_size": s["expected_batch_size"],
             "actual_sampled_batch_size": s["actual_sampled_batch_size"],
             "signal_norm_before_noise": signal, "noise_norm": noise, "norm_after_noise": post,
             "noise_to_signal_norm_ratio": ratio, "per_region": region_stats,
+            "per_stage": stage_stats,
         })
 
-    # re-verify (not just assume) that zero parameter update occurred: diff a
-    # freshly-reloaded copy of the untouched checkpoint against itself is
-    # trivially equal, so instead assert on the mechanism directly -- the
-    # patched original_optimizer.step was a lambda no-op, confirmed by the
-    # fact that this script never touches/saves any model file at all here.
-    weight_update_occurred = False  # no train_client_round_dp state_dict is ever persisted by this script
+    # byte-identity VERIFICATION (upgraded from the earlier mechanism-only
+    # argument): every parameter tensor snapshotted at make_private time is
+    # torch.equal-compared against the live model's returned state_dict.
+    _mismatched = []
+    for _pname, _init_t in _captured.get("initial_params", {}).items():
+        if _pname not in final_state:
+            _mismatched.append(f"{_pname} (missing from final state_dict)")
+        elif not torch.equal(_init_t, final_state[_pname].detach().cpu()):
+            _mismatched.append(_pname)
+    weights_byte_identical = len(_mismatched) == 0
+    weight_update_occurred = not weights_byte_identical
+    print(f"weights_byte_identical={weights_byte_identical}"
+          + (f"  MISMATCHES: {_mismatched[:8]}" if _mismatched else "  (all parameter tensors torch.equal)"))
 
     # projected privacy-accounting inputs ONLY -- q and an expected step count
     # for a full run at this logical batch size; NOT an epsilon. Final epsilon
@@ -382,6 +414,7 @@ def main() -> int:
         "lr0": hyp["lr0"], "max_grad_norm": max_grad_norm, "sigma": args.sigma,
         "logical_batch_size": logical_batch, "physical_batch_size": physical_batch, "imgsz": imgsz,
         "weight_update_occurred": weight_update_occurred,
+        "weights_byte_identical": weights_byte_identical,
         "projected_privacy_accounting_inputs": projected_accounting,
         "steps": step_records,
     }
