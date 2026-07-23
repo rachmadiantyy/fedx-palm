@@ -212,6 +212,15 @@ def train_client_round_dp(
     trainer = build_trainer_from_checkpoint(global_weights_path, overrides)
     disable_inplace_ops(trainer.model)  # in case a fresh (non-DP-prepared) checkpoint slips in
     trainer._setup_train()
+    # _setup_train() does NOT reliably leave the model in train() mode: it depends on
+    # whatever mode the loaded checkpoint's model object was pickled in. base_groupnorm.pt
+    # (created by a one-time offline conversion script) happens to be train()-mode, so this
+    # was latent; a checkpoint saved via Ultralytics' own training loop (e.g. a warm-started
+    # init produced by scripts/34) is pickled in eval() mode (Ultralytics' own save_model()
+    # convention), and Opacus's ModuleValidator hard-rejects eval-mode modules in
+    # make_private() ("Model needs to be in training mode") before any DP wrapping happens.
+    # Force train() explicitly so this doesn't depend on how any given init checkpoint was saved.
+    trainer.model.train()
 
     # Strip every requires_grad=False parameter (E2's frozen backbone AND the
     # always-frozen DFL fixed conv) out of the optimizer BEFORE Opacus wraps
