@@ -161,6 +161,19 @@ def main() -> int:
                              "P2 frozen stage ints + module-prefix strings for every frozen base conv "
                              "inside the trainable stages. Trainable set = .lora_ + cv3.x.2 + "
                              "trainable-stage GroupNorm affine. Requires a LoRA-surgered checkpoint")
+    parser.add_argument("--predictor-only-freeze", action="store_true",
+                        help="derive the freeze list from fedxpalm.models.predictor_only."
+                             "predictor_only_freeze_spec on the --init-weights model (plain "
+                             "base_groupnorm.pt, no surgery needed): every stage before Detect frozen "
+                             "as whole ints, plus every Detect submodule EXCEPT the terminal box/class "
+                             "projection convs (discovered programmatically, not hardcoded). P3 "
+                             "candidate -- d=13,650 vs P2's 929,522")
+    parser.add_argument("--subset-label", default=None,
+                        help="label for this trainable-subset candidate (P1/P2/P3_predictor_only/...) "
+                             "-- purely for the saved record's clarity, does not affect the run itself")
+    parser.add_argument("--epochs-per-round", type=int, default=None,
+                        help="override fl_config local_training.epochs_per_round (default: 2). For "
+                             "communication-frequency-matched runs, e.g. --rounds 10 --epochs-per-round 1")
     args = parser.parse_args()
 
     with open("configs/dataset.yaml") as f:
@@ -170,6 +183,9 @@ def main() -> int:
     with open("configs/dp_config.yaml") as f:
         dp_cfg = yaml.safe_load(f)
 
+    if args.lora_freeze and args.predictor_only_freeze:
+        print("FAIL: --lora-freeze and --predictor-only-freeze are mutually exclusive")
+        return 1
     if args.lora_freeze:
         # LoRA mode: the frozen/trainable boundary cuts INSIDE stages, so the
         # freeze list is derived from the surgered model itself (ints for the
@@ -184,6 +200,28 @@ def main() -> int:
             return 1
         freeze_stages = lora_freeze_spec(_lora_model)
         del _ck, _lora_model
+    elif args.predictor_only_freeze:
+        # Predictor-only (P3) mode: freeze everything except the Detect head's
+        # terminal box/class projection convs, discovered programmatically
+        # from the actual --init-weights model (no surgery, no new modules).
+        import torch
+        from fedxpalm.models.predictor_only import predictor_only_freeze_spec, audit_predictor_only_params
+        _ck = torch.load(args.init_weights, map_location="cpu", weights_only=False)
+        _po_model = _ck["model"] if isinstance(_ck, dict) and "model" in _ck else _ck
+        freeze_stages = predictor_only_freeze_spec(_po_model)
+        _po_audit = audit_predictor_only_params(_po_model, freeze_stages)
+        print(f"[predictor-only pre-audit] trainable tensors: {_po_audit['n_trainable_tensors']}")
+        for name, numel in _po_audit["trainable_param_names"]:
+            print(f"    {name}: {numel}")
+        _po_total = _po_audit["n_trainable"] + _po_audit["n_frozen"]
+        print(f"[predictor-only pre-audit] n_trainable={_po_audit['n_trainable']}  "
+              f"n_frozen={_po_audit['n_frozen']}  total={_po_total}  "
+              f"private_fraction={_po_audit['n_trainable'] / _po_total * 100:.4f}%  "
+              f"unexpected={_po_audit['unexpected_trainable']}")
+        if _po_audit["unexpected_trainable"]:
+            print("FAIL: unexpected trainable parameters outside the discovered terminal convs")
+            return 1
+        del _ck, _po_model
     else:
         freeze_stages = (args.freeze_stages if args.freeze_stages is not None
                          else dp_cfg["variants"]["partial"]["freeze_stages"])  # same source E2 reads, unless overridden
@@ -196,6 +234,8 @@ def main() -> int:
         hyp["batch_size"] = args.batch
     if args.lr0 is not None:
         hyp["lr0"] = args.lr0
+    if args.epochs_per_round is not None:
+        hyp["epochs_per_round"] = args.epochs_per_round
 
     manifest_path = splits_dir / "federated_partitions" / "manifest.json"
     with open(manifest_path) as f:
@@ -330,6 +370,7 @@ def main() -> int:
     record = {
         "diagnostic": "A_partial_nodp_frozen_backbone_control",
         "note": "DIAGNOSTIC ONLY -- not a thesis result; no DP mechanism involved",
+        "subset_label": args.subset_label,
         "rounds": args.rounds, "seed": args.seed, "k": 4,
         "freeze_stages": freeze_stages, "imgsz": imgsz, "batch_size": hyp["batch_size"],
         "lr0": hyp["lr0"], "momentum": hyp.get("momentum"), "weight_decay": hyp.get("weight_decay"),
