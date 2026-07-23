@@ -136,6 +136,7 @@ def train_client_round_dp(
     max_steps: int | None = None,
     collect_grad_norms: bool = False,
     physical_batch_size: int | None = None,
+    per_layer_max_grad_norms: dict[str, float] | None = None,
 ) -> tuple[dict, dict]:
     """Fine-tunes `global_weights_path` on one client with per-sample DP-SGD.
 
@@ -158,7 +159,29 @@ def train_client_round_dp(
     clip_and_accumulate()/add_noise() still fire exactly once per LOGICAL
     batch (Opacus's own skip-step accounting), so this changes nothing about
     per-round semantics other than how many physical forward/backward calls
-    it takes to reach one logical step. Returns (state_dict, info) where state_dict
+    it takes to reach one logical step.
+
+    `per_layer_max_grad_norms` (default None = the existing FLAT clipping
+    path, byte-identical, used by every E1/E2/pilot run so far) opts into
+    Opacus's official per-layer clipping (clipping="per_layer" ->
+    DPPerLayerOptimizer): a dict mapping every trainable parameter NAME to
+    its own clipping threshold C_i. Passing a name-keyed dict (not a bare
+    list) makes correctness independent of parameter ordering -- the ordered
+    list Opacus requires is built here from the optimizer's own canonical
+    param sequence (opacus.optimizers.utils.params, the exact helper
+    DPPerLayerOptimizer's own length assert uses), with hard assertions that
+    the dict's names and the optimizer's params match EXACTLY (no missing,
+    no extra). Privacy accounting is UNCHANGED: Opacus sets the scalar
+    sensitivity bound to ||C_vec||_2 internally and adds noise with
+    std = sigma * ||C_vec||_2, so with ||C_vec||_2 equal to the flat C the
+    mechanism has the same noise multiplier sigma, the same accountant
+    history shape, and the same epsilon as flat clipping -- this function
+    additionally asserts ||C_vec||_2 matches dp_hyp["max_grad_norm"] within
+    0.1% so a mis-scaled threshold vector cannot silently change the
+    sensitivity/noise level relative to the flat baseline it is compared
+    against.
+
+    Returns (state_dict, info) where state_dict
     has clean (non-Opacus-prefixed) keys ready for fedavg(), and info carries
     the per-round/per-client privacy log plus `accountant_state` (the updated
     state to persist for next round).
@@ -209,14 +232,61 @@ def train_client_round_dp(
     )
 
     privacy_engine = PrivacyEngine(accountant=dp_hyp.get("accountant", "prv"))
-    dp_model, dp_optimizer, dp_loader = privacy_engine.make_private(
-        module=trainer.model,
-        optimizer=trainer.optimizer,
-        data_loader=trainer.train_loader,
-        noise_multiplier=dp_hyp["sigma"],
-        max_grad_norm=dp_hyp["max_grad_norm"],
-        poisson_sampling=True,
-    )
+    if per_layer_max_grad_norms is None:
+        # FLAT clipping -- the pre-existing path, byte-identical
+        dp_model, dp_optimizer, dp_loader = privacy_engine.make_private(
+            module=trainer.model,
+            optimizer=trainer.optimizer,
+            data_loader=trainer.train_loader,
+            noise_multiplier=dp_hyp["sigma"],
+            max_grad_norm=dp_hyp["max_grad_norm"],
+            poisson_sampling=True,
+        )
+        clipping_mode = "flat"
+        per_layer_info = None
+    else:
+        # PER-LAYER clipping via Opacus's official DPPerLayerOptimizer.
+        # Build the ordered threshold list from the optimizer's canonical
+        # param sequence -- the same helper DPPerLayerOptimizer itself uses
+        # for its length assert -- and hard-verify the name<->param mapping.
+        from opacus.optimizers.utils import params as opacus_params
+
+        opt_params = opacus_params(trainer.optimizer)
+        opt_names = [name_by_id[id(p)] for p in opt_params]
+        dict_names = set(per_layer_max_grad_norms)
+        missing_thresholds = sorted(set(opt_names) - dict_names)
+        extra_thresholds = sorted(dict_names - set(opt_names))
+        if missing_thresholds or extra_thresholds:
+            raise ValueError(
+                "per_layer_max_grad_norms does not exactly match the optimizer's trainable "
+                f"parameter set: missing={missing_thresholds[:5]} extra={extra_thresholds[:5]} "
+                f"(counts: {len(missing_thresholds)} missing / {len(extra_thresholds)} extra)")
+        c_vec = [float(per_layer_max_grad_norms[n]) for n in opt_names]
+        if any(c <= 0 for c in c_vec):
+            raise ValueError("per_layer_max_grad_norms must be strictly positive for every tensor")
+        c_l2 = float(torch.tensor(c_vec).norm(2))
+        flat_c = float(dp_hyp["max_grad_norm"])
+        if abs(c_l2 - flat_c) > 1e-3 * flat_c:
+            raise ValueError(
+                f"||C_vec||_2 = {c_l2:.6f} must equal dp_hyp['max_grad_norm'] = {flat_c} "
+                "(within 0.1%) so total sensitivity -- and hence noise scale and accounting -- "
+                "stays identical to the flat baseline this run is compared against")
+        dp_model, dp_optimizer, dp_loader = privacy_engine.make_private(
+            module=trainer.model,
+            optimizer=trainer.optimizer,
+            data_loader=trainer.train_loader,
+            noise_multiplier=dp_hyp["sigma"],
+            max_grad_norm=c_vec,
+            clipping="per_layer",
+            poisson_sampling=True,
+        )
+        clipping_mode = "per_layer"
+        per_layer_info = {
+            "n_thresholds": len(c_vec),
+            "C_vec_l2_norm": c_l2,
+            "C_min": min(c_vec), "C_max": max(c_vec),
+            "ordered_param_names": opt_names,
+        }
     # resume this client's privacy budget from prior rounds BEFORE stepping,
     # so get_epsilon() below is cumulative over the whole run
     _restore_accountant(privacy_engine, accountant_state)
@@ -320,6 +390,8 @@ def train_client_round_dp(
         "client_id": client_id,
         "sigma": dp_hyp["sigma"],
         "max_grad_norm": dp_hyp["max_grad_norm"],
+        "clipping": clipping_mode,                 # "flat" | "per_layer"
+        "per_layer": per_layer_info,               # None unless per-layer clipping active
         "delta": dp_hyp["delta"],
         "n_samples": len(dp_loader.dataset),
         "sample_rate_q": sample_rate,

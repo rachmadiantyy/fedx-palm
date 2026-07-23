@@ -77,7 +77,7 @@ import fedxpalm  # noqa: E402,F401 (applies the GroupNorm-safe `fuse()` patch)
 from fedxpalm.eval.detection_metrics import evaluate_detector  # noqa: E402
 from fedxpalm.federated.server import run_federated_training  # noqa: E402
 from fedxpalm.privacy.dp_sgd import train_client_round_dp  # noqa: E402
-from fedxpalm.privacy.freeze_audit import audit_freeze  # noqa: E402
+from fedxpalm.privacy.freeze_audit import audit_freeze, stage_of  # noqa: E402
 
 
 def main() -> int:
@@ -119,6 +119,13 @@ def main() -> int:
     parser.add_argument("--subset-label", default="P0",
                         help="label for this trainable-subset candidate (P0/P1/P2/...) -- purely for "
                              "output filename/record clarity, does not affect the probe itself")
+    parser.add_argument("--per-layer-thresholds", default=None,
+                        help="path to results/p2_perlayer_clip_thresholds.json (from "
+                             "scripts/29_derive_perlayer_thresholds.py). When set, switches from FLAT "
+                             "clipping to Opacus's official per-layer clipping (DPPerLayerOptimizer) "
+                             "using the measured, pre-registered per-tensor thresholds, and enables "
+                             "per-stage clip-fraction / signal-norm / noise-norm instrumentation. "
+                             "Default None = existing flat path, byte-identical")
     args = parser.parse_args()
 
     if args.rounds > 5:
@@ -160,6 +167,30 @@ def main() -> int:
         "accountant": dp_cfg["dp_sgd"]["accountant"],
     }
 
+    per_layer_thresholds = None
+    pl_ordered_names = None
+    pl_meta = None
+    if args.per_layer_thresholds is not None:
+        if dp_hyp["accountant"] != "prv":
+            print(f"FAIL: per-layer mode requires the PRV accountant (config says "
+                  f"'{dp_hyp['accountant']}') -- accounting comparability with the flat baseline "
+                  f"is a hard requirement of this experiment")
+            return 1
+        with open(args.per_layer_thresholds) as f:
+            pl_file = json.load(f)
+        per_layer_thresholds = pl_file["thresholds"]
+        pl_ordered_names = pl_file["ordered_names"]
+        pl_meta = pl_file["meta"]
+        c_l2 = pl_meta["C_vec_l2_norm"]
+        if abs(c_l2 - max_grad_norm) > 1e-3 * max_grad_norm:
+            print(f"FAIL: thresholds file ||C_vec||_2={c_l2} != flat C={max_grad_norm} -- "
+                  f"sensitivity/noise would differ from the flat baseline; refusing to run")
+            return 1
+        print(f"per-layer clipping ENABLED: {pl_meta['n_tensors']} thresholds from "
+              f"{args.per_layer_thresholds}  ||C_vec||_2={c_l2:.6f}  "
+              f"C_min={pl_meta['C_min']:.5f} C_max={pl_meta['C_max']:.5f}  "
+              f"n_floored={pl_meta['n_floored']}")
+
     manifest_path = splits_dir / "federated_partitions" / "manifest.json"
     with open(manifest_path) as f:
         manifest = json.load(f)["4"]
@@ -172,15 +203,122 @@ def main() -> int:
 
     accountant_states: dict = {}  # per-client, persisted across rounds (same mechanism as the real sweep)
 
+    # ---- per-stage instrumentation (per-layer mode only): observation-ONLY
+    # wrappers around Opacus's own methods, same validated monkey-patch
+    # pattern as scripts/25's probe but with the real optimizer step left
+    # fully intact. clip_and_accumulate is wrapped on DPPerLayerOptimizer
+    # (per-layer runs only construct that class); add_noise is wrapped on
+    # DPOptimizer (the per-layer optimizer inherits it). Both call through
+    # to the real implementations untouched and only READ public state.
+    _pl_capture = {"acc": None, "stage_by_idx": None}
+    _pl_restore = None
+    if per_layer_thresholds is not None:
+        stage_by_idx = [stage_of(n) for n in pl_ordered_names]
+        _pl_capture["stage_by_idx"] = stage_by_idx
+        pl_stages = sorted({s for s in stage_by_idx if s is not None})
+
+        def _fresh_acc():
+            return {"n_logical_steps": 0,
+                    "per_stage": {str(s): {"clip_events": 0, "clip_obs": 0,
+                                           "signal_norm_sum": 0.0, "noise_norm_sum": 0.0}
+                                  for s in pl_stages},
+                    "total": {"signal_norm_sum": 0.0, "noise_norm_sum": 0.0}}
+
+        import opacus.optimizers.optimizer as _opt_mod
+        from opacus.optimizers.perlayeroptimizer import DPPerLayerOptimizer as _PLOpt
+
+        _orig_pl_clip = _PLOpt.clip_and_accumulate
+        _orig_add_noise = _opt_mod.DPOptimizer.add_noise
+
+        def _wrapped_pl_clip(self):
+            acc = _pl_capture["acc"]
+            gs = self.grad_samples
+            if acc is not None and gs and len(gs[0]) > 0:
+                assert len(self.params) == len(_pl_capture["stage_by_idx"]), \
+                    "optimizer tensor count changed vs audited threshold order"
+                b = len(gs[0])
+                for j, (g, c_j) in enumerate(zip(gs, self.max_grad_norms)):
+                    s = str(_pl_capture["stage_by_idx"][j])
+                    n_over = int((g.reshape(b, -1).norm(2, dim=-1) > c_j).sum())
+                    acc["per_stage"][s]["clip_events"] += n_over
+                    acc["per_stage"][s]["clip_obs"] += b
+            _orig_pl_clip(self)  # real per-layer clipping, untouched
+
+        def _wrapped_add_noise(self):
+            acc = _pl_capture["acc"]
+            if acc is None:
+                _orig_add_noise(self)
+                return
+            pre = [p.summed_grad.detach().clone() for p in self.params]
+            _orig_add_noise(self)  # real noise generation, untouched (exact zeros at sigma=0)
+            sig_sq_by_stage = {str(s): 0.0 for s in pl_stages}
+            noi_sq_by_stage = {str(s): 0.0 for s in pl_stages}
+            sig_sq_tot = noi_sq_tot = 0.0
+            for j, p in enumerate(self.params):
+                s = str(_pl_capture["stage_by_idx"][j])
+                sig_sq = float((pre[j].float() ** 2).sum())
+                noi_sq = float(((p.grad - pre[j].view_as(p)).float() ** 2).sum())
+                sig_sq_by_stage[s] += sig_sq
+                noi_sq_by_stage[s] += noi_sq
+                sig_sq_tot += sig_sq
+                noi_sq_tot += noi_sq
+            for s in sig_sq_by_stage:
+                acc["per_stage"][s]["signal_norm_sum"] += sig_sq_by_stage[s] ** 0.5
+                acc["per_stage"][s]["noise_norm_sum"] += noi_sq_by_stage[s] ** 0.5
+            acc["total"]["signal_norm_sum"] += sig_sq_tot ** 0.5
+            acc["total"]["noise_norm_sum"] += noi_sq_tot ** 0.5
+            acc["n_logical_steps"] += 1
+
+        _PLOpt.clip_and_accumulate = _wrapped_pl_clip
+        _opt_mod.DPOptimizer.add_noise = _wrapped_add_noise
+
+        def _pl_restore():
+            _PLOpt.clip_and_accumulate = _orig_pl_clip
+            _opt_mod.DPOptimizer.add_noise = _orig_add_noise
+
+        def _summarize_acc(acc):
+            n = max(1, acc["n_logical_steps"])
+            out = {"n_logical_steps": acc["n_logical_steps"], "per_stage": {}, "total": {}}
+            for s, r in acc["per_stage"].items():
+                sig = r["signal_norm_sum"] / n
+                noi = r["noise_norm_sum"] / n
+                out["per_stage"][s] = {
+                    "clip_fraction": (r["clip_events"] / r["clip_obs"]) if r["clip_obs"] else None,
+                    "mean_signal_norm_per_step": sig,
+                    "mean_noise_norm_per_step": noi,
+                    "noise_to_signal_ratio": (noi / sig) if sig > 0 else None,
+                }
+            sig_t = acc["total"]["signal_norm_sum"] / n
+            noi_t = acc["total"]["noise_norm_sum"] / n
+            out["total"] = {"mean_signal_norm_per_step": sig_t,
+                            "mean_noise_norm_per_step": noi_t,
+                            "noise_to_signal_ratio": (noi_t / sig_t) if sig_t > 0 else None}
+            return out
+
     def client_round_fn(client_id, data_yaml_c, global_weights_path, round_idx, out_dir_c):
+        if per_layer_thresholds is not None:
+            _pl_capture["acc"] = _fresh_acc()
         state_dict, info = train_client_round_dp(
             global_weights_path, data_yaml_c, hyp, dp_hyp, round_idx, client_id, out_dir_c,
             device=args.device, freeze_stages=freeze_stages,
             accountant_state=accountant_states.get(client_id),
             collect_grad_norms=True,
             physical_batch_size=physical_batch_size_arg,
+            per_layer_max_grad_norms=per_layer_thresholds,
         )
         accountant_states[client_id] = info.pop("accountant_state")
+        if per_layer_thresholds is not None:
+            info["per_layer_stage_stats"] = _summarize_acc(_pl_capture["acc"])
+            _pl_capture["acc"] = None
+            # hard per-round assertions for the redesign experiment: the
+            # optimizer must hold exactly the trainable set, nothing frozen
+            if info["missing_trainable_params"] or info["unexpected_frozen_params"]:
+                raise RuntimeError(
+                    f"round {round_idx} client {client_id}: optimizer/trainable set mismatch "
+                    f"missing={info['missing_trainable_params'][:3]} "
+                    f"frozen_in_opt={info['unexpected_frozen_params'][:3]}")
+            if info.get("clipping") != "per_layer":
+                raise RuntimeError(f"expected per_layer clipping, dp_sgd reports {info.get('clipping')}")
         return state_dict, info
 
     def eval_fn(weights_path):
@@ -188,17 +326,23 @@ def main() -> int:
         return evaluate_detector(weights_path, data_yaml, split="val", imgsz=imgsz, device=args.device)
 
     diag_label = "B (clipping-only)" if args.sigma == 0.0 else f"C (clipping + noise, sigma={args.sigma})"
+    clip_label = ("per-layer (||C_vec||_2=" + f"{pl_meta['C_vec_l2_norm']:.4f})"
+                  if per_layer_thresholds is not None else f"flat C={max_grad_norm}")
     print(f"Diagnostic {diag_label} [tag='{args.tag or '(none)'}'] -- "
           f"{args.rounds} rounds, K=4, freeze={freeze_stages}, imgsz={imgsz}, "
           f"logical_batch={logical_batch}, physical_batch={physical_batch}, "
-          f"lr0={hyp['lr0']}, C={max_grad_norm}, sigma={args.sigma}"
+          f"lr0={hyp['lr0']}, clipping={clip_label}, sigma={args.sigma}"
           + (" (NO noise, NO privacy guarantee)" if args.sigma == 0.0 else " (finite DP guarantee)")
           + f", workers={hyp['workers']} -> {out_dir}")
-    result = run_federated_training(
-        client_round_fn, client_data_yamls, client_sample_counts,
-        init_weights_path="models/base_groupnorm.pt", rounds=args.rounds, out_dir=out_dir,
-        eval_fn=eval_fn, eval_every=1,
-    )
+    try:
+        result = run_federated_training(
+            client_round_fn, client_data_yamls, client_sample_counts,
+            init_weights_path="models/base_groupnorm.pt", rounds=args.rounds, out_dir=out_dir,
+            eval_fn=eval_fn, eval_every=1,
+        )
+    finally:
+        if _pl_restore is not None:
+            _pl_restore()
 
     # weight/freeze audit -- DP path returns live fp32 state_dicts (no EMA/fp16
     # cast, unlike Diagnostic A's non-DP path), so exact equality is the right
@@ -237,6 +381,27 @@ def main() -> int:
             else:
                 print(f"{h['round']:>6}{cid:>8}  (no grad_norm_stats -- instrumentation did not run)")
 
+    if per_layer_thresholds is not None:
+        print("\n--- per-layer mode: per-stage clip fraction / signal / noise (per logical step means) ---")
+        print(f"{'round':>6}{'client':>8}{'stage':>7}{'clip_frac':>11}{'signal':>10}{'noise':>10}{'ratio':>9}")
+        for h in result["history"]:
+            for cid, info in h["clients"].items():
+                pls = info.get("per_layer_stage_stats")
+                if not pls:
+                    continue
+                for s, r in sorted(pls["per_stage"].items(), key=lambda kv: int(kv[0])):
+                    cf = r["clip_fraction"]
+                    ratio = r["noise_to_signal_ratio"]
+                    print(f"{h['round']:>6}{cid:>8}{s:>7}"
+                          f"{(cf if cf is not None else float('nan')):>11.3f}"
+                          f"{r['mean_signal_norm_per_step']:>10.3f}{r['mean_noise_norm_per_step']:>10.3f}"
+                          f"{(ratio if ratio is not None else float('nan')):>9.2f}")
+                t = pls["total"]
+                tr = t["noise_to_signal_ratio"]
+                print(f"{h['round']:>6}{cid:>8}{'TOTAL':>7}{'':>11}"
+                      f"{t['mean_signal_norm_per_step']:>10.3f}{t['mean_noise_norm_per_step']:>10.3f}"
+                      f"{(tr if tr is not None else float('nan')):>9.2f}")
+
     # per-client cumulative epsilon from the final round (None for every client
     # when sigma=0, per dp_sgd.py's existing guard -- unchanged, just read here
     # instead of hardcoded, so --sigma > 0 diagnostic-C runs report it correctly)
@@ -258,6 +423,9 @@ def main() -> int:
         "epochs_per_round": hyp["epochs_per_round"], "warmup_epochs": 0.0,
         "sigma": args.sigma, "max_grad_norm": max_grad_norm, "delta": dp_hyp["delta"],
         "dp": True, "opacus": True, "clipping": True, "noise": args.sigma > 0.0,
+        "clipping_mode": "per_layer" if per_layer_thresholds is not None else "flat",
+        "per_layer_thresholds_file": args.per_layer_thresholds,
+        "per_layer_meta": pl_meta,
         "epsilon_per_client_final": eps_per_client, "epsilon_max_over_clients": epsilon_max,
         "privacy_guarantee": "dp_sgd" if args.sigma > 0.0 else "not_applicable_no_noise",
         "val_per_round": [{"round": rd, "map50": m50, "map50_95": m95, "precision": p, "recall": r}
@@ -271,7 +439,14 @@ def main() -> int:
         "nan_inf_any": nan_inf_any,
         "test_evaluated": False,
         "history": str(Path(out_dir) / "history.json"),
-        "compare_against": "results/diag_a_partial_nodp_seed42.json (A0: same config, sigma/clipping absent)",
+        # matched controls MUST share the same trainable subset -- comparing a
+        # P2 run against the P0 A0 control conflates architecture with mechanism
+        "compare_against": (
+            "results/diag_a_partial_nodp_seed42.json (A0: same P0 config, sigma/clipping absent)"
+            if args.subset_label == "P0" else
+            f"matched {args.subset_label} controls ONLY (same trainable subset): the "
+            f"{args.subset_label} No-DP capacity control and the {args.subset_label} flat "
+            f"clipping-only run -- NOT the P0 A0 control"),
     }
     out_json = f"results/diag_b_clipping_only_seed{args.seed}{suffix}.json"
     Path("results").mkdir(exist_ok=True)
@@ -281,9 +456,7 @@ def main() -> int:
     print(f"\nbest val mAP50={result['best_val_map50']} @ round {result['best_round']}")
     print(f"nan_inf_any={nan_inf_any}")
     print(f"Saved {out_json}")
-    print("\nCompare this run's val_per_round against results/diag_a_partial_nodp_seed42.json "
-          "(A0) round-by-round, e.g. with scripts/22_compare_val_trajectories.py, to determine "
-          "whether clipping ALONE reproduces the E2-style collapse.")
+    print(f"\nCompare this run's val_per_round against: {record['compare_against']}")
     print("Do NOT tune C based on this run -- that is a later, separate step.")
     return 0
 
