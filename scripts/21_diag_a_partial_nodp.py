@@ -90,22 +90,27 @@ FROZEN_TOL = 3e-3
 TRAINED_MIN = 1e-2
 
 
-def region_of(key: str, freeze_stages: list[int]) -> str | None:
-    """"frozen"/"trainable" derived from THIS run's actual freeze_stages, not
-    a hardcoded backbone/neck_head boundary -- required for P1 (freeze=[0..22],
+def region_of(key: str, freeze_stages: list) -> str | None:
+    """"frozen"/"trainable" derived from THIS run's actual freeze list, using
+    ULTRALYTICS' OWN matching semantics (substring of f"model.{x}."), not a
+    hardcoded backbone/neck_head boundary -- required for P1 (freeze=[0..22],
     only stage 23 trainable) and P2-style subsets, where the frozen region
-    spans backbone AND most of the neck, not just stages 0-10. Using a fixed
-    boundary here would silently lump a frozen region (e.g. neck under P1)
-    together with the trainable region into one bucket, making a "changed"
-    verdict on that bucket uninformative about whether the frozen part
-    actually stayed frozen -- exactly what P1's audit needs to catch.
+    spans backbone AND most of the neck, not just stages 0-10.
+
+    freeze_stages entries may be ints (whole stages -- for pure-int lists
+    this matching is provably identical to the previous `stage in
+    freeze_stages` logic, since "model.{s}." is a substring of a key iff the
+    key's stage equals s) or module-path STRINGS (e.g. "16.cv1.conv.base"
+    for LoRA runs, where the frozen/trainable boundary cuts INSIDE stages:
+    frozen base convs live in the same stage as their trainable .lora_
+    branches, so stage membership alone cannot classify them).
     """
     if "dfl.conv" in key:
         return "dfl"
-    stage = stage_of(key)
-    if stage is None:
+    if stage_of(key) is None:
         return None
-    return "frozen" if stage in freeze_stages else "trainable"
+    freeze_names = [f"model.{x}." for x in freeze_stages]
+    return "frozen" if any(x in key for x in freeze_names) else "trainable"
 
 
 def region_diff_stats(sd_a, sd_b, freeze_stages: list[int]) -> dict:
@@ -147,6 +152,15 @@ def main() -> int:
     parser.add_argument("--tag", default="",
                          help="output-path suffix so LR/freeze variants never collide with the A0 "
                               "reference run or each other, e.g. --tag lr0.001")
+    parser.add_argument("--init-weights", default="models/base_groupnorm.pt",
+                        help="initial global checkpoint (default: the locked P2/B2 base). Pass "
+                             "models/base_groupnorm_lora_r8.pt for the Phase D LoRA capacity control")
+    parser.add_argument("--lora-freeze", action="store_true",
+                        help="derive the freeze list from the LoRA design (fedxpalm.models.lora."
+                             "lora_freeze_spec on the --init-weights model) instead of --freeze-stages: "
+                             "P2 frozen stage ints + module-prefix strings for every frozen base conv "
+                             "inside the trainable stages. Trainable set = .lora_ + cv3.x.2 + "
+                             "trainable-stage GroupNorm affine. Requires a LoRA-surgered checkpoint")
     args = parser.parse_args()
 
     with open("configs/dataset.yaml") as f:
@@ -156,8 +170,23 @@ def main() -> int:
     with open("configs/dp_config.yaml") as f:
         dp_cfg = yaml.safe_load(f)
 
-    freeze_stages = (args.freeze_stages if args.freeze_stages is not None
-                     else dp_cfg["variants"]["partial"]["freeze_stages"])  # same source E2 reads, unless overridden
+    if args.lora_freeze:
+        # LoRA mode: the frozen/trainable boundary cuts INSIDE stages, so the
+        # freeze list is derived from the surgered model itself (ints for the
+        # fully-frozen P2 stages + module-prefix strings for frozen base convs)
+        import torch
+        from fedxpalm.models.lora import ConvLoRA, lora_freeze_spec
+        _ck = torch.load(args.init_weights, map_location="cpu", weights_only=False)
+        _lora_model = _ck["model"] if isinstance(_ck, dict) and "model" in _ck else _ck
+        if not any(isinstance(m, ConvLoRA) for m in _lora_model.modules()):
+            print(f"FAIL: --lora-freeze requires a LoRA-surgered checkpoint, but {args.init_weights} "
+                  f"contains no ConvLoRA modules -- run scripts/31_build_lora_checkpoint.py first")
+            return 1
+        freeze_stages = lora_freeze_spec(_lora_model)
+        del _ck, _lora_model
+    else:
+        freeze_stages = (args.freeze_stages if args.freeze_stages is not None
+                         else dp_cfg["variants"]["partial"]["freeze_stages"])  # same source E2 reads, unless overridden
     splits_dir = Path(ds_cfg["output_dir"])
     data_yaml = str(splits_dir / "data.yaml")
     imgsz = args.imgsz or fl_cfg["model"]["imgsz"]
@@ -196,13 +225,13 @@ def main() -> int:
           f"NO Opacus/clipping/noise -> {out_dir}")
     result = run_federated_training(
         client_round_fn, client_data_yamls, client_sample_counts,
-        init_weights_path="models/base_groupnorm.pt", rounds=args.rounds, out_dir=out_dir,
+        init_weights_path=args.init_weights, rounds=args.rounds, out_dir=out_dir,
         eval_fn=eval_fn, eval_every=1,
     )
 
     # ---- post-run audits ----
     import torch.nn as nn
-    base_sd, _ = load_state("models/base_groupnorm.pt")
+    base_sd, _ = load_state(args.init_weights)
     round0_sd, _ = load_state(str(Path(out_dir) / "global_round_0.pt"))
     final_sd, final_model = load_state(result["final_weights"])
     n_bn = sum(1 for m in final_model.modules() if isinstance(m, nn.modules.batchnorm._BatchNorm))
