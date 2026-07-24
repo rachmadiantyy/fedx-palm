@@ -174,6 +174,16 @@ def main() -> int:
     parser.add_argument("--epochs-per-round", type=int, default=None,
                         help="override fl_config local_training.epochs_per_round (default: 2). For "
                              "communication-frequency-matched runs, e.g. --rounds 10 --epochs-per-round 1")
+    parser.add_argument("--workers", type=int, default=0,
+                        help="dataloader workers (default 0). client.py's train_client_round falls back "
+                             "to workers=4 if unset here -- observed to accumulate orphaned worker "
+                             "processes across repeated client-round trainer rebuilds on Windows "
+                             "(each of the K*rounds calls to build_trainer_from_checkpoint()+trainer.train() "
+                             "creates a fresh DataLoader; old worker processes were not reliably reaped "
+                             "between calls, eventually stalling the run). workers=0 matches the "
+                             "already-validated default used by every DP script (19/20/21's --lora-freeze "
+                             "and --predictor-only-freeze paths, 23, 25, 28) for the same underlying "
+                             "Windows multiprocessing reason")
     args = parser.parse_args()
 
     with open("configs/dataset.yaml") as f:
@@ -229,7 +239,7 @@ def main() -> int:
     data_yaml = str(splits_dir / "data.yaml")
     imgsz = args.imgsz or fl_cfg["model"]["imgsz"]
     hyp = dict(fl_cfg["local_training"], imgsz=imgsz, seed=args.seed,
-               warmup_epochs=0.0, freeze_stages=freeze_stages)
+               warmup_epochs=0.0, freeze_stages=freeze_stages, workers=args.workers)
     if args.batch:
         hyp["batch_size"] = args.batch
     if args.lr0 is not None:
