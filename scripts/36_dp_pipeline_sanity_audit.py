@@ -13,6 +13,27 @@ directory and a NEW results file -- no existing checkpoint, results file,
 B1/B2/E1/E2 output, or historical diagnostic is read for writing or
 touched in any way.
 
+INCIDENT NOTE (found on the first real run, fixed before any experiment
+was affected): the first version of this script computed
+physical_batch_size_arg but never passed it into any of its three
+train_client_round_dp() calls, so BatchMemoryManager was never actually
+engaged -- dp_sgd.py's own physical_batch_size=None branch silently fell
+back to iterating the raw logical Poisson loader directly. This produced
+two audit failures (item 4: "physical" sizes observed were actually full
+logical-batch sizes ~55-77; item 7: clip_calls==noise_calls, since every
+unsplit logical draw is trivially its own "last chunk", so no skip ever
+fired) that looked exactly like a BatchMemoryManager/production bug but
+were not one -- confirmed by re-reading Opacus's own
+wrap_data_loader()/BatchSplittingSampler source (BatchMemoryManager's
+__enter__ genuinely returns a NEW split-sampler DataLoader; dp_sgd.py's
+`with batch_ctx as active_loader:` / `for batch in active_loader:`
+already binds and iterates that returned loader correctly, not the raw
+one) and by confirming scripts/23, /25, /28 -- used for every P2 DP pilot
+already reported -- already pass physical_batch_size correctly and are
+therefore unaffected. Root cause was isolated entirely to this audit
+script; the fix threads physical_batch_size_arg into all three call
+sites below.
+
 Checks (mapped 1:1 to the 14 requested items):
   1.  BatchNorm == 0, GroupNorm == 81
   2.  Opacus ModuleValidator.validate(strict=True) returns zero errors
@@ -141,7 +162,7 @@ def _install_instrumentation():
     return restore
 
 
-def _run_zero_update_subprobe(base_weights, data_yaml, hyp, dp_hyp, device):
+def _run_zero_update_subprobe(base_weights, data_yaml, hyp, dp_hyp, device, physical_batch_size_arg):
     """Item 13: independently re-verifies the zero-weight-update mechanism
     used by scripts/25/28 is genuinely a no-op, using the SAME technique --
     make_private wrapped to snapshot params and neutralize
@@ -160,11 +181,20 @@ def _run_zero_update_subprobe(base_weights, data_yaml, hyp, dp_hyp, device):
 
     pe_mod.PrivacyEngine.make_private = wrapped
     try:
+        # BUG FIX (audit-only bug, found via the 12/14-pass real run): this call
+        # previously omitted physical_batch_size, silently falling back to the
+        # unwrapped (BatchMemoryManager-inactive) path -- see module docstring
+        # amendment below. max_steps counts PHYSICAL iterations once this is
+        # set (dp_sgd.py's documented semantics), so give generous headroom.
+        physical_per_logical = (-(-hyp["batch_size"] // physical_batch_size_arg)
+                                if physical_batch_size_arg else 1)
         final_state, _info = train_client_round_dp(
             global_weights_path=base_weights, client_data_yaml=data_yaml,
             hyp=hyp, dp_hyp=dp_hyp, round_idx=0, client_id="audit_subprobe",
             out_dir="runs/_dp_pipeline_sanity_audit_scratch", device=device,
-            freeze_stages=P2_FREEZE_STAGES, accountant_state=None, max_steps=2,
+            freeze_stages=P2_FREEZE_STAGES, accountant_state=None,
+            max_steps=2 * physical_per_logical + physical_per_logical,
+            physical_batch_size=physical_batch_size_arg,
         )
     finally:
         pe_mod.PrivacyEngine.make_private = orig_make_private
@@ -252,6 +282,9 @@ def main() -> int:
                 out_dir="runs/_dp_pipeline_sanity_audit_scratch", device=args.device,
                 freeze_stages=P2_FREEZE_STAGES, accountant_state=accountant_states.get(client0),
                 collect_grad_norms=True,
+                # BUG FIX: this call previously omitted physical_batch_size,
+                # silently disabling BatchMemoryManager -- see docstring note.
+                physical_batch_size=physical_batch_size_arg,
             )
             accountant_states[client0] = info.pop("accountant_state")
             round_infos.append(info)
@@ -334,6 +367,8 @@ def main() -> int:
         hyp=hyp, dp_hyp=dp_hyp, round_idx=0, client_id=client1,
         out_dir="runs/_dp_pipeline_sanity_audit_scratch", device=args.device,
         freeze_stages=P2_FREEZE_STAGES, accountant_state=None, collect_grad_norms=True,
+        # BUG FIX: this call previously omitted physical_batch_size too.
+        physical_batch_size=physical_batch_size_arg,
     )
     client0_state_after_client1_run = accountant_states[client0]  # unchanged reference -- client1 has its own dict entry
     record(10, "client1's run does not alter client0's already-recorded accountant state",
@@ -359,7 +394,7 @@ def main() -> int:
 
     # item 13: zero-update sub-probe re-verification
     zero_update_ok, zero_update_mismatches = _run_zero_update_subprobe(
-        args.base_weights, client_data_yaml[client0], hyp, dp_hyp, args.device)
+        args.base_weights, client_data_yaml[client0], hyp, dp_hyp, args.device, physical_batch_size_arg)
     record(13, "zero-weight-update probe mechanism (scripts/25/28) is genuinely a no-op",
           zero_update_ok, {"mismatched_params": zero_update_mismatches[:5]})
 
