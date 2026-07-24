@@ -325,6 +325,7 @@ def train_client_round_dp(
 
     dp_model.train()
     n_steps = 0
+    n_logical_steps = 0  # increments only on a REAL (non-skipped) logical DP step -- see below
     nan_inf_detected = False
     observed_norms = [] if collect_grad_norms else None
     with batch_ctx as active_loader:
@@ -352,6 +353,15 @@ def train_client_round_dp(
                     # computes this same quantity internally then discards it
                     observed_norms.append(_per_sample_grad_norms(dp_optimizer))
                 dp_optimizer.step()
+                # dp_optimizer.step() returns None in BOTH the skipped and the real-step case
+                # here (no closure is passed, so a real step just forwards SGD.step()'s own
+                # None return) -- it cannot be used to tell them apart. pre_step() (called
+                # internally by step()) sets _is_last_step_skipped explicitly in both branches,
+                # so read THAT instead: False means this call just completed a real logical DP
+                # step (clip_and_accumulate + add_noise + the underlying optimizer step all
+                # fired), True means it only accumulated into a not-yet-complete logical group.
+                if not getattr(dp_optimizer, "_is_last_step_skipped", False):
+                    n_logical_steps += 1
                 n_steps += 1
                 if max_steps is not None and n_steps >= max_steps:
                     break
@@ -404,7 +414,8 @@ def train_client_round_dp(
         "delta": dp_hyp["delta"],
         "n_samples": len(dp_loader.dataset),
         "sample_rate_q": sample_rate,
-        "steps_this_round": n_steps,
+        "steps_this_round": n_steps,  # PHYSICAL loop iterations (== logical when physical_batch_size unset)
+        "logical_steps_this_round": n_logical_steps,  # real (non-skipped) DP steps only -- always logical
         "cumulative_steps": cumulative_steps,
         "epsilon": epsilon,                        # cumulative over all rounds; None when sigma=0
         "privacy_guarantee": privacy_guarantee,    # "dp_sgd" | "not_applicable_no_noise"
@@ -427,7 +438,18 @@ def train_client_round_dp(
             + ([f"...(+{len(removed_frozen) - 12} more)"] if len(removed_frozen) > 12 else []),
         "accountant_state": _dump_accountant(privacy_engine),
     }
-    # sanity: the accountant must have grown by exactly this round's steps
-    if cumulative_steps != steps_before + n_steps:
-        info["accountant_step_mismatch"] = {"before": steps_before, "round": n_steps, "after": cumulative_steps}
+    # sanity: the accountant must have grown by exactly this round's LOGICAL
+    # steps. BUG FIX: this previously compared against n_steps (physical loop
+    # iterations -- always >= logical steps, and strictly greater whenever
+    # physical_batch_size splits a logical group into multiple physical
+    # chunks), so it spuriously fired on every physical_batch_size run even
+    # though the accountant itself was correct. n_logical_steps only counts
+    # calls where dp_optimizer's own _is_last_step_skipped flag was False,
+    # i.e. a real (non-skipped) logical DP step actually completed. Confirmed
+    # this bug never affected epsilon (computed independently by Opacus's
+    # accountant, untouched by this counter), training, or any reported
+    # metric -- purely a stale self-diagnostic assertion.
+    if cumulative_steps != steps_before + n_logical_steps:
+        info["accountant_step_mismatch"] = {"before": steps_before, "round": n_logical_steps,
+                                            "after": cumulative_steps}
     return state_dict, info
