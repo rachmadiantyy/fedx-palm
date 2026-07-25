@@ -417,6 +417,16 @@ def main() -> int:
     eps_per_client = {cid: info.get("epsilon") for cid, info in final_round_clients.items()}
     eps_values = [v for v in eps_per_client.values() if v is not None]
     epsilon_max = max(eps_values) if eps_values else None
+    # which accountant produced each client's FINAL-round epsilon -- "prv" (normal) or
+    # "rdp_fallback" (PRV hit a genuine out-of-memory failure; see dp_sgd.py's
+    # _get_epsilon_with_fallback). Surfaced here (not just buried in history.json) so a
+    # fallback epsilon is never silently mistaken for a PRV one when reading this summary.
+    accountant_used_per_client = {cid: info.get("accountant_used") for cid, info in final_round_clients.items()}
+    prv_failed_per_client = {cid: info.get("prv_failed", False) for cid, info in final_round_clients.items()}
+    fallback_reason_per_client = {cid: info.get("epsilon_fallback_reason")
+                                  for cid, info in final_round_clients.items()
+                                  if info.get("epsilon_fallback_reason")}
+    any_prv_fallback_used = any(prv_failed_per_client.values())
 
     record = {
         "diagnostic": "B_clipping_only_control" if args.sigma == 0.0 else "C_clipping_plus_noise",
@@ -435,6 +445,10 @@ def main() -> int:
         "per_layer_thresholds_file": args.per_layer_thresholds,
         "per_layer_meta": pl_meta,
         "epsilon_per_client_final": eps_per_client, "epsilon_max_over_clients": epsilon_max,
+        "accountant_used_per_client_final": accountant_used_per_client,
+        "prv_failed_per_client_final": prv_failed_per_client,
+        "any_prv_fallback_used": any_prv_fallback_used,
+        "epsilon_fallback_reason_per_client": fallback_reason_per_client,
         "privacy_guarantee": "dp_sgd" if args.sigma > 0.0 else "not_applicable_no_noise",
         "val_per_round": [{"round": rd, "map50": m50, "map50_95": m95, "precision": p, "recall": r}
                           for rd, m50, m95, p, r in val_rows],
@@ -461,6 +475,11 @@ def main() -> int:
     with open(out_json, "w") as f:
         json.dump(record, f, indent=2)
 
+    if any_prv_fallback_used:
+        print(f"\n[!] PRV accountant hit a genuine out-of-memory failure for at least one "
+              f"client this run -- epsilon for that client was computed via a RDP fallback "
+              f"(reporting only, PRV accountant state itself untouched). Per-client detail: "
+              f"accountant_used={accountant_used_per_client}  reasons={fallback_reason_per_client}")
     print(f"\nbest val mAP50={result['best_val_map50']} @ round {result['best_round']}")
     print(f"nan_inf_any={nan_inf_any}")
     print(f"Saved {out_json}")

@@ -71,6 +71,57 @@ def _cumulative_steps(privacy_engine: PrivacyEngine) -> int:
     return total
 
 
+def _is_bad_alloc(exc: BaseException) -> bool:
+    """True for a genuine out-of-memory failure: either a real MemoryError,
+    or a RuntimeError whose message is actually a wrapped C++ std::bad_alloc
+    (some scipy/numpy FFT backends surface it that way depending on platform/
+    version). Anything else returns False so the caller re-raises it
+    untouched -- this must never become a broad except-and-swallow."""
+    if isinstance(exc, MemoryError):
+        return True
+    if isinstance(exc, RuntimeError) and "bad_alloc" in str(exc).lower():
+        return True
+    return False
+
+
+def _get_epsilon_with_fallback(privacy_engine: PrivacyEngine, delta: float) -> dict:
+    """Computes epsilon via the PRIMARY accountant (PRV, unconditionally the
+    one actually used for accounting/state persistence -- this function never
+    touches privacy_engine.accountant itself, read-only). If PRV's own
+    get_epsilon() fails with a genuine out-of-memory error (observed in
+    practice: PRVAccountant's FFT-based composition needs a discretization
+    mesh that grows very large at small sigma combined with small delta and
+    many composed steps -- a numerical/memory limitation of that algorithm,
+    not a bug in this pipeline), falls back to reconstructing a FRESH,
+    throwaway RDPAccountant from the SAME history (list of
+    (noise_multiplier, sample_rate, num_steps) tuples -- identical shape for
+    both accountant types) purely to produce a reportable epsilon for THIS
+    call. The real PRV accountant object/state is never mutated or replaced,
+    so per-round persistence (_dump_accountant/_restore_accountant) and every
+    sigma that doesn't hit this failure mode are completely unaffected.
+
+    Returns a dict with epsilon, accountant_used ("prv"|"rdp_fallback"),
+    prv_failed, and (when applicable) the fallback reason -- so a fallback
+    epsilon can never be silently mistaken for a PRV one downstream.
+    """
+    try:
+        epsilon = float(privacy_engine.get_epsilon(delta=delta))
+        return {"epsilon": epsilon, "accountant_used": "prv", "prv_failed": False,
+               "epsilon_fallback_reason": None}
+    except (MemoryError, RuntimeError) as e:
+        if not _is_bad_alloc(e):
+            raise  # anything else is a real error -- never swallowed
+        from opacus.accountants import RDPAccountant
+        rdp_acct = RDPAccountant()
+        # same (noise_multiplier, sample_rate, num_steps) history shape as PRV --
+        # a plain list copy, not a live reference, so nothing about the real
+        # PRV accountant's own state is touched
+        rdp_acct.history = list(getattr(privacy_engine.accountant, "history", []))
+        epsilon = float(rdp_acct.get_epsilon(delta=delta))
+        return {"epsilon": epsilon, "accountant_used": "rdp_fallback", "prv_failed": True,
+               "epsilon_fallback_reason": f"{type(e).__name__}: {e}"}
+
+
 def _per_sample_grad_norms(dp_optimizer) -> "torch.Tensor":
     """Pre-clipping per-sample gradient L2 norm for the current micro-batch.
 
@@ -396,9 +447,12 @@ def train_client_round_dp(
     # finite (epsilon, delta) guarantee -- epsilon must not be reported as a
     # DP number (and the PRV accountant cannot evaluate sigma=0 anyway).
     if dp_hyp["sigma"] > 0:
-        epsilon = float(privacy_engine.get_epsilon(delta=dp_hyp["delta"]))
+        eps_result = _get_epsilon_with_fallback(privacy_engine, dp_hyp["delta"])
+        epsilon = eps_result["epsilon"]
         privacy_guarantee = "dp_sgd"
     else:
+        eps_result = {"epsilon": None, "accountant_used": None, "prv_failed": False,
+                     "epsilon_fallback_reason": None}
         epsilon = None
         privacy_guarantee = "not_applicable_no_noise"
     cumulative_steps = _cumulative_steps(privacy_engine)
@@ -419,6 +473,13 @@ def train_client_round_dp(
         "cumulative_steps": cumulative_steps,
         "epsilon": epsilon,                        # cumulative over all rounds; None when sigma=0
         "privacy_guarantee": privacy_guarantee,    # "dp_sgd" | "not_applicable_no_noise"
+        # which accountant actually produced `epsilon` above -- "prv" (normal case) or
+        # "rdp_fallback" (PRV hit a genuine out-of-memory failure; see
+        # _get_epsilon_with_fallback's docstring). Never conflate the two: a
+        # rdp_fallback epsilon is NOT a PRV epsilon and must not be reported as one.
+        "accountant_used": eps_result["accountant_used"],
+        "prv_failed": eps_result["prv_failed"],
+        "epsilon_fallback_reason": eps_result["epsilon_fallback_reason"],
         "nan_inf": bool(nan_inf_detected),
         "clip_fraction": grad_norm_stats["clip_fraction"] if grad_norm_stats else None,
         "clip_fraction_note": "see grad_norm_stats" if grad_norm_stats else "not_measured (collect_grad_norms=False)",
