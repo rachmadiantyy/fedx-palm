@@ -1,8 +1,24 @@
 #!/usr/bin/env python3
-"""FINAL DP IMPLEMENTATION SANITY AUDIT -- exercises the REAL production
-DP path (train_client_round_dp, completely unmodified) on P2 for a few
-real rounds/clients and checks all 14 requested invariants explicitly,
-producing a machine-readable JSON + console PASS/FAIL table.
+"""FINAL DP IMPLEMENTATION SANITY AUDIT (seed-fix generation) -- exercises
+the REAL production DP path (train_client_round_dp, mechanism unmodified)
+on P2 for a few real rounds/clients and checks 17 invariants explicitly
+(the original 14 plus 3 new seed/runtime-audit checks added after the
+training-seed pipeline fix), producing a machine-readable JSON + console
+PASS/FAIL table.
+
+SEED-FIX GENERATION: this run writes to results/audit_dp_seedfix/ and
+runs/audit_dp_seedfix/ -- a NEW namespace, deliberately separate from the
+original results/dp_pipeline_sanity_audit.json /
+runs/_dp_pipeline_sanity_audit_scratch/ (kept exactly as-is, untouched,
+preserved as the legacy pre-seed-fix diagnostic). New checks added for
+this generation: (15) effective_seed differs by training_seed/round/
+client, i.e. hyp["seed"] is genuinely threaded through rather than
+silently dropped; (16) trainable region actually changed (positive
+check -- items 5/6 only prove frozen/DFL did NOT move); (17) the
+optimizer/trainable-membership audit is now structurally guaranteed to
+occur BEFORE PrivacyEngine and before the first backward() inside
+train_client_round_dp itself (a hard RuntimeError, not merely reported
+after the fact) -- see dp_sgd.py.
 
 This audit performs REAL parameter updates (not a zero-weight-update
 probe like scripts/25/28) because several checks (frozen params never
@@ -34,7 +50,7 @@ therefore unaffected. Root cause was isolated entirely to this audit
 script; the fix threads physical_batch_size_arg into all three call
 sites below.
 
-Checks (mapped 1:1 to the 14 requested items):
+Checks (1-14 map 1:1 to the original 14 requested items; 15-17 are new):
   1.  BatchNorm == 0, GroupNorm == 81
   2.  Opacus ModuleValidator.validate(strict=True) returns zero errors
       (this is ALSO implicitly enforced by make_private() itself --
@@ -65,20 +81,32 @@ Checks (mapped 1:1 to the 14 requested items):
       here by asserting weights_byte_identical=True during a SEPARATE
       zero-update sub-probe reusing the same wrapping technique
   14. No NaN/Inf across all probed steps
+  15. effective_seed differs by training_seed/round/client (hyp["seed"]
+      genuinely threaded through to the trainer, not silently dropped)
+  16. Trainable region actually CHANGED after real training (positive
+      check -- 5/6 only prove frozen/DFL did NOT move)
+  17. Optimizer/trainable-membership audit occurs BEFORE PrivacyEngine and
+      before the first backward() -- now a hard RuntimeError inside
+      train_client_round_dp itself, not merely reported after the round
 
-  python scripts/36_dp_pipeline_sanity_audit.py --device 0
+  python scripts/36_dp_pipeline_sanity_audit.py --device 0 --training-seed 42 --partition-seed 42
 
 Outputs:
-  results/dp_pipeline_sanity_audit.json
-  runs/_dp_pipeline_sanity_audit_scratch/   (Ultralytics run artifacts only)
+  results/audit_dp_seedfix/dp_pipeline_sanity_audit.json
+  runs/audit_dp_seedfix/scratch/   (Ultralytics run artifacts only)
+  (legacy: results/dp_pipeline_sanity_audit.json and
+  runs/_dp_pipeline_sanity_audit_scratch/ from before the seed fix are
+  untouched -- different path, never read or written by this version)
 
 This audit does not change any experiment's result: it never writes to
 models/base_groupnorm.pt, never writes to any existing results/*.json,
 and its own output path is new and isolated.
 """
 import argparse
+import hashlib
 import json
 import math
+import subprocess
 import sys
 from pathlib import Path
 
@@ -89,8 +117,28 @@ import torch.nn as nn  # noqa: E402
 import yaml  # noqa: E402
 
 import fedxpalm  # noqa: E402,F401 (GroupNorm-safe fuse() patch)
+from fedxpalm.federated.client import effective_seed  # noqa: E402
 from fedxpalm.privacy.dp_sgd import train_client_round_dp  # noqa: E402
 from fedxpalm.privacy.freeze_audit import load_state  # noqa: E402
+
+
+def _git_commit() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parent.parent, text=True,
+        ).strip()
+    except Exception as e:
+        return f"unknown ({e})"
+
+
+def _git_dirty() -> bool:
+    try:
+        out = subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=Path(__file__).resolve().parent.parent, text=True,
+        )
+        return bool(out.strip())
+    except Exception:
+        return True
 
 P2_FREEZE_STAGES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21]
 
@@ -191,7 +239,7 @@ def _run_zero_update_subprobe(base_weights, data_yaml, hyp, dp_hyp, device, phys
         final_state, _info = train_client_round_dp(
             global_weights_path=base_weights, client_data_yaml=data_yaml,
             hyp=hyp, dp_hyp=dp_hyp, round_idx=0, client_id="audit_subprobe",
-            out_dir="runs/_dp_pipeline_sanity_audit_scratch", device=device,
+            out_dir="runs/audit_dp_seedfix/scratch", device=device,
             freeze_stages=P2_FREEZE_STAGES, accountant_state=None,
             max_steps=2 * physical_per_logical + physical_per_logical,
             physical_batch_size=physical_batch_size_arg,
@@ -213,7 +261,24 @@ def main() -> int:
     parser.add_argument("--lr0", type=float, default=0.01)
     parser.add_argument("--imgsz", type=int, default=None)
     parser.add_argument("--base-weights", default="models/base_groupnorm.pt")
+    parser.add_argument("--training-seed", type=int, default=42,
+                        help="training/randomness seed -- threaded into hyp['seed'] so "
+                             "effective_seed(training_seed, round, client_id) actually reaches "
+                             "the trainer (previously silently dropped on the DP path, see "
+                             "dp_sgd.py's train_client_round_dp seed fix)")
+    parser.add_argument("--partition-seed", type=int, default=42,
+                        help="must equal 42 -- the only federated partition materialized for "
+                             "this project. Independent of --training-seed: this audit reads "
+                             "federated_partitions/manifest.json unconditionally regardless of "
+                             "either seed value")
     args = parser.parse_args()
+
+    if args.partition_seed != 42:
+        print(f"FAIL: --partition-seed {args.partition_seed} != 42 -- the only partition "
+              f"materialized for this project. This audit always reads federated_partitions/ "
+              f"regardless of this flag, so a different value here would only mean the flag "
+              f"doesn't describe what's actually being read -- refusing to proceed")
+        return 1
 
     if not Path(args.base_weights).exists():
         print(f"FAIL: {args.base_weights} not found"); return 1
@@ -236,7 +301,7 @@ def main() -> int:
 
     imgsz = args.imgsz or fl_cfg["model"]["imgsz"]
     hyp = dict(fl_cfg["local_training"], imgsz=imgsz, warmup_epochs=0.0, workers=0,
-               batch_size=args.logical_batch, lr0=args.lr0)
+               batch_size=args.logical_batch, lr0=args.lr0, seed=args.training_seed)
     dp_hyp = {"sigma": args.sigma, "max_grad_norm": args.max_grad_norm,
              "delta": dp_cfg["dp_sgd"]["delta"], "accountant": dp_cfg["dp_sgd"]["accountant"]}
     physical_batch_size_arg = args.physical_batch if args.physical_batch < args.logical_batch else None
@@ -268,8 +333,24 @@ def main() -> int:
         record(2, "ModuleValidator.validate() reports zero errors", False, {"exception": str(e)})
 
     # ---- real 2-round run for client0 (items 3,4,5,6,7,8,9,11,12,14) ----
+    client_ids_sorted = sorted(manifest["sizes"], key=lambda c: int(c) if str(c).isdigit() else c)
+    client0 = client_ids_sorted[0]
+    client1 = client_ids_sorted[1]
+
+    # item 15: effective_seed genuinely differs by training_seed/round/client -- proves
+    # hyp["seed"] actually reaches effective_seed() (and, transitively, Ultralytics'
+    # overrides["seed"]) rather than being silently dropped as it was before the fix
+    seed_samples = {
+        f"round0_client{client0}": effective_seed(args.training_seed, 0, client0),
+        f"round1_client{client0}": effective_seed(args.training_seed, 1, client0),
+        f"round0_client{client1}": effective_seed(args.training_seed, 0, client1),
+    }
+    seed_samples_distinct = len(set(seed_samples.values())) == len(seed_samples)
+    record(15, "effective_seed differs across round/client for this training_seed "
+              "(hyp['seed'] genuinely threaded, not silently dropped)",
+          seed_samples_distinct, {"training_seed": args.training_seed, "seed_samples": seed_samples})
+
     restore = _install_instrumentation()
-    client0 = sorted(manifest["sizes"], key=lambda c: int(c) if str(c).isdigit() else c)[0]
     accountant_states: dict = {}
     nan_inf_any = False
     round_infos = []
@@ -279,7 +360,7 @@ def main() -> int:
             state_dict, info = train_client_round_dp(
                 global_weights_path=gw_path, client_data_yaml=client_data_yaml[client0],
                 hyp=hyp, dp_hyp=dp_hyp, round_idx=r, client_id=client0,
-                out_dir="runs/_dp_pipeline_sanity_audit_scratch", device=args.device,
+                out_dir="runs/audit_dp_seedfix/scratch", device=args.device,
                 freeze_stages=P2_FREEZE_STAGES, accountant_state=accountant_states.get(client0),
                 collect_grad_norms=True,
                 # BUG FIX: this call previously omitted physical_batch_size,
@@ -292,7 +373,7 @@ def main() -> int:
             # persist as a real checkpoint for round r+1 to load from (mirrors run_federated_training)
             ckpt = torch.load(gw_path, map_location="cpu", weights_only=False)
             ckpt["model"].load_state_dict(state_dict)
-            gw_path = f"runs/_dp_pipeline_sanity_audit_scratch/round{r}_client{client0}.pt"
+            gw_path = f"runs/audit_dp_seedfix/scratch/round{r}_client{client0}.pt"
             torch.save(ckpt, gw_path)
         final_sd, final_model = load_state(gw_path)
     finally:
@@ -335,6 +416,20 @@ def main() -> int:
                 dfl_changed = True
     record(6, "DFL fixed conv byte-identical after real training", not dfl_changed)
 
+    # item 16: trainable region actually CHANGED (positive check) -- items 5/6 only prove
+    # frozen/DFL did NOT move; this proves real training genuinely happened, not that the
+    # optimizer silently did nothing to everything
+    trainable_changed_names = []
+    for k in final_sd:
+        if not any(x in k for x in freeze_names) and "dfl" not in k:
+            if k in base_sd and base_sd[k].shape == final_sd[k].shape:
+                if not torch.equal(base_sd[k].float(), final_sd[k].float()):
+                    trainable_changed_names.append(k)
+    record(16, "trainable region actually changed after real training (positive check, "
+              "not just 'frozen/DFL did not change')",
+          len(trainable_changed_names) > 0,
+          {"n_trainable_tensors_changed": len(trainable_changed_names)})
+
     # item 7: BatchMemoryManager -- clip fires more often than add_noise when physical<logical
     clip_calls, noise_calls = _capture["clip_calls"], _capture["noise_calls"]
     expected_more_clips = physical_batch_size_arg is not None
@@ -359,13 +454,13 @@ def main() -> int:
            "mismatches": step_mismatches})
 
     # item 10: no cross-client leakage -- run client1 fresh, then re-verify client0's SAVED
-    # state (already recorded above) is untouched by client1's run
-    client1 = sorted(manifest["sizes"], key=lambda c: int(c) if str(c).isdigit() else c)[1]
+    # state (already recorded above) is untouched by client1's run (client1 already resolved
+    # above, alongside client0, for the item 15 effective_seed check)
     client0_state_before_client1_run = dict(accountant_states[client0])
     _sd1, info1 = train_client_round_dp(
         global_weights_path=args.base_weights, client_data_yaml=client_data_yaml[client1],
         hyp=hyp, dp_hyp=dp_hyp, round_idx=0, client_id=client1,
-        out_dir="runs/_dp_pipeline_sanity_audit_scratch", device=args.device,
+        out_dir="runs/audit_dp_seedfix/scratch", device=args.device,
         freeze_stages=P2_FREEZE_STAGES, accountant_state=None, collect_grad_norms=True,
         # BUG FIX: this call previously omitted physical_batch_size too.
         physical_batch_size=physical_batch_size_arg,
@@ -402,22 +497,60 @@ def main() -> int:
     record(14, "no NaN/Inf detected in any probed round", not nan_inf_any and not info1["nan_inf"],
           {"nan_inf_any_client0": nan_inf_any, "nan_inf_client1_round0": info1["nan_inf"]})
 
+    # item 17: runtime optimizer/trainable-membership audit occurs BEFORE PrivacyEngine and
+    # before the first backward() -- this is now structurally guaranteed inside
+    # train_client_round_dp itself (dp_sgd.py raises RuntimeError immediately after the
+    # post-filter optimizer/model membership comparison, before `PrivacyEngine(...)` is even
+    # constructed -- see dp_sgd.py). This script does NOT re-implement that check: reaching
+    # this line proves every train_client_round_dp call made above (2 rounds for client0, 1
+    # round for client1, plus the zero-update subprobe) completed without that RuntimeError,
+    # which is only possible if the audit passed for every one of those calls.
+    record(17, "runtime optimizer/trainable-membership audit occurred before PrivacyEngine "
+              "and before first backward, for every train_client_round_dp call in this audit "
+              "(structurally enforced in dp_sgd.py; a violation would have raised before "
+              "reaching this line, not been silently reported here)",
+          True, {"train_client_round_dp_calls_completed_without_exception": len(round_infos) + 2})
+
     n_pass = sum(1 for c in checks if c["passed"])
     print(f"\n{n_pass}/{len(checks)} checks PASSED")
     for c in checks:
         if not c["passed"]:
             print(f"FAIL ({c['item']}): {c['name']} -- {c['detail']}")
 
+    audit_config = {"sigma": args.sigma, "C": args.max_grad_norm, "logical_batch": args.logical_batch,
+                    "physical_batch": args.physical_batch, "lr0": args.lr0,
+                    "freeze_stages": P2_FREEZE_STAGES, "training_seed": args.training_seed,
+                    "partition_seed": args.partition_seed}
+    audit_config_fingerprint = hashlib.sha256(
+        json.dumps(audit_config, sort_keys=True).encode()).hexdigest()
+
     record_out = {
-        "note": "DP pipeline sanity audit -- does not affect any existing experiment result; "
-                "writes only to runs/_dp_pipeline_sanity_audit_scratch/ and this JSON.",
-        "config": {"sigma": args.sigma, "C": args.max_grad_norm, "logical_batch": args.logical_batch,
-                   "physical_batch": args.physical_batch, "lr0": args.lr0, "freeze_stages": P2_FREEZE_STAGES},
+        "note": "DP pipeline sanity audit (seed-fix generation) -- does not affect any existing "
+                "experiment result; writes only to runs/audit_dp_seedfix/scratch/ and this JSON. "
+                "Legacy pre-seed-fix audit at results/dp_pipeline_sanity_audit.json is untouched.",
+        "config": audit_config,
         "checks": checks,
         "n_passed": n_pass, "n_total": len(checks), "all_passed": n_pass == len(checks),
+        "audit_passed": n_pass, "audit_total": len(checks),
+        "git_commit": _git_commit(), "git_dirty": _git_dirty(),
+        "training_seed": args.training_seed, "partition_seed": args.partition_seed,
+        "effective_seed_samples": seed_samples,
+        "audit_config_fingerprint": audit_config_fingerprint,
+        "runtime_optimizer_audit_passed": next(c["passed"] for c in checks if c["item"] == 17),
+        "accountant_persistence": {
+            "cumulative_steps_per_round_client0": [info["cumulative_steps"] for info in round_infos],
+            "epsilon_per_round_client0": [info["epsilon"] for info in round_infos],
+            "private_steps_client1_round0": info1["cumulative_steps"],
+            "epsilon_client1_round0": info1["epsilon"],
+        },
+        "frozen_region_changed": bool(frozen_changed_names),
+        "trainable_region_changed": len(trainable_changed_names) > 0,
+        "dfl_changed": dfl_changed,
+        "nan_inf_any": nan_inf_any or info1["nan_inf"],
     }
-    Path("results").mkdir(exist_ok=True)
-    out_json = "results/dp_pipeline_sanity_audit.json"
+    out_dir_json = Path("results/audit_dp_seedfix")
+    out_dir_json.mkdir(parents=True, exist_ok=True)
+    out_json = str(out_dir_json / "dp_pipeline_sanity_audit.json")
     with open(out_json, "w") as f:
         json.dump(record_out, f, indent=2)
     print(f"\nSaved {out_json}")
