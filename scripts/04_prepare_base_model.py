@@ -14,8 +14,22 @@ import fedxpalm  # noqa: E402 (applies the GroupNorm-safe `fuse()` patch)
 from fedxpalm.models.groupnorm import prepare_model_for_dp  # noqa: E402
 
 if __name__ == "__main__":
+    import argparse
+
     from ultralytics import YOLO
     from ultralytics.nn.tasks import DetectionModel
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--arch", default=None,
+                        help="override configs/fl_config.yaml model.arch (default: unchanged, "
+                             "builds models/base_groupnorm.pt as always). Pass e.g. yolo11s.pt "
+                             "together with --out to build a comparison-model base checkpoint "
+                             "without touching the default yolo11n one")
+    parser.add_argument("--out", default=None,
+                        help="override the output path (default: models/base_groupnorm.pt, "
+                             "unchanged). Required to differ from the default whenever --arch "
+                             "differs, so the existing base checkpoint is never overwritten")
+    args = parser.parse_args()
 
     with open("configs/dataset.yaml") as f:
         ds_cfg = yaml.safe_load(f)
@@ -24,7 +38,15 @@ if __name__ == "__main__":
     with open("configs/dp_config.yaml") as f:
         dp_cfg = yaml.safe_load(f)
 
-    arch = fl_cfg["model"]["arch"]
+    arch = args.arch or fl_cfg["model"]["arch"]
+    out_path = Path(args.out) if args.out else Path("models/base_groupnorm.pt")
+    if args.arch and not args.out:
+        print("FAIL: --arch given without --out -- refusing to write a different architecture "
+              "to the default models/base_groupnorm.pt path")
+        raise SystemExit(1)
+    if out_path.exists() and (args.arch or args.out):
+        print(f"FAIL: {out_path} already exists -- refusing to overwrite an existing base checkpoint")
+        raise SystemExit(1)
     yolo = YOLO(arch)  # auto-downloads the pretrained COCO checkpoint if missing
     # rebuild the head for our nc classes, keep the pretrained backbone weights
     pretrained_sd = yolo.model.state_dict()
@@ -37,7 +59,6 @@ if __name__ == "__main__":
 
     prepare_model_for_dp(yolo, max_groups=dp_cfg["groupnorm"]["max_groups"])
 
-    out_path = Path("models/base_groupnorm.pt")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     yolo.save(str(out_path))
     print(f"Saved shared base checkpoint to {out_path}")

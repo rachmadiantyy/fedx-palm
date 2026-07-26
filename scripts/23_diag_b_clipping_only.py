@@ -77,7 +77,8 @@ import fedxpalm  # noqa: E402,F401 (applies the GroupNorm-safe `fuse()` patch)
 from fedxpalm.eval.detection_metrics import evaluate_detector  # noqa: E402
 from fedxpalm.federated.server import run_federated_training  # noqa: E402
 from fedxpalm.privacy.dp_sgd import train_client_round_dp  # noqa: E402
-from fedxpalm.privacy.freeze_audit import audit_freeze, stage_of  # noqa: E402
+from fedxpalm.privacy.freeze_audit import audit_freeze, load_state, stage_of  # noqa: E402
+from fedxpalm.models.model_variant import detect_model_variant, resolve_model_variant  # noqa: E402
 
 
 def main() -> int:
@@ -85,6 +86,21 @@ def main() -> int:
     parser.add_argument("--device", default="0")
     parser.add_argument("--rounds", type=int, default=5, help="diagnostic max is 5; override discouraged")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--init-weights", default="models/base_groupnorm.pt",
+                        help="initial global checkpoint (default: the locked YOLO11n/P2/B2 base, "
+                             "unchanged). Pass a different scale-variant base checkpoint (e.g. "
+                             "models/base_groupnorm_yolo11s.pt, from scripts/04_prepare_base_model.py "
+                             "--arch yolo11s.pt --out ...) to run the SAME diagnostic on a different "
+                             "model -- freeze_stages/hyperparameters are unaffected, only the starting "
+                             "weights and (recorded, not assumed) model_variant/total_params differ")
+    parser.add_argument("--model-variant", choices=["yolo11n", "yolo11s"], default="yolo11n",
+                        help="EXPLICIT scale-variant identity of --init-weights (default: yolo11n, "
+                             "unchanged for every existing B/C run). This -- not the measured "
+                             "parameter count -- is the authoritative source recorded to the results "
+                             "JSON as model_variant_requested; the measured total_params is only "
+                             "cross-checked against it as a fallback sanity check (parameter count "
+                             "alone cannot be trusted once the detection head is resized for nc=6). "
+                             "A mismatch aborts before any training runs")
     parser.add_argument("--imgsz", type=int, default=None, help="default: fl_config model.imgsz (960)")
     parser.add_argument("--batch", type=int, default=None,
                         help="legacy alias for --logical-batch (default: fl_config local_training.batch_size, 8)")
@@ -208,6 +224,26 @@ def main() -> int:
 
     suffix = f"_{args.tag}" if args.tag else ""
     out_dir = f"runs/diag_b_clipping_only/k4_seed{args.seed}{suffix}"
+
+    # ---- model-variant consistency check, BEFORE any training runs ----
+    # --model-variant is the AUTHORITATIVE source (explicit CLI argument);
+    # the measured total parameter count is only a fallback sanity-check,
+    # since parameter count can shift once the detection head is resized
+    # for a different nc and must never be trusted as the sole source of
+    # truth for which architecture is actually being trained.
+    _check_sd, _check_model = load_state(args.init_weights)
+    _check_total_params = sum(p.numel() for p in _check_model.parameters())
+    _variant_check = resolve_model_variant(args.model_variant, _check_total_params)
+    del _check_sd, _check_model
+    if _variant_check["mismatch"]:
+        print(f"FAIL: --model-variant {args.model_variant!r} (requested) does not match the "
+              f"measured architecture of --init-weights {args.init_weights!r} (detected: "
+              f"{_variant_check['detected']!r}, total_params={_check_total_params}) -- refusing "
+              f"to train. Pass the correct --model-variant, or verify --init-weights points to "
+              f"the intended checkpoint.")
+        return 1
+    print(f"model-variant check OK: requested={args.model_variant!r} matches detected "
+          f"({_variant_check['detected']!r}, total_params={_check_total_params})")
 
     accountant_states: dict = {}  # per-client, persisted across rounds (same mechanism as the real sweep)
 
@@ -345,7 +381,7 @@ def main() -> int:
     try:
         result = run_federated_training(
             client_round_fn, client_data_yamls, client_sample_counts,
-            init_weights_path="models/base_groupnorm.pt", rounds=args.rounds, out_dir=out_dir,
+            init_weights_path=args.init_weights, rounds=args.rounds, out_dir=out_dir,
             eval_fn=eval_fn, eval_every=1,
         )
     finally:
@@ -356,7 +392,7 @@ def main() -> int:
     # cast, unlike Diagnostic A's non-DP path), so exact equality is the right
     # test here, same as the E1/E2 audits.
     frozen_changed, trainable_changed, n_bn, n_gn, dfl_changed = audit_freeze(
-        "models/base_groupnorm.pt", result["final_weights"], freeze_stages=freeze_stages)
+        args.init_weights, result["final_weights"], freeze_stages=freeze_stages)
 
     val_rows = [(h["round"], (h.get("val") or {}).get("map50"), (h.get("val") or {}).get("map50_95"),
                 (h.get("val") or {}).get("precision"), (h.get("val") or {}).get("recall"))
@@ -428,7 +464,33 @@ def main() -> int:
                                   if info.get("epsilon_fallback_reason")}
     any_prv_fallback_used = any(prv_failed_per_client.values())
 
+    # model identity metadata -- model_variant_requested comes from the
+    # EXPLICIT --model-variant CLI argument (authoritative, already verified
+    # to match above); model_variant_detected is the measured-parameter-count
+    # fallback/sanity-check, kept here only for cross-reference, never as the
+    # sole source of truth. n_trainable/n_frozen computed via the same
+    # freeze-name-matching logic Ultralytics' own BaseTrainer uses (matches
+    # scripts/21's established pattern), NOT from requires_grad on this
+    # freshly-loaded, never-trained copy.
+    _init_sd, _init_model = load_state(args.init_weights)
+    total_params = sum(p.numel() for p in _init_model.parameters())
+    model_variant_detected = detect_model_variant(total_params)
+    trainable_stage_indices = sorted(set(range(24)) - set(s for s in freeze_stages if isinstance(s, int)))
+    _freeze_names_meta = [f"model.{s}." for s in freeze_stages] + [".dfl"]
+    n_trainable_meta, n_frozen_meta = 0, 0
+    for _name, _p in _init_model.named_parameters():
+        if any(_x in _name for _x in _freeze_names_meta):
+            n_frozen_meta += _p.numel()
+        else:
+            n_trainable_meta += _p.numel()
+    del _init_sd, _init_model
+
     record = {
+        "model_weights": args.init_weights,
+        "model_variant_requested": args.model_variant, "model_variant_detected": model_variant_detected,
+        "total_params": int(total_params), "trainable_stage_indices": trainable_stage_indices,
+        "n_trainable_params": int(n_trainable_meta), "n_frozen_params": int(n_frozen_meta),
+        "dataset_manifest_path": str(manifest_path), "client_partition_manifest": dict(manifest["sizes"]),
         "diagnostic": "B_clipping_only_control" if args.sigma == 0.0 else "C_clipping_plus_noise",
         "note": ("DIAGNOSTIC ONLY -- not a thesis result; sigma=0 has NO finite privacy guarantee"
                 if args.sigma == 0.0 else

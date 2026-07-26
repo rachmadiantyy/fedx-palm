@@ -79,6 +79,7 @@ from fedxpalm.eval.detection_metrics import evaluate_detector  # noqa: E402
 from fedxpalm.federated.client import read_local_train_log, train_client_round  # noqa: E402
 from fedxpalm.federated.server import run_federated_training  # noqa: E402
 from fedxpalm.privacy.freeze_audit import load_state, stage_of  # noqa: E402
+from fedxpalm.models.model_variant import detect_model_variant, resolve_model_variant  # noqa: E402
 
 # Frozen tolerance covers a worst-case single fp16 boundary flip on a
 # large-magnitude weight (ulp is ~2e-3 for |w| in [2,4)) -- EMA rounding drift
@@ -155,6 +156,14 @@ def main() -> int:
     parser.add_argument("--init-weights", default="models/base_groupnorm.pt",
                         help="initial global checkpoint (default: the locked P2/B2 base). Pass "
                              "models/base_groupnorm_lora_r8.pt for the Phase D LoRA capacity control")
+    parser.add_argument("--model-variant", choices=["yolo11n", "yolo11s"], default="yolo11n",
+                        help="EXPLICIT scale-variant identity of --init-weights (default: yolo11n, "
+                             "unchanged for every existing experiment). This -- not the measured "
+                             "parameter count -- is the authoritative source recorded to the results "
+                             "JSON as model_variant_requested; the measured total_params is only "
+                             "cross-checked against it as a fallback sanity check (parameter count "
+                             "alone cannot be trusted once the detection head is resized for nc=6). "
+                             "A mismatch aborts before any training runs")
     parser.add_argument("--lora-freeze", action="store_true",
                         help="derive the freeze list from the LoRA design (fedxpalm.models.lora."
                              "lora_freeze_spec on the --init-weights model) instead of --freeze-stages: "
@@ -257,6 +266,26 @@ def main() -> int:
     suffix = f"_{args.tag}" if args.tag else ""
     out_dir = f"runs/diag_a_partial_nodp/k4_seed{args.seed}{suffix}"
 
+    # ---- model-variant consistency check, BEFORE any training runs ----
+    # --model-variant is the AUTHORITATIVE source (explicit CLI argument);
+    # the measured total parameter count is only a fallback sanity-check,
+    # since parameter count can shift once the detection head is resized
+    # for a different nc and must never be trusted as the sole source of
+    # truth for which architecture is actually being trained.
+    _check_sd, _check_model = load_state(args.init_weights)
+    _check_total_params = sum(p.numel() for p in _check_model.parameters())
+    _variant_check = resolve_model_variant(args.model_variant, _check_total_params)
+    del _check_sd, _check_model
+    if _variant_check["mismatch"]:
+        print(f"FAIL: --model-variant {args.model_variant!r} (requested) does not match the "
+              f"measured architecture of --init-weights {args.init_weights!r} (detected: "
+              f"{_variant_check['detected']!r}, total_params={_check_total_params}) -- refusing "
+              f"to train. Pass the correct --model-variant, or verify --init-weights points to "
+              f"the intended checkpoint.")
+        return 1
+    print(f"model-variant check OK: requested={args.model_variant!r} matches detected "
+          f"({_variant_check['detected']!r}, total_params={_check_total_params})")
+
     def client_round_fn(client_id, data_yaml_c, global_weights_path, round_idx, out_dir_c):
         import torch
         weights_path = train_client_round(global_weights_path, data_yaml_c, hyp,
@@ -281,7 +310,7 @@ def main() -> int:
 
     # ---- post-run audits ----
     import torch.nn as nn
-    base_sd, _ = load_state(args.init_weights)
+    base_sd, base_model = load_state(args.init_weights)
     round0_sd, _ = load_state(str(Path(out_dir) / "global_round_0.pt"))
     final_sd, final_model = load_state(result["final_weights"])
     n_bn = sum(1 for m in final_model.modules() if isinstance(m, nn.modules.batchnorm._BatchNorm))
@@ -377,7 +406,21 @@ def main() -> int:
         else:
             n_trainable += p.numel()
 
+    # model identity metadata -- model_variant_requested comes from the
+    # EXPLICIT --model-variant CLI argument (authoritative, already verified
+    # to match above); model_variant_detected is the measured-parameter-count
+    # fallback/sanity-check, kept here only for cross-reference, never as the
+    # sole source of truth (parameter count alone is not reliable once the
+    # detection head is resized for a different nc).
+    total_params = sum(p.numel() for p in base_model.parameters())
+    model_variant_detected = detect_model_variant(total_params)
+    trainable_stage_indices = sorted(set(range(24)) - set(s for s in freeze_stages if isinstance(s, int)))
+
     record = {
+        "model_weights": args.init_weights,
+        "model_variant_requested": args.model_variant, "model_variant_detected": model_variant_detected,
+        "total_params": int(total_params), "trainable_stage_indices": trainable_stage_indices,
+        "dataset_manifest_path": str(manifest_path), "client_partition_manifest": dict(manifest["sizes"]),
         "diagnostic": "A_partial_nodp_frozen_backbone_control",
         "note": "DIAGNOSTIC ONLY -- not a thesis result; no DP mechanism involved",
         "subset_label": args.subset_label,
