@@ -65,7 +65,9 @@ epsilon is always null (no DP guarantee exists); at sigma>0 (Diagnostic C),
 epsilon is real but still not a locked-configuration result.
 """
 import argparse
+import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -75,16 +77,52 @@ import yaml  # noqa: E402
 
 import fedxpalm  # noqa: E402,F401 (applies the GroupNorm-safe `fuse()` patch)
 from fedxpalm.eval.detection_metrics import evaluate_detector  # noqa: E402
+from fedxpalm.federated.client import effective_seed  # noqa: E402
 from fedxpalm.federated.server import run_federated_training  # noqa: E402
 from fedxpalm.privacy.dp_sgd import train_client_round_dp  # noqa: E402
 from fedxpalm.privacy.freeze_audit import audit_freeze, stage_of  # noqa: E402
+
+
+def _git_commit() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parent.parent, text=True,
+        ).strip()
+    except Exception as e:
+        return f"unknown ({e})"
+
+
+def _git_dirty() -> bool:
+    try:
+        out = subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=Path(__file__).resolve().parent.parent, text=True,
+        )
+        return bool(out.strip())
+    except Exception:
+        return True
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="0")
     parser.add_argument("--rounds", type=int, default=5, help="diagnostic max is 5; override discouraged")
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=42,
+                        help="training/randomness seed -- threaded into hyp['seed'] -> "
+                             "effective_seed(seed, round, client_id) -> Ultralytics trainer "
+                             "overrides['seed']. Independent of --partition-seed")
+    parser.add_argument("--partition-seed", type=int, default=42,
+                        help="must equal 42 -- the only federated partition materialized for "
+                             "this project. This script always reads federated_partitions/ "
+                             "regardless of this flag; kept as an explicit, checked argument "
+                             "so it can never silently diverge from what's actually read")
+    parser.add_argument("--runs-dir", default=None,
+                        help="override the default runs/diag_b_clipping_only/k4_seed{seed}{tag} "
+                             "output directory (default: unchanged). Must be given together "
+                             "with --results-json -- e.g. for a seed-fix confirmation run that "
+                             "must not share a path with any legacy diagnostic")
+    parser.add_argument("--results-json", default=None,
+                        help="override the default results/diag_b_clipping_only_seed{seed}{tag}.json "
+                             "output path (default: unchanged). Must be given together with --runs-dir")
     parser.add_argument("--imgsz", type=int, default=None, help="default: fl_config model.imgsz (960)")
     parser.add_argument("--batch", type=int, default=None,
                         help="legacy alias for --logical-batch (default: fl_config local_training.batch_size, 8)")
@@ -133,6 +171,16 @@ def main() -> int:
                              "optimizer steps/client to the --rounds 5 default-epochs reference) -- does "
                              "not change any other hyperparameter")
     args = parser.parse_args()
+
+    if args.partition_seed != 42:
+        print(f"FAIL: --partition-seed {args.partition_seed} != 42 -- the only partition "
+              f"materialized for this project. This script always reads federated_partitions/ "
+              f"regardless of this flag, so a different value would only mean the flag doesn't "
+              f"describe what's actually being read -- refusing to proceed")
+        return 1
+    if bool(args.runs_dir) != bool(args.results_json):
+        print("FAIL: --runs-dir and --results-json must be given together, or neither")
+        return 1
 
     if args.rounds > 5:
         print(f"[!] --rounds {args.rounds} > 5: this is meant to stay a short diagnostic, per the agreed protocol")
@@ -213,7 +261,15 @@ def main() -> int:
     client_sample_counts = dict(manifest["sizes"])
 
     suffix = f"_{args.tag}" if args.tag else ""
-    out_dir = f"runs/diag_b_clipping_only/k4_seed{args.seed}{suffix}"
+    out_dir = args.runs_dir or f"runs/diag_b_clipping_only/k4_seed{args.seed}{suffix}"
+
+    # effective_seed genuinely differs by round/client for this training seed -- proves
+    # hyp["seed"] (set above) actually reaches the trainer rather than being silently
+    # dropped, as it was before the DP pipeline's training-seed fix
+    effective_seed_samples = {
+        f"round{r}_client{cid}": effective_seed(args.seed, r, cid)
+        for r in range(min(2, args.rounds)) for cid in list(client_data_yamls)[:2]
+    }
 
     accountant_states: dict = {}  # per-client, persisted across rounds (same mechanism as the real sweep)
 
@@ -434,12 +490,39 @@ def main() -> int:
                                   if info.get("epsilon_fallback_reason")}
     any_prv_fallback_used = any(prv_failed_per_client.values())
 
+    # same per-client fields as above, but for EVERY round (not just the final one) -- lets
+    # the privacy-cost progression (not just its endpoint) be inspected/plotted
+    epsilon_per_client_per_round = []
+    epsilon_max_per_round = []
+    accountant_used_per_client_per_round = []
+    prv_failed_per_client_per_round = []
+    private_steps_per_client_per_round = []
+    for h in result["history"]:
+        clients_this_round = h["clients"]
+        eps_this = {cid: info.get("epsilon") for cid, info in clients_this_round.items()}
+        vals_this = [v for v in eps_this.values() if v is not None]
+        epsilon_per_client_per_round.append(eps_this)
+        epsilon_max_per_round.append(max(vals_this) if vals_this else None)
+        accountant_used_per_client_per_round.append(
+            {cid: info.get("accountant_used") for cid, info in clients_this_round.items()})
+        prv_failed_per_client_per_round.append(
+            {cid: info.get("prv_failed", False) for cid, info in clients_this_round.items()})
+        private_steps_per_client_per_round.append(
+            {cid: info.get("cumulative_steps") for cid, info in clients_this_round.items()})
+
+    best_round = result["best_round"]
+    final_round_val = (result["history"][-1].get("val") or {})
+    best_round_val = (result["history"][best_round].get("val") or {}) if best_round is not None else {}
+
     record = {
         "diagnostic": "B_clipping_only_control" if args.sigma == 0.0 else "C_clipping_plus_noise",
         "note": ("DIAGNOSTIC ONLY -- not a thesis result; sigma=0 has NO finite privacy guarantee"
                 if args.sigma == 0.0 else
                 "DIAGNOSTIC ONLY -- not a thesis result (short-round noise-isolation run)"),
-        "rounds": args.rounds, "seed": args.seed, "k": 4,
+        "rounds": args.rounds, "seed": args.seed, "training_seed": args.seed,
+        "partition_seed": args.partition_seed, "k": 4,
+        "git_commit": _git_commit(), "git_dirty": _git_dirty(),
+        "effective_seed_samples": effective_seed_samples,
         "freeze_stages": freeze_stages, "imgsz": imgsz,
         "batch_size": logical_batch,  # kept for backward compat with earlier B/C records (== logical_batch_size)
         "logical_batch_size": logical_batch, "physical_batch_size": physical_batch,
@@ -451,14 +534,26 @@ def main() -> int:
         "per_layer_thresholds_file": args.per_layer_thresholds,
         "per_layer_meta": pl_meta,
         "epsilon_per_client_final": eps_per_client, "epsilon_max_over_clients": epsilon_max,
+        "epsilon_per_client_per_round": epsilon_per_client_per_round,
+        "epsilon_max_per_round": epsilon_max_per_round,
+        "epsilon_per_client_at_best_round": epsilon_per_client_per_round[best_round] if best_round is not None else None,
+        "epsilon_max_at_best_round": epsilon_max_per_round[best_round] if best_round is not None else None,
+        "private_steps_per_client_per_round": private_steps_per_client_per_round,
         "accountant_used_per_client_final": accountant_used_per_client,
+        "accountant_used_per_client_per_round": accountant_used_per_client_per_round,
         "prv_failed_per_client_final": prv_failed_per_client,
+        "prv_failed_per_client_per_round": prv_failed_per_client_per_round,
         "any_prv_fallback_used": any_prv_fallback_used,
         "epsilon_fallback_reason_per_client": fallback_reason_per_client,
         "privacy_guarantee": "dp_sgd" if args.sigma > 0.0 else "not_applicable_no_noise",
         "val_per_round": [{"round": rd, "map50": m50, "map50_95": m95, "precision": p, "recall": r}
                           for rd, m50, m95, p, r in val_rows],
-        "best_round": result["best_round"], "best_val_map50": result["best_val_map50"],
+        "best_round": best_round, "best_val_map50": result["best_val_map50"],
+        "best_val_map50_95": best_round_val.get("map50_95"),
+        "best_val_precision": best_round_val.get("precision"), "best_val_recall": best_round_val.get("recall"),
+        "final_round": result["history"][-1]["round"],
+        "final_round_map50": final_round_val.get("map50"), "final_round_map50_95": final_round_val.get("map50_95"),
+        "final_round_precision": final_round_val.get("precision"), "final_round_recall": final_round_val.get("recall"),
         "subset_label": args.subset_label,
         "frozen_region_changed": frozen_changed, "trainable_region_changed": trainable_changed,
         "dfl_changed": dfl_changed,
@@ -476,8 +571,8 @@ def main() -> int:
             f"{args.subset_label} No-DP capacity control and the {args.subset_label} flat "
             f"clipping-only run -- NOT the P0 A0 control"),
     }
-    out_json = f"results/diag_b_clipping_only_seed{args.seed}{suffix}.json"
-    Path("results").mkdir(exist_ok=True)
+    out_json = args.results_json or f"results/diag_b_clipping_only_seed{args.seed}{suffix}.json"
+    Path(out_json).parent.mkdir(parents=True, exist_ok=True)
     with open(out_json, "w") as f:
         json.dump(record, f, indent=2)
 
