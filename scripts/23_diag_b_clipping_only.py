@@ -160,8 +160,14 @@ def main() -> int:
     # previously-validated (unwrapped) path
     physical_batch_size_arg = physical_batch if physical_batch < logical_batch else None
 
+    # seed=args.seed: previously missing here, so --seed only affected output
+    # paths/the recorded "seed" field, never actual training randomness (see
+    # dp_sgd.py's train_client_round_dp fix -- it now threads hyp["seed"]
+    # through effective_seed() into Ultralytics' overrides, but only if the
+    # caller actually populates hyp["seed"] in the first place, as script 21
+    # already did and this script did not).
     hyp = dict(fl_cfg["local_training"], imgsz=imgsz, warmup_epochs=0.0, workers=args.workers,
-               batch_size=logical_batch)
+               batch_size=logical_batch, seed=args.seed)
     if args.lr0 is not None:
         hyp["lr0"] = args.lr0
     if args.epochs_per_round is not None:

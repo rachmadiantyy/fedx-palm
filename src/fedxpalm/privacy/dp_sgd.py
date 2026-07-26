@@ -27,6 +27,7 @@ from __future__ import annotations
 import torch
 from opacus import PrivacyEngine
 
+from fedxpalm.federated.client import effective_seed
 from fedxpalm.federated.trainer_utils import build_trainer_from_checkpoint
 from fedxpalm.models.groupnorm import disable_inplace_ops
 from fedxpalm.privacy.opacus_patch import patch_opacus_for_dict_datasets
@@ -256,6 +257,18 @@ def train_client_round_dp(
         val=False,
         verbose=False,
         freeze=freeze_stages,
+        # per-(seed, round, client) -- same effective_seed() derivation
+        # federated/client.py's non-DP path already uses, consumed by
+        # SeededDetectionTrainer to drive shuffle + augmentation. Without
+        # this, hyp["seed"] was silently dropped: EVERY prior DP run
+        # (E1/E2 sweeps, diagnostics 20/23/25/28/36/37) trained under
+        # Ultralytics' internal default seed regardless of any --seed CLI
+        # value passed in, since args.seed never reached this overrides
+        # dict -- confirmed by inspection, not just suspicion. Harmless for
+        # every past single-seed run (nothing claimed otherwise), but would
+        # have silently defeated any multi-seed variance estimate.
+        seed=effective_seed(hyp.get("seed", 0), round_idx, client_id),
+        deterministic=True,
         exist_ok=True,
         project=out_dir,
         name=run_name,
@@ -290,6 +303,28 @@ def train_client_round_dp(
     frozen_in_optimizer = sorted(
         name_by_id.get(i, "<unknown>") for i in optimizer_ids - trainable_ids
     )
+
+    # HARD-STOP here, before ANY DP mechanism activity for this round: no
+    # PrivacyEngine yet, no GradSampleModule/DPOptimizer wrapping, no
+    # backward(), no clip_and_accumulate(), no add_noise(), no optimizer
+    # step, no accountant step. This is deliberately NOT deferred to the
+    # caller via the returned `info` dict -- checking only after this whole
+    # function (and thus the whole round's real DP training) has already
+    # run would mean a genuine frozen/trainable mismatch (or DFL leaking
+    # into the optimizer -- DFL is always requires_grad=False regardless of
+    # freeze_stages, so it is covered by this SAME trainable_ids/
+    # optimizer_ids comparison, not a separate check) gets detected only
+    # after real per-sample gradients, clipping, Gaussian noise, and a real
+    # accountant step already happened and consumed privacy budget for this
+    # client this round. Raising here means the optimizer/model set was
+    # already wrong before Opacus ever touched it -- nothing DP-related has
+    # run yet, so nothing needs to be undone.
+    if missing_trainable or frozen_in_optimizer:
+        raise RuntimeError(
+            f"round {round_idx} client {client_id}: optimizer/trainable set mismatch BEFORE "
+            f"any DP mechanism ran -- missing_trainable={missing_trainable[:5]} "
+            f"frozen_in_optimizer={frozen_in_optimizer[:5]} "
+            f"(freeze_stages={freeze_stages})")
 
     privacy_engine = PrivacyEngine(accountant=dp_hyp.get("accountant", "prv"))
     if per_layer_max_grad_norms is None:
