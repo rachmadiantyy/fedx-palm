@@ -148,6 +148,17 @@ def _rel_error(a: torch.Tensor, b: torch.Tensor) -> float:
     return float((a - b).norm() / b.norm().clamp(min=1e-12))
 
 
+def _torch_device_str(device_arg: str) -> str:
+    """Ultralytics-style --device args ("0", "0,1", "cpu") -> a real torch
+    device string ("cuda:0", "cpu"). torch.Generator(device=...) must match
+    the model/tensor device, unlike Ultralytics' own --device convention."""
+    if device_arg.lower() == "cpu":
+        return "cpu"
+    if device_arg.startswith("cuda"):
+        return device_arg
+    return f"cuda:{device_arg.split(',')[0]}"
+
+
 # ============================================================
 # STAGE 1 -- per-sample grad_sample norm inflation (unchanged)
 # ============================================================
@@ -306,11 +317,16 @@ def probes_abc(base_weights, overrides, batch, C) -> dict:
 # STAGE 2 -- Probe D: one complete logical step, no BMM
 # ============================================================
 
-def probe_d(base_weights, overrides_full_batch, batch, sigma, C, noise_seed) -> dict:
+def probe_d(base_weights, overrides_full_batch, batch, sigma, C, noise_seed, device: str) -> dict:
+    gen_device = _torch_device_str(device)
+
     def _one_step(loss_reduction, sigma_val, gen_seed):
         gen = None
         if gen_seed is not None:
-            gen = torch.Generator()
+            # must match the model/tensor device -- add_noise() calls torch.normal()
+            # directly on CUDA tensors when --device is a GPU, and a CPU-default
+            # generator() cannot be used as the source of randomness for that call
+            gen = torch.Generator(device=gen_device)
             gen.manual_seed(gen_seed)
         _trainer, dp_model, dp_opt, _dp_loader = _build_dp_copy(
             base_weights, overrides_full_batch, loss_reduction, sigma=sigma_val, max_grad_norm=C,
@@ -486,7 +502,8 @@ def main() -> int:
     if len(batch_logical["cls"]) == 0:
         print("FAIL: logical-batch draw has zero ground-truth boxes -- rerun")
         return 1
-    d = probe_d(args.base_weights, overrides_logical, batch_logical, args.sigma_nonzero, args.c, args.noise_seed)
+    d = probe_d(args.base_weights, overrides_logical, batch_logical, args.sigma_nonzero, args.c,
+                args.noise_seed, args.device)
 
     print("\n" + "=" * 60 + "\nSTAGE 2 -- Probe E (real protocol: BatchMemoryManager)\n" + "=" * 60)
     overrides_e = make_overrides(args.logical_batch)
