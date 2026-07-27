@@ -59,8 +59,12 @@ NOT modified by running this file.
 
 Output: prints Stage 1's per-sample table plus Stage 2's probes A-E, and
 saves:
-  results/audit_dp_seedfix/loss_reduction_probe.json          (stage 1, unchanged path)
-  results/audit_dp_seedfix/loss_reduction_probe_stage2.json   (stage 2, new)
+  results/audit_dp_seedfix/loss_reduction_probe_client{id}.json          (stage 1)
+  results/audit_dp_seedfix/loss_reduction_probe_stage2_client{id}.json   (stage 2)
+Both filenames are keyed by --client-id (default: client0) so re-running for
+a different client (e.g. --client-id 2) never overwrites a previous
+client's output; both paths are also checked and refused if already
+present, so re-running the SAME client never silently overwrites either.
 """
 from __future__ import annotations
 
@@ -199,7 +203,11 @@ def stage1_probe(base_weights, overrides, batch, n_physical, client0) -> dict:
         "expected_ratio_if_hypothesis_correct": n_physical,
         "ratio_matches_physical_batch_size": ratio_matches_n,
     }
-    out_json = Path("results/audit_dp_seedfix/loss_reduction_probe.json")
+    # filename keyed by client_id so re-running for a different client (e.g.
+    # --client-id 2) never overwrites a previous client's output. Existence
+    # is checked by the caller (main()) BEFORE any probe runs, so this write
+    # itself is never expected to collide.
+    out_json = Path(f"results/audit_dp_seedfix/loss_reduction_probe_client{client0}.json")
     out_json.parent.mkdir(parents=True, exist_ok=True)
     with open(out_json, "w") as f:
         json.dump(record, f, indent=2)
@@ -435,6 +443,11 @@ def main() -> int:
                              "comparable rather than merely statistically similar")
     parser.add_argument("--base-weights", default="models/base_groupnorm.pt")
     parser.add_argument("--imgsz", type=int, default=None)
+    parser.add_argument("--client-id", default=None,
+                        help="which client's real data to probe (default: the first client in "
+                             "sorted order, i.e. client0 -- unchanged from before). Pass e.g. "
+                             "--client-id 2 to re-verify the same conclusion on a different "
+                             "client's sample count/expected_batch_size")
     args = parser.parse_args()
 
     if not Path(args.base_weights).exists():
@@ -453,7 +466,28 @@ def main() -> int:
         return 1
     with open(manifest_path) as f:
         manifest = json.load(f)["4"]
-    client0 = sorted(manifest["sizes"], key=lambda c: int(c) if str(c).isdigit() else c)[0]
+    if args.client_id is not None:
+        if args.client_id not in manifest["sizes"]:
+            print(f"FAIL: --client-id {args.client_id!r} not found in manifest (available: "
+                  f"{sorted(manifest['sizes'])})")
+            return 1
+        client0 = args.client_id
+    else:
+        client0 = sorted(manifest["sizes"], key=lambda c: int(c) if str(c).isdigit() else c)[0]
+    print(f"Probing client{client0} (n_samples={manifest['sizes'][client0]})")
+
+    # both output paths are keyed by client_id -- checked BEFORE any probe
+    # runs so a re-run for a different client never overwrites a previous
+    # client's results, and this client's own re-run doesn't silently clobber
+    # an existing file either
+    stage1_out = Path(f"results/audit_dp_seedfix/loss_reduction_probe_client{client0}.json")
+    stage2_out = Path(f"results/audit_dp_seedfix/loss_reduction_probe_stage2_client{client0}.json")
+    for p in (stage1_out, stage2_out):
+        if p.exists():
+            print(f"FAIL: {p} already exists -- refusing to overwrite; move/rename it first if "
+                  f"you intend to redo this client's probe")
+            return 1
+
     clients_dir = splits_dir / "federated_partitions" / "k4_clients"
     data_yaml = str(clients_dir / f"client{client0}" / "data.yaml")
 
@@ -551,7 +585,7 @@ def main() -> int:
         "probe_e_batch_memory_manager": e,
         "verdict": verdict, "verdict_text": verdict_text,
     }
-    out_json = Path("results/audit_dp_seedfix/loss_reduction_probe_stage2.json")
+    out_json = Path(f"results/audit_dp_seedfix/loss_reduction_probe_stage2_client{client0}.json")
     out_json.parent.mkdir(parents=True, exist_ok=True)
     with open(out_json, "w") as f:
         json.dump(record, f, indent=2)
