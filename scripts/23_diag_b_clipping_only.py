@@ -102,6 +102,15 @@ def _git_dirty() -> bool:
         return True
 
 
+def compute_protocol_fingerprint(protocol: dict) -> str:
+    """Hash of the locked scientific configuration (NOT including seed/device/
+    output paths). Deliberately includes loss_reduction, so a corrected
+    ("sum") run's fingerprint can never collide with a hypothetical legacy
+    ("mean") one, without needing to compare against any legacy fingerprint
+    value directly (legacy runs never computed one)."""
+    return hashlib.sha256(json.dumps(protocol, sort_keys=True).encode()).hexdigest()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="0")
@@ -180,6 +189,10 @@ def main() -> int:
         return 1
     if bool(args.runs_dir) != bool(args.results_json):
         print("FAIL: --runs-dir and --results-json must be given together, or neither")
+        return 1
+    if args.runs_dir and (Path(args.runs_dir).exists() or Path(args.results_json).exists()):
+        print(f"FAIL: output already exists ({args.runs_dir} or {args.results_json}) -- refusing "
+              f"to overwrite. Move/rename the existing output first if you intend to redo this run")
         return 1
 
     if args.rounds > 5:
@@ -510,6 +523,30 @@ def main() -> int:
         private_steps_per_client_per_round.append(
             {cid: info.get("cumulative_steps") for cid, info in clients_this_round.items()})
 
+    # loss_reduction is now recorded by dp_sgd.py itself every round/client
+    # (post loss_reduction="sum" fix) -- read it back from the real info
+    # dicts rather than hardcoding "sum" here, so a regression in dp_sgd.py
+    # would be caught by the consistency assert below, not silently assumed
+    loss_reductions_seen = {info.get("loss_reduction") for h in result["history"]
+                            for info in h["clients"].values()}
+    assert loss_reductions_seen == {"sum"}, (
+        f"expected every round/client to report loss_reduction='sum', got {loss_reductions_seen}")
+    loss_reduction_observed = "sum"
+    expected_batch_size_per_client_final = {cid: info.get("expected_batch_size")
+                                            for cid, info in result["history"][-1]["clients"].items()}
+
+    protocol_fingerprint = compute_protocol_fingerprint({
+        "variant": "E2_partial_P2" if args.subset_label == "P2" else args.subset_label,
+        "model_weights": "models/base_groupnorm.pt", "freeze_stages": freeze_stages,
+        "loss_reduction": loss_reduction_observed,
+        "optimizer": "SGD", "lr0": hyp["lr0"], "momentum": hyp.get("momentum"),
+        "weight_decay": hyp.get("weight_decay"), "epochs_per_round": hyp["epochs_per_round"],
+        "logical_batch_size": logical_batch, "physical_batch_size": physical_batch, "imgsz": imgsz,
+        "max_grad_norm": max_grad_norm, "sigma": args.sigma, "delta": dp_hyp["delta"],
+        "accountant": dp_hyp["accountant"], "clipping_mode": "per_layer" if per_layer_thresholds else "flat",
+        "k": 4, "partition_seed": args.partition_seed,
+    })
+
     best_round = result["best_round"]
     final_round_val = (result["history"][-1].get("val") or {})
     best_round_val = (result["history"][best_round].get("val") or {}) if best_round is not None else {}
@@ -519,6 +556,21 @@ def main() -> int:
         "note": ("DIAGNOSTIC ONLY -- not a thesis result; sigma=0 has NO finite privacy guarantee"
                 if args.sigma == 0.0 else
                 "DIAGNOSTIC ONLY -- not a thesis result (short-round noise-isolation run)"),
+        "loss_reduction": loss_reduction_observed,
+        "expected_batch_size_per_client_final": expected_batch_size_per_client_final,
+        "protocol_fingerprint": protocol_fingerprint,
+        "legacy_baseline_label": "legacy_loss_reduction_mean",
+        "legacy_baseline_note": ("Runs from before this fix (E1/E2 final 20-round, and every "
+                                "earlier B/C confirmation) used Opacus's default "
+                                "loss_reduction='mean' while Ultralytics' own loss is effectively "
+                                "sum-style, causing DPOptimizer.scale_grad() to divide the final "
+                                "SGD update by ~expected_batch_size extra -- confirmed via "
+                                "scripts/40_verify_loss_reduction_scaling.py on two independent "
+                                "clients (ratio == 1/expected_batch_size exactly, cosine~1.0, "
+                                "i.e. same direction, ~60x smaller magnitude). Those runs are "
+                                "legacy under the 'legacy_loss_reduction_mean' label -- not "
+                                "deleted, not overwritten, but not directly comparable to this "
+                                "corrected run's effective step size."),
         "rounds": args.rounds, "seed": args.seed, "training_seed": args.seed,
         "partition_seed": args.partition_seed, "k": 4,
         "git_commit": _git_commit(), "git_dirty": _git_dirty(),

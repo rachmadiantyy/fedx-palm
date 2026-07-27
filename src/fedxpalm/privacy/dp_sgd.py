@@ -336,6 +336,26 @@ def train_client_round_dp(
             noise_multiplier=dp_hyp["sigma"],
             max_grad_norm=dp_hyp["max_grad_norm"],
             poisson_sampling=True,
+            # Ultralytics' own detection loss already returns
+            # mean_per_sample_loss * batch_size (effectively sum-style --
+            # see v8DetectionLoss.loss()), but this call never told Opacus
+            # that, so it fell back to its own default "mean". That silently
+            # multiplied every per-sample grad_sample by an extra factor of
+            # the physical micro-batch size (opacus/grad_sample/
+            # grad_sample_module.py: `if loss_reduction=="mean": backprops =
+            # backprops * n`). Confirmed via a real-model probe
+            # (scripts/40_verify_loss_reduction_scaling.py) on two independent
+            # clients that flat clipping itself was NOT affected (clipping to
+            # norm C erases a uniform positive-scalar inflation whenever both
+            # the true and inflated norms already exceed C, which they always
+            # did here) -- clip_and_accumulate()'s summed_grad was bitwise
+            # identical between "mean" and "sum". But DPOptimizer.scale_grad()
+            # divides by expected_batch_size (~60-64 here) ONLY under "mean",
+            # so the final per-step SGD update was ~60x smaller in magnitude
+            # (same direction, cosine~1.0) than intended -- every prior E1/E2
+            # DP run trained at an unintended, much smaller effective step
+            # size. "sum" matches Ultralytics' actual loss convention.
+            loss_reduction="sum",
         )
         clipping_mode = "flat"
         per_layer_info = None
@@ -374,6 +394,7 @@ def train_client_round_dp(
             max_grad_norm=c_vec,
             clipping="per_layer",
             poisson_sampling=True,
+            loss_reduction="sum",  # see the flat-clipping branch's comment above for why
         )
         clipping_mode = "per_layer"
         per_layer_info = {
@@ -382,6 +403,14 @@ def train_client_round_dp(
             "C_min": min(c_vec), "C_max": max(c_vec),
             "ordered_param_names": opt_names,
         }
+    # Hard runtime check: both branches above must have actually wrapped with
+    # loss_reduction="sum" -- if a future edit ever drops this argument again
+    # (or Opacus's own default ever changes), this fails loudly here rather
+    # than silently reintroducing the ~expected_batch_size-factor SGD-update
+    # scaling bug this fix addresses.
+    assert dp_optimizer.loss_reduction == "sum", (
+        f"expected dp_optimizer.loss_reduction == 'sum', got {dp_optimizer.loss_reduction!r}")
+
     # resume this client's privacy budget from prior rounds BEFORE stepping,
     # so get_epsilon() below is cumulative over the whole run
     _restore_accountant(privacy_engine, accountant_state)
@@ -499,6 +528,8 @@ def train_client_round_dp(
         "sigma": dp_hyp["sigma"],
         "max_grad_norm": dp_hyp["max_grad_norm"],
         "clipping": clipping_mode,                 # "flat" | "per_layer"
+        "loss_reduction": dp_optimizer.loss_reduction,  # "sum" (fixed) -- see make_private() comment above
+        "expected_batch_size": dp_optimizer.expected_batch_size,  # Opacus's own attribute, unaffected by loss_reduction
         "per_layer": per_layer_info,               # None unless per-layer clipping active
         "delta": dp_hyp["delta"],
         "n_samples": len(dp_loader.dataset),
