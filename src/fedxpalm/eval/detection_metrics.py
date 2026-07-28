@@ -7,9 +7,15 @@ from __future__ import annotations
 from ultralytics import YOLO
 
 
-def evaluate_detector(weights_path: str, data_yaml: str, split: str = "test", imgsz: int = 640, device: str = "0") -> dict:
+def evaluate_detector(weights_path: str, data_yaml: str, split: str = "test", imgsz: int = 640, device: str = "0",
+                       plots: bool = False, project: str | None = None, name: str | None = None) -> dict:
+    """`plots=True` additionally makes Ultralytics save its own confusion_matrix.png,
+    PR_curve.png, P_curve.png, R_curve.png, F1_curve.png, val_batch*_pred.jpg, etc. to
+    `project/name/` (default `runs/detect/val*`) -- real evaluation artifacts straight
+    from this exact run, not a hand-drawn chart. See scripts/42_generate_b1_test_plots.py."""
     model = YOLO(weights_path)
-    metrics = model.val(data=data_yaml, split=split, imgsz=imgsz, device=device, plots=False, verbose=False)
+    metrics = model.val(data=data_yaml, split=split, imgsz=imgsz, device=device, plots=plots, verbose=False,
+                        project=project, name=name)
 
     names = metrics.names  # {class_id: name}
     precision, recall, f1 = metrics.box.p, metrics.box.r, metrics.box.f1

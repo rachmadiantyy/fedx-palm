@@ -51,10 +51,17 @@ umum konsisten dengan pola ini, meski *Overripe* (0,9406) tidak sepenuhnya
 sesuai dengan pola tersebut; penjelasan atas ketidaksesuaian ini
 diserahkan pada analisis *confusion matrix* yang disebutkan di atas.
 
-*(Sisipkan Gambar 4.1 -- grafik batang AP50 per kelas B1 dari Tabel 4.1,
-dengan garis referensi mAP50 keseluruhan. Sisipkan Gambar 4.2 -- 2-4 citra
-*held-out test* dengan kotak deteksi, label kelas, dan skor keyakinan hasil
-prediksi B1, termasuk minimal satu contoh dari kelas Ripe.)*
+**Gambar 4.1** dan **4.1b** BUKAN grafik batang gambar-tangan: keduanya
+diambil langsung dari `confusion_matrix.png` dan `PR_curve.png` yang
+dihasilkan Ultralytics sendiri saat mengevaluasi B1 pada *split held-out
+test* (jalankan `python scripts/42_generate_b1_test_plots.py --weights
+runs/b1_centralized/train/weights/best.pt --data data/splits_v2/data.yaml`,
+lihat Subbab 3.6/3.8) -- angka yang ditampilkan dijamin sama persis dengan
+Tabel 4.1 karena berasal dari evaluasi yang sama, hanya dengan `plots=True`
+dinyalakan. **Gambar 4.2**: 2-4 citra *held-out test* dengan kotak deteksi,
+label kelas, dan skor keyakinan hasil prediksi B1 (`model.predict(source=...,
+save=True)` pada `best.pt`), termasuk minimal satu contoh dari kelas Ripe --
+juga keluaran langsung model, bukan ilustrasi buatan.
 
 ## 4.2 B2: Hasil Federasi Tanpa DP -- Tiga *Seed*
 
@@ -100,8 +107,19 @@ Perbandingan yang lebih ketat berbasis *held-out test* ditunda ke pelaporan
 berikutnya, setelah *checkpoint* B2 dikunci dan dievaluasi di bawah
 protokol *held-out* yang sama dengan B1.
 
-*(Sisipkan Gambar 4.3 -- nilai mAP50 *validation* per *seed* dari Tabel
-4.2, beserta rata-rata dan simpangan baku tiga-*seed*.)*
+**Gambar 4.3** juga bukan grafik batang tiga angka akhir Tabel 4.2,
+melainkan kurva konvergensi mAP50 *validation* sungguhan per ronde untuk
+ketiga *seed*, diplot langsung dari `history.json` tiap *run* (dicatat
+setiap ronde oleh `run_federated_training`, Subbab 3.7.2) memakai
+`python scripts/43_plot_b2_convergence.py --history
+runs/b2_federated/k4_seed42/history.json --label "seed 42" --history
+runs/b2_federated/k4_seed123/history.json --label "seed 123" --history
+runs/b2_federated/k4_seed2026/history.json --label "seed 2026" --b1-map50
+0.8820`. Bentuk kurva
+ini -- bukan sekadar tiga titik akhir -- yang menunjukkan mengapa ronde
+*checkpoint* terbaik bisa berbeda jauh antar *seed* (9 / 11 / 40, lihat di
+atas), sesuatu yang tidak terlihat dari ringkasan batang tunggal per
+*seed*.
 
 ## 4.4 Diskusi
 
