@@ -35,6 +35,9 @@
 \usepackage{xcolor}
 \usepackage{fancyhdr}
 \usepackage{titlesec}
+\usepackage{float}             % [H] below pins each figure/table exactly where it's declared in the
+                                % source instead of letting LaTeX float it onto a later page, which
+                                % kept landing figures in the middle of unrelated paragraphs
 \usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
 \usepackage[english]{babel}
 
@@ -117,7 +120,7 @@ Deep-learning-based detection of oil palm FFB ripeness has predominantly used on
 
 Figure~\ref{fig:workflow} summarizes the overall research workflow described in this section, from dataset preparation through the centralized (B1) and Non-IID federated (B2) training and evaluation paths.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.95\linewidth]{figure1_workflow.png}
   \caption{Overall research workflow, from dataset preparation through the centralized (B1) and Non-IID federated (B2) training and evaluation paths.}
@@ -127,7 +130,7 @@ Figure~\ref{fig:workflow} summarizes the overall research workflow described in 
 \subsection{Dataset}
 This study uses the Palm Fruit Ripeness Detection dataset (version 2) sourced from Roboflow, comprising 10,814 images annotated for six ripeness-related classes: Abnormal, Empty Bunch, Overripe, Ripe, Underripe, and Unripe, in a manner broadly consistent with other publicly documented efforts to build annotated FFB ripeness datasets for deep-learning-based grading \cite{suharjito2023dataset}. The six classes reflect an operational grading protocol rather than a strict physiological maturity scale. Unripe and Underripe capture fruit at progressively earlier stages of colour change with little to no loose fruit; Ripe and Overripe correspond to the harvest-optimal and post-optimal stages, distinguished mainly by the proportion of loose fruit and the extent of colour development; and Empty Bunch and Abnormal represent non-standard bunch conditions, respectively bunches with most fruit already detached and bunches whose shape, density, or development departs from the normal pattern, rather than points on the ripeness continuum. This class structure is relevant to interpreting the per-class results reported in \emph{B1: Centralized Reference Baseline Results} below, since Ripe and Overripe are visually contiguous with their neighboring stages, whereas Empty Bunch and Abnormal are visually more distinct outlier conditions. Figure~\ref{fig:classes} shows a representative example image for each of the six classes.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   % TODO: 2x3 or 3x2 grid, one representative held-out/training image per class, cropped/labeled -- source: your own dataset images
   \fbox{\parbox{0.85\linewidth}{\centering\vspace{2cm}\todo{insert a 2x3 or 3x2 grid of one representative held-out/training image per class, each cropped or annotated with its class label. Source: your own dataset images, one per class.}\vspace{2cm}}}
@@ -138,7 +141,7 @@ This study uses the Palm Fruit Ripeness Detection dataset (version 2) sourced fr
 \subsection{Leakage-Free Split}
 Images are grouped by their originating source group prior to splitting, and the train/validation/held-out-test partition is constructed at the source-group level to prevent source-related leakage across splits. The resulting split is summarized in Table~\ref{tab:split}. A leakage audit was performed to confirm: no source-group overlap between the training, validation, and test splits; no identical cross-split duplicate images; and no confirmed cross-split duplicate overlap according to the implemented audit procedure.
 
-\begin{table}[htbp]
+\begin{table}[H]
   \centering
   \caption{Leakage-free dataset split}
   \label{tab:split}
@@ -156,7 +159,7 @@ Images are grouped by their originating source group prior to splitting, and the
 \subsection{Federated Partition}
 Only the training subset (8,937 images) is partitioned among federated clients; the validation and held-out test splits are not partitioned. The federation uses K=4 clients under a Non-IID partition generated with a Dirichlet distribution ($\alpha = 0.5$, partition seed = 42). The Dirichlet distribution is a standard mechanism for constructing controllable Non-IID splits in federated learning research, since its concentration parameter directly governs the degree of class-distribution skew across clients without requiring additional heuristic allocation rules \cite{kairouz2021}. Table~\ref{tab:clients} and Figure~\ref{fig:client-dist} report the resulting client-level image distribution. The clients are simulated sample-level data shards and do not represent four physical plantations, estates, organizations, or devices; training is simulated sequentially on a single GPU. Images originating from one source group inside the training subset may be distributed across different clients; this does not violate the leakage-free train/validation/test split, since all client partitions are drawn exclusively from the training subset.
 
-\begin{table}[htbp]
+\begin{table}[H]
   \centering
   \caption{Federated client image distribution (K=4, Dirichlet $\alpha=0.5$, seed=42)}
   \label{tab:clients}
@@ -174,7 +177,7 @@ Only the training subset (8,937 images) is partitioned among federated clients; 
   \end{tabular}
 \end{table}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.7\linewidth]{figure_client_distribution.png}
   \caption{Non-IID training-image distribution across the four simulated federated clients (Dirichlet $\alpha=0.5$, seed 42).}
@@ -212,7 +215,7 @@ This section reports results for the centralized reference baseline (B1) and the
 \subsection{B1: Centralized Reference Baseline Results}
 Table~\ref{tab:b1} reports the finalized held-out test results for B1.
 
-\begin{table}[htbp]
+\begin{table}[H]
   \centering
   \caption{B1 centralized reference baseline --- held-out test results}
   \label{tab:b1}
@@ -234,7 +237,7 @@ Table~\ref{tab:b1} reports the finalized held-out test results for B1.
 
 Overall Precision = 0.8745; Overall Recall = 0.8653. Ripe is currently the weakest-performing class in B1 by both AP50 and AP50-95. \todo{Investigate and report the cause once confusion-matrix / dataset analysis is available; no cause is asserted here.} Consistent with the class structure described in the \emph{Dataset} subsection above, the two structurally distinct classes (Abnormal, Empty Bunch) and the least visually ambiguous ripeness stage (Unripe) achieve the highest AP50 values (all $\ge 0.9817$), while Ripe, a mid-sequence stage bordered by both Underripe and Overripe, achieves the lowest AP50 (0.5571). Underripe (0.8275), also a mid-sequence stage, shows an intermediate AP50 value broadly consistent with this pattern, though Overripe (0.9406) does not fit as closely; resolving this discrepancy is left to the confusion-matrix analysis noted above. Figure~\ref{fig:b1-ap50} presents the per-class AP50 values from Table~\ref{tab:b1} for visual comparison across the six ripeness-related classes, and Figure~\ref{fig:b1-qual} provides qualitative detection examples, including at least one from the weaker-performing Ripe class.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   % Real B1 model output -- run scripts/42_generate_b1_test_plots.py on the held-out test split
   % and place confusion_matrix.png / PR_curve.png here (NOT a hand-drawn bar chart).
@@ -243,7 +246,7 @@ Overall Precision = 0.8745; Overall Recall = 0.8653. Ripe is currently the weake
   \label{fig:b1-ap50}
 \end{figure}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   % TODO: 2-4 held-out test images with predicted boxes/labels/confidence overlaid (model.predict(..., save=True)), include >=1 Ripe example
   \fbox{\parbox{0.85\linewidth}{\centering\vspace{2cm}\todo{insert 2--4 held-out test images with model-predicted bounding boxes, class labels, and confidence scores overlaid (e.g., via Ultralytics' built-in prediction visualization). Include at least one example from the Ripe class.}\vspace{2cm}}}
@@ -254,7 +257,7 @@ Overall Precision = 0.8745; Overall Recall = 0.8653. Ripe is currently the weake
 \subsection{B2: Federated Learning without DP --- Three-Seed Validation Results}
 Table~\ref{tab:b2} reports B2 validation results across the three training seeds. These are validation-set results; a direct B1-vs-B2 performance gap is not computed here, since B1 is reported on the held-out test split while B2 is reported on validation. An indicative comparison against B1 is given in the \emph{Indicative Centralized--Federated Comparison} subsection below, and a fully matched held-out-test comparison is deferred to future reporting.
 
-\begin{table}[htbp]
+\begin{table}[H]
   \centering
   \caption{B2 (FedAvg, no DP) --- three-seed validation results}
   \label{tab:b2}
@@ -277,7 +280,7 @@ The best-validation checkpoint round varied notably across seeds: round 9 for se
 \subsection{Indicative Centralized--Federated Comparison}
 Figure~\ref{fig:b2-convergence} illustrates the per-round validation mAP50 trajectory for the three seeds, together with B1's held-out test mAP50 as a reference line. Although B1 and B2 are evaluated on different splits (held-out test versus validation) and are therefore not directly comparable in a matched sense, the gap between B1's held-out test mAP50 (0.8820) and B2's three-seed mean validation mAP50 (0.8775, SD = 0.0157) is small (0.0045), which is suggestive of comparable operating performance between the centralized and Non-IID federated configurations under this partition. A matched held-out test comparison for B2, using the same evaluation split as B1, is deferred to a subsequent report once the corresponding checkpoints are locked and evaluated.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.85\linewidth]{figure_b2_convergence.png}
   \caption{B2 (FedAvg, Non-IID, K=4) validation mAP50 per communication round across three independent training seeds (42, 123, 2026), with B1's held-out test mAP50 shown as a reference line. Filled markers denote each seed's best-validation round (Table~\ref{tab:b2}).}
