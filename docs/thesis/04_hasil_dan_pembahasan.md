@@ -107,19 +107,21 @@ Perbandingan yang lebih ketat berbasis *held-out test* ditunda ke pelaporan
 berikutnya, setelah *checkpoint* B2 dikunci dan dievaluasi di bawah
 protokol *held-out* yang sama dengan B1.
 
-**Gambar 4.3** juga bukan grafik batang tiga angka akhir Tabel 4.2,
-melainkan kurva konvergensi mAP50 *validation* sungguhan per ronde untuk
-ketiga *seed*, diplot langsung dari `history.json` tiap *run* (dicatat
-setiap ronde oleh `run_federated_training`, Subbab 3.7.2) memakai
-`python scripts/43_plot_b2_convergence.py --history
-runs/b2_federated/k4_seed42/history.json --label "seed 42" --history
-runs/b2_federated/k4_seed123/history.json --label "seed 123" --history
-runs/b2_federated/k4_seed2026/history.json --label "seed 2026" --b1-map50
-0.8820`. Bentuk kurva
-ini -- bukan sekadar tiga titik akhir -- yang menunjukkan mengapa ronde
-*checkpoint* terbaik bisa berbeda jauh antar *seed* (9 / 11 / 40, lihat di
-atas), sesuatu yang tidak terlihat dari ringkasan batang tunggal per
-*seed*.
+**Gambar 4.3** (`docs/thesis/manuscript/figure_b2_convergence.png`) bukan
+grafik batang tiga angka akhir Tabel 4.2, melainkan kurva konvergensi mAP50
+*validation* sungguhan per ronde untuk ketiga *seed*, diplot langsung dari
+`history.json` tiap *run* (dicatat setiap ronde oleh
+`run_federated_training`, Subbab 3.7.2; ketiga berkas sumbernya disertakan
+sebagai `docs/thesis/manuscript/b2_k4_seed{42,123,2026}_history.json`)
+memakai `scripts/43_plot_b2_convergence.py`. Bentuk kurva ini -- bukan
+sekadar tiga titik akhir -- yang menunjukkan mengapa ronde *checkpoint*
+terbaik bisa berbeda jauh antar *seed* (9 / 11 / 40, lihat di atas): ketiga
+*seed* naik cepat dan hampir berhimpit hingga ronde ~5, lalu berosilasi di
+kisaran 0,81-0,89 tanpa satupun *seed* yang stabil monoton meningkat --
+*seed* 42 dan 2026 kebetulan menyentuh puncak lokalnya masing-masing di
+ronde 9 dan 40, sedangkan *seed* 123 secara konsisten berosilasi sedikit
+lebih rendah sepanjang pelatihan. Sesuatu yang tidak terlihat dari
+ringkasan batang tunggal per *seed*.
 
 ## 4.4 Diskusi
 
