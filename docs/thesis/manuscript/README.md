@@ -1,10 +1,18 @@
 # Manuskrip JUTIF -- FedXPalm B1/B2
 
-- `manuscript.tex` -- sumber LaTeX (isi sama persis dengan `JUTIF_Manuscript_FedXPalm_B1B2.docx`, dipertahankan sebagai referensi/backup).
+- `manuscript.tex` -- sumber LaTeX (isi sama persis dengan `JUTIF_Manuscript_FedXPalm_B1B2.docx`, dipertahankan sebagai referensi/backup). Header/footer meniru `header1.xml`/`footer1.xml` template JUTIF asli (nama jurnal, Vol/No/Bulan/Tahun/Halaman, P-ISSN/E-ISSN, URL jurnal, DOI, nomor halaman otomatis).
 - `manuscript.pdf` -- hasil build dari `manuscript.tex`.
+- `fedxpalm_manuscript_overleaf.zip` -- paket siap unggah ke Overleaf (isinya `manuscript.tex` + `figure_b2_convergence.png`).
 - `figure_b2_convergence.png` + `b2_k4_seed{42,123,2026}_history.json` -- Gambar 6 (kurva konvergensi B2) dan data sumbernya, lihat `scripts/43_plot_b2_convergence.py`.
 
-## Cara build
+## Cara pakai di Overleaf (tidak perlu install apa-apa)
+
+1. Buka [overleaf.com](https://www.overleaf.com) -> **New Project** -> **Upload Project**.
+2. Pilih file `fedxpalm_manuscript_overleaf.zip`.
+3. Overleaf otomatis compile begitu project terbuka (kalau tidak, klik tombol **Recompile** di atas panel PDF).
+4. Kalau nanti nambah gambar baru (Gambar 1/2/4/5), upload file gambarnya lewat menu **Upload** di panel kiri Overleaf, lalu ganti kotak `\todo{...}` yang bersangkutan di `manuscript.tex` dengan `\includegraphics[width=0.85\linewidth]{nama_file.png}` (contoh polanya persis seperti Gambar 6 yang sudah ada).
+
+## Cara build lokal (opsional, kalau tidak pakai Overleaf)
 
 Butuh TeX Live (`pdflatex`, `latexmk`). Kalau belum ada:
 

@@ -1,10 +1,19 @@
 % JUTIF manuscript -- LaTeX version of JUTIF_Manuscript_FedXPalm_B1B2.docx
 % Build: latexmk -pdf manuscript.tex   (or: pdflatex manuscript.tex, run twice for refs)
+% Or just open this project on Overleaf (New Project > Upload Project) -- no local
+% LaTeX install needed, Overleaf compiles it for you. See README.md in this folder.
+%
 % Content transcribed 1:1 from the .docx in this folder; [TODO: ...] markers
 % preserved verbatim -- do NOT fill them with guesses, see docs/thesis/NOTES_FOR_RACHMA.md.
+%
+% Running header/footer below reproduces the actual JUTIF-Template.docx header1.xml
+% (journal name, Vol/No/Month/Year/Page, P-ISSN/E-ISSN, journal URL, DOI) and its
+% page-number footer field -- both were only in the .docx header/footer parts, not
+% the body text, so they weren't in the first LaTeX draft; added once the .docx's
+% header1.xml was inspected directly.
 \documentclass[11pt]{article}
 
-\usepackage[a4paper,margin=1in]{geometry}
+\usepackage[a4paper,top=3.4cm,bottom=2cm,left=2.5cm,right=2.5cm,headheight=62pt,headsep=14pt]{geometry}
 \usepackage{mathptmx}          % Times New Roman-equivalent text+math font, per JUTIF checklist item "Times New Roman 11pt"
 \usepackage[T1]{fontenc}
 \usepackage{graphicx}
@@ -12,10 +21,26 @@
 \usepackage{caption}
 \usepackage{amsmath}
 \usepackage{xcolor}
+\usepackage{fancyhdr}
 \usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
 \usepackage[english]{babel}
 
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+% --- JUTIF running header/footer (mirrors header1.xml / footer1.xml) ---
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0pt}
+\fancyhead[C]{%
+  \small
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}p{0.55\textwidth}p{0.4\textwidth}}
+    \textbf{Jurnal Teknik Informatika (JUTIF)} & Vol. \todo{vol}, No. \todo{no}, \todo{month} \todo{year}, Page. \todo{pages} \\
+    P-ISSN: 2723-3863 & https://jutif.if.unsoed.ac.id \\
+    E-ISSN: 2723-3871 & DOI: \todo{DOI to be assigned upon acceptance}
+  \end{tabular*}%
+}
+\fancyfoot[C]{\thepage}
 
 \title{\vspace{-1.5em}\large Non-IID Federated Learning versus Centralized Training for Oil Palm Fresh Fruit Bunch Ripeness Detection Using YOLO11n}
 \author{
@@ -30,6 +55,7 @@
 
 \begin{document}
 \maketitle
+\thispagestyle{fancy}
 
 \begin{abstract}
 \noindent
