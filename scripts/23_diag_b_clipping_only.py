@@ -523,15 +523,25 @@ def main() -> int:
         private_steps_per_client_per_round.append(
             {cid: info.get("cumulative_steps") for cid, info in clients_this_round.items()})
 
-    # loss_reduction is now recorded by dp_sgd.py itself every round/client
-    # (post loss_reduction="sum" fix) -- read it back from the real info
-    # dicts rather than hardcoding "sum" here, so a regression in dp_sgd.py
-    # would be caught by the consistency assert below, not silently assumed
+    # loss_reduction/dp_loss_reduction/upstream_loss_convention/
+    # explicit_loss_normalization are now recorded by dp_sgd.py itself every
+    # round/client (post canonical-fix) -- read them back from the real info
+    # dicts rather than hardcoding values here, so a regression in dp_sgd.py
+    # would be caught by the consistency asserts below, not silently assumed
     loss_reductions_seen = {info.get("loss_reduction") for h in result["history"]
                             for info in h["clients"].values()}
-    assert loss_reductions_seen == {"sum"}, (
-        f"expected every round/client to report loss_reduction='sum', got {loss_reductions_seen}")
-    loss_reduction_observed = "sum"
+    assert loss_reductions_seen == {"mean"}, (
+        f"expected every round/client to report loss_reduction='mean' (canonical fix), "
+        f"got {loss_reductions_seen}")
+    upstream_conventions_seen = {info.get("upstream_loss_convention") for h in result["history"]
+                                 for info in h["clients"].values()}
+    normalizations_seen = {info.get("explicit_loss_normalization") for h in result["history"]
+                           for info in h["clients"].values()}
+    assert upstream_conventions_seen == {"ultralytics_sum"}, upstream_conventions_seen
+    assert normalizations_seen == {"actual_microbatch_mean"}, normalizations_seen
+    loss_reduction_observed = "mean"
+    upstream_loss_convention_observed = "ultralytics_sum"
+    explicit_loss_normalization_observed = "actual_microbatch_mean"
     expected_batch_size_per_client_final = {cid: info.get("expected_batch_size")
                                             for cid, info in result["history"][-1]["clients"].items()}
 
@@ -539,6 +549,8 @@ def main() -> int:
         "variant": "E2_partial_P2" if args.subset_label == "P2" else args.subset_label,
         "model_weights": "models/base_groupnorm.pt", "freeze_stages": freeze_stages,
         "loss_reduction": loss_reduction_observed,
+        "upstream_loss_convention": upstream_loss_convention_observed,
+        "explicit_loss_normalization": explicit_loss_normalization_observed,
         "optimizer": "SGD", "lr0": hyp["lr0"], "momentum": hyp.get("momentum"),
         "weight_decay": hyp.get("weight_decay"), "epochs_per_round": hyp["epochs_per_round"],
         "logical_batch_size": logical_batch, "physical_batch_size": physical_batch, "imgsz": imgsz,
@@ -556,21 +568,36 @@ def main() -> int:
         "note": ("DIAGNOSTIC ONLY -- not a thesis result; sigma=0 has NO finite privacy guarantee"
                 if args.sigma == 0.0 else
                 "DIAGNOSTIC ONLY -- not a thesis result (short-round noise-isolation run)"),
+        "protocol_status": "canonical_loss_normalization",
         "loss_reduction": loss_reduction_observed,
+        "dp_loss_reduction": loss_reduction_observed,
+        "upstream_loss_convention": upstream_loss_convention_observed,
+        "explicit_loss_normalization": explicit_loss_normalization_observed,
         "expected_batch_size_per_client_final": expected_batch_size_per_client_final,
         "protocol_fingerprint": protocol_fingerprint,
-        "legacy_baseline_label": "legacy_loss_reduction_mean",
-        "legacy_baseline_note": ("Runs from before this fix (E1/E2 final 20-round, and every "
-                                "earlier B/C confirmation) used Opacus's default "
-                                "loss_reduction='mean' while Ultralytics' own loss is effectively "
-                                "sum-style, causing DPOptimizer.scale_grad() to divide the final "
-                                "SGD update by ~expected_batch_size extra -- confirmed via "
-                                "scripts/40_verify_loss_reduction_scaling.py on two independent "
-                                "clients (ratio == 1/expected_batch_size exactly, cosine~1.0, "
-                                "i.e. same direction, ~60x smaller magnitude). Those runs are "
-                                "legacy under the 'legacy_loss_reduction_mean' label -- not "
-                                "deleted, not overwritten, but not directly comparable to this "
-                                "corrected run's effective step size."),
+        "prior_generations_note": (
+            "Two earlier generations of this exact diagnostic exist and are preserved as-is "
+            "(never overwritten, never deleted):\n"
+            "  1. legacy (pre-any-loss-reduction-fix): loss_reduction='mean' with NO explicit "
+            "microbatch normalization -- Ultralytics' own mean*batch_size loss was handed "
+            "straight to backward(). grad_sample norms were measured ~expected_batch_size too "
+            "large (a genuine diagnostic bug), but because clip_fraction was ~1.0 throughout "
+            "(C=1.0 far below the true gradient norm distribution), clipping happened to erase "
+            "that inflation before it reached the optimizer step -- so the FINAL update was "
+            "close to correct by coincidence, not by a mechanism that would hold if C were "
+            "ever increased.\n"
+            "  2. rejected_direct_sum_loss_reduction: loss_reduction='sum' -- correctly fixed "
+            "the grad_sample measurement bug, but also disabled DPOptimizer.scale_grad()'s "
+            "division by expected_batch_size (Opacus only applies that under 'mean'), making "
+            "every final SGD update ~expected_batch_size (~60-64x) too LARGE. A 5-round pilot "
+            "under this generation showed unstable, oscillating precision/recall and a best "
+            "mAP50 of 0.027 (vs legacy's 0.1766 over the same 5 rounds) -- REJECTED, kept as a "
+            "diagnostic, not deleted, not overwritten.\n"
+            "THIS run is generation 3 (canonical): loss_reduction='mean' restored (so "
+            "scale_grad's division is active again), with Ultralytics' own mean*batch_size "
+            "rescaling explicitly undone by dividing by the ACTUAL microbatch size before "
+            "backward() -- correct grad_sample measurement AND correct final update magnitude, "
+            "in every clip_fraction regime, not just the C=1 saturating one."),
         "rounds": args.rounds, "seed": args.seed, "training_seed": args.seed,
         "partition_seed": args.partition_seed, "k": 4,
         "git_commit": _git_commit(), "git_dirty": _git_dirty(),

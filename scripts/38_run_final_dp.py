@@ -105,6 +105,17 @@ DELTA = 1.0e-5
 ACCOUNTANT = "prv"
 SECURE_MODE = False  # Opacus PrivacyEngine's own default; recorded, not set explicitly
 CLIPPING_MODE = "flat"
+# canonical loss-normalization generation -- see dp_sgd.py's make_private() comment
+# for the full derivation of why this differs from the legacy (pre-fix) and the
+# rejected direct-sum generations. This script has NEVER been run for either of
+# those two prior generations, so there is no collision risk on that front, but
+# the output namespace is still bumped below (final_dp_canonical/) to keep any
+# eventual re-run of this exact protocol unambiguous about which generation
+# produced it, matching scripts/23's convention.
+PROTOCOL_STATUS = "canonical_loss_normalization"
+DP_LOSS_REDUCTION = "mean"
+UPSTREAM_LOSS_CONVENTION = "ultralytics_sum"
+EXPLICIT_LOSS_NORMALIZATION = "actual_microbatch_mean"
 WORKERS = 0
 K = 4
 EXPECTED_PARTITION_SEED = 42
@@ -153,6 +164,9 @@ def locked_protocol_dict(variant: str) -> dict:
         "secure_mode": SECURE_MODE, "clipping_mode": CLIPPING_MODE, "workers": WORKERS, "k": K,
         "partition_seed": EXPECTED_PARTITION_SEED, "dirichlet_alpha": DIRICHLET_ALPHA,
         "freeze_stages": v["freeze_stages"],
+        "dp_loss_reduction": DP_LOSS_REDUCTION,
+        "upstream_loss_convention": UPSTREAM_LOSS_CONVENTION,
+        "explicit_loss_normalization": EXPLICIT_LOSS_NORMALIZATION,
     }
 
 
@@ -364,9 +378,12 @@ def main() -> int:
                 failures.append(f"client{cid} sample count={actual_n} != expected {expected_n}")
 
     # ---- output-path collision check (no overwrite, no auto-resume) ----
+    # namespace bumped to final_dp_canonical/ -- the existing runs/final_dp/
+    # and results/final_dp/ paths hold the LEGACY (pre-canonical-fix) E1/E2
+    # 20-round results and are never read or written by this generation
     variant_dir = VARIANT_DIRS[variant]
-    out_dir = Path(f"runs/final_dp/{variant_dir}/seed{args.training_seed}_{ROUNDS}r")
-    out_json = Path(f"results/final_dp/{variant_dir}_seed{args.training_seed}_{ROUNDS}r.json")
+    out_dir = Path(f"runs/final_dp_canonical/{variant_dir}/seed{args.training_seed}_{ROUNDS}r")
+    out_json = Path(f"results/final_dp_canonical/{variant_dir}_seed{args.training_seed}_{ROUNDS}r.json")
     if out_dir.exists() or out_json.exists():
         failures.append(f"final output already exists ({out_dir if out_dir.exists() else out_json}) "
                         f"-- resume is not supported; move/rename the existing output first if you "
@@ -438,6 +455,19 @@ def main() -> int:
                 f"round {round_idx} client {client_id}: RUNTIME optimizer/trainable set "
                 f"mismatch -- missing_trainable={info['missing_trainable_params'][:5]} "
                 f"unexpected_frozen_in_optimizer={info['unexpected_frozen_params'][:5]}")
+        # RUNTIME canonical-loss-normalization audit (every round, every client):
+        # confirms dp_sgd.py actually used the canonical fix for THIS round, not
+        # a regressed legacy or rejected-direct-sum generation
+        if (info.get("loss_reduction") != DP_LOSS_REDUCTION
+                or info.get("upstream_loss_convention") != UPSTREAM_LOSS_CONVENTION
+                or info.get("explicit_loss_normalization") != EXPLICIT_LOSS_NORMALIZATION):
+            raise RuntimeError(
+                f"round {round_idx} client {client_id}: canonical loss-normalization mismatch -- "
+                f"loss_reduction={info.get('loss_reduction')!r} (expected {DP_LOSS_REDUCTION!r}), "
+                f"upstream_loss_convention={info.get('upstream_loss_convention')!r} "
+                f"(expected {UPSTREAM_LOSS_CONVENTION!r}), "
+                f"explicit_loss_normalization={info.get('explicit_loss_normalization')!r} "
+                f"(expected {EXPLICIT_LOSS_NORMALIZATION!r})")
         return state_dict, info
 
     def eval_fn(weights_path):
@@ -577,6 +607,17 @@ def main() -> int:
 
     record = {
         "protocol_status": "final_primary",
+        "loss_normalization_generation": PROTOCOL_STATUS,  # "canonical_loss_normalization"
+        "dp_loss_reduction": DP_LOSS_REDUCTION,
+        "upstream_loss_convention": UPSTREAM_LOSS_CONVENTION,
+        "explicit_loss_normalization": EXPLICIT_LOSS_NORMALIZATION,
+        "prior_generations_note": (
+            "This script has never been run for the legacy (pre-any-loss-reduction-fix) or "
+            "rejected_direct_sum_loss_reduction generations -- those exist only under "
+            "runs/final_dp/ and results/final_dp/ (E1/E2 20-round, produced before this "
+            "canonical fix existed) and under scripts/23's diag_b_clipping_only namespace "
+            "(5-round pilots). See dp_sgd.py's make_private() comment and "
+            "scripts/23_diag_b_clipping_only.py's prior_generations_note for the full history."),
         "experiment_family": "final_dp_20round",
         "privacy_operating_point": f"sigma={SIGMA}_C={MAX_GRAD_NORM}",
         "variant": variant,

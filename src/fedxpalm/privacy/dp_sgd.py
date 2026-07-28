@@ -336,26 +336,52 @@ def train_client_round_dp(
             noise_multiplier=dp_hyp["sigma"],
             max_grad_norm=dp_hyp["max_grad_norm"],
             poisson_sampling=True,
-            # Ultralytics' own detection loss already returns
-            # mean_per_sample_loss * batch_size (effectively sum-style --
-            # see v8DetectionLoss.loss()), but this call never told Opacus
-            # that, so it fell back to its own default "mean". That silently
-            # multiplied every per-sample grad_sample by an extra factor of
-            # the physical micro-batch size (opacus/grad_sample/
-            # grad_sample_module.py: `if loss_reduction=="mean": backprops =
-            # backprops * n`). Confirmed via a real-model probe
-            # (scripts/40_verify_loss_reduction_scaling.py) on two independent
-            # clients that flat clipping itself was NOT affected (clipping to
-            # norm C erases a uniform positive-scalar inflation whenever both
-            # the true and inflated norms already exceed C, which they always
-            # did here) -- clip_and_accumulate()'s summed_grad was bitwise
-            # identical between "mean" and "sum". But DPOptimizer.scale_grad()
-            # divides by expected_batch_size (~60-64 here) ONLY under "mean",
-            # so the final per-step SGD update was ~60x smaller in magnitude
-            # (same direction, cosine~1.0) than intended -- every prior E1/E2
-            # DP run trained at an unintended, much smaller effective step
-            # size. "sum" matches Ultralytics' actual loss convention.
-            loss_reduction="sum",
+            # CANONICAL fix (supersedes an earlier, INCOMPLETE loss_reduction="sum"
+            # attempt -- see git history / thesis log for why that was rejected).
+            # Ultralytics' own detection loss returns mean_per_sample_loss *
+            # batch_size (v8DetectionLoss.loss()) -- a batch-invariant per-sample
+            # average, rescaled back up. Opacus's "mean" mode assumes backward()
+            # ran on a genuine PyTorch mean and corrects for it by multiplying
+            # backprops by n (the actual micro-batch size) when reconstructing
+            # grad_sample. Passing Ultralytics' raw (rescaled-up) loss straight
+            # to backward() under "mean" double-counts that rescaling, inflating
+            # every per-sample grad_sample by an extra factor of n -- this is
+            # what scripts/40_verify_loss_reduction_scaling.py measured (ratio
+            # exactly 8 for physical_batch=8) and is a genuine measurement bug in
+            # grad_norm_stats/clip_fraction reporting.
+            #
+            # The EARLIER "fix" for this (loss_reduction="sum", literally telling
+            # Opacus not to correct at all) repaired that measurement but broke
+            # something more important: DPOptimizer.scale_grad() only divides the
+            # clipped+noised summed_grad by expected_batch_size when
+            # loss_reduction=="mean" -- under "sum" it does nothing. That division
+            # is the standard, correct final step of DP-SGD (Abadi et al.): clip
+            # each example, sum, add noise, then average over the batch before
+            # applying lr0. Removing it made every real logical step's SGD update
+            # ~expected_batch_size (~60-64x) too large -- confirmed by a rejected
+            # 5-round pilot (tag: rejected_direct_sum_loss_reduction) that showed
+            # unstable, oscillating precision/recall and a best mAP50 of 0.027,
+            # far below the legacy (pre-fix) run's 0.1766 over the same 5 rounds.
+            #
+            # The actual bug was narrower than either prior attempt assumed:
+            # Ultralytics' loss is a rescaled MEAN, not a genuine SUM -- so the
+            # correct move is to keep loss_reduction="mean" (so scale_grad's
+            # essential division still happens) and undo Ultralytics' own
+            # rescaling explicitly, immediately below, before backward() ever
+            # sees it -- dividing by the ACTUAL microbatch size processed in
+            # this specific forward call (not logical_batch, not
+            # expected_batch_size, not any config value), so the loss handed to
+            # backward() is a genuine, undiluted-by-anything-else PyTorch mean,
+            # exactly what loss_reduction="mean" is designed to consume. See the
+            # explicit division a few lines below, and
+            # scripts/41_verify_canonical_loss_normalization.py for the matched
+            # 3-way (legacy / rejected direct-sum / canonical) real-model probe
+            # that confirms canonical's true per-sample grad norms match
+            # direct-sum's (correct clipping-scale measurement) while its final
+            # per-step parameter delta matches legacy's (correct, ~1/expected_batch_size
+            # update magnitude) -- getting both right simultaneously, in every
+            # clip_fraction regime, not just by relying on clipping saturation.
+            loss_reduction="mean",
         )
         clipping_mode = "flat"
         per_layer_info = None
@@ -394,7 +420,7 @@ def train_client_round_dp(
             max_grad_norm=c_vec,
             clipping="per_layer",
             poisson_sampling=True,
-            loss_reduction="sum",  # see the flat-clipping branch's comment above for why
+            loss_reduction="mean",  # canonical fix -- see the flat-clipping branch's comment above
         )
         clipping_mode = "per_layer"
         per_layer_info = {
@@ -404,12 +430,13 @@ def train_client_round_dp(
             "ordered_param_names": opt_names,
         }
     # Hard runtime check: both branches above must have actually wrapped with
-    # loss_reduction="sum" -- if a future edit ever drops this argument again
-    # (or Opacus's own default ever changes), this fails loudly here rather
-    # than silently reintroducing the ~expected_batch_size-factor SGD-update
-    # scaling bug this fix addresses.
-    assert dp_optimizer.loss_reduction == "sum", (
-        f"expected dp_optimizer.loss_reduction == 'sum', got {dp_optimizer.loss_reduction!r}")
+    # loss_reduction="mean" -- if a future edit ever drops this argument (or
+    # Opacus's own default ever changes), this fails loudly here rather than
+    # silently reintroducing either the rejected direct-sum bug (missing
+    # scale_grad division) or the original measurement bug (missing explicit
+    # microbatch normalization below).
+    assert dp_optimizer.loss_reduction == "mean", (
+        f"expected dp_optimizer.loss_reduction == 'mean', got {dp_optimizer.loss_reduction!r}")
 
     # resume this client's privacy budget from prior rounds BEFORE stepping,
     # so get_epsilon() below is cumulative over the whole run
@@ -459,9 +486,25 @@ def train_client_round_dp(
                 batch = trainer.preprocess_batch(batch)
                 dp_optimizer.zero_grad()
                 loss, _loss_items = dp_model(batch)
-                total_loss = loss.sum()
+                # Ultralytics' loss is mean_per_sample * batch_size (an already
+                # batch-invariant average, rescaled up) -- divide by the ACTUAL
+                # microbatch size processed in THIS forward call (not
+                # logical_batch, not expected_batch_size, not any config value)
+                # to undo that rescaling explicitly, so what backward() sees is
+                # a genuine PyTorch mean, exactly what loss_reduction="mean"
+                # (set above) is designed to consume. See the long comment at
+                # this round's make_private() call for the full derivation.
+                actual_microbatch_size = int(batch["img"].shape[0])
+                if actual_microbatch_size <= 0:
+                    raise RuntimeError(f"round {round_idx} client {client_id}: empty physical "
+                                       f"microbatch reached backward -- should have been skipped "
+                                       f"by the empty-batch check above")
+                total_loss = loss.sum() / actual_microbatch_size
                 if not torch.isfinite(total_loss):
                     nan_inf_detected = True
+                    raise RuntimeError(f"round {round_idx} client {client_id}: non-finite "
+                                       f"normalized DP loss ({float(loss.sum())} / "
+                                       f"{actual_microbatch_size})")
                 total_loss.backward()
                 if collect_grad_norms:
                     # must read BEFORE step(): step() -> pre_step() -> clip_and_accumulate()
@@ -528,8 +571,14 @@ def train_client_round_dp(
         "sigma": dp_hyp["sigma"],
         "max_grad_norm": dp_hyp["max_grad_norm"],
         "clipping": clipping_mode,                 # "flat" | "per_layer"
-        "loss_reduction": dp_optimizer.loss_reduction,  # "sum" (fixed) -- see make_private() comment above
+        "loss_reduction": dp_optimizer.loss_reduction,  # "mean" (canonical fix) -- see make_private() comment above
         "expected_batch_size": dp_optimizer.expected_batch_size,  # Opacus's own attribute, unaffected by loss_reduction
+        # canonical-fix identity fields -- distinguish this from both the
+        # legacy (pre-fix) and rejected direct-sum generations without
+        # needing to inspect the code that produced a given record
+        "dp_loss_reduction": dp_optimizer.loss_reduction,          # "mean"
+        "upstream_loss_convention": "ultralytics_sum",             # what Ultralytics' v8DetectionLoss actually returns
+        "explicit_loss_normalization": "actual_microbatch_mean",   # loss.sum() / actual_microbatch_size, done here
         "per_layer": per_layer_info,               # None unless per-layer clipping active
         "delta": dp_hyp["delta"],
         "n_samples": len(dp_loader.dataset),
