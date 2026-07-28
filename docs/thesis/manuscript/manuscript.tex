@@ -154,15 +154,8 @@ Images are grouped by their originating source group prior to splitting, and the
   \end{tabular}
 \end{table}
 
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.7\linewidth]{figure_client_distribution.png}
-  \caption{Non-IID training-image distribution across the four simulated federated clients (Dirichlet $\alpha=0.5$, seed 42).}
-  \label{fig:client-dist}
-\end{figure}
-
 \subsection{Federated Partition}
-Only the training subset (8,937 images) is partitioned among federated clients; the validation and held-out test splits are not partitioned. The federation uses K=4 clients under a Non-IID partition generated with a Dirichlet distribution ($\alpha = 0.5$, partition seed = 42). The Dirichlet distribution is a standard mechanism for constructing controllable Non-IID splits in federated learning research, since its concentration parameter directly governs the degree of class-distribution skew across clients without requiring additional heuristic allocation rules \cite{kairouz2021}. Table~\ref{tab:clients} reports the resulting client-level image distribution. The clients are simulated sample-level data shards and do not represent four physical plantations, estates, organizations, or devices; training is simulated sequentially on a single GPU. Images originating from one source group inside the training subset may be distributed across different clients; this does not violate the leakage-free train/validation/test split, since all client partitions are drawn exclusively from the training subset.
+Only the training subset (8,937 images) is partitioned among federated clients; the validation and held-out test splits are not partitioned. The federation uses K=4 clients under a Non-IID partition generated with a Dirichlet distribution ($\alpha = 0.5$, partition seed = 42). The Dirichlet distribution is a standard mechanism for constructing controllable Non-IID splits in federated learning research, since its concentration parameter directly governs the degree of class-distribution skew across clients without requiring additional heuristic allocation rules \cite{kairouz2021}. Table~\ref{tab:clients} and Figure~\ref{fig:client-dist} report the resulting client-level image distribution. The clients are simulated sample-level data shards and do not represent four physical plantations, estates, organizations, or devices; training is simulated sequentially on a single GPU. Images originating from one source group inside the training subset may be distributed across different clients; this does not violate the leakage-free train/validation/test split, since all client partitions are drawn exclusively from the training subset.
 
 \begin{table}[htbp]
   \centering
@@ -181,6 +174,13 @@ Only the training subset (8,937 images) is partitioned among federated clients; 
     \bottomrule
   \end{tabular}
 \end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.7\linewidth]{figure_client_distribution.png}
+  \caption{Non-IID training-image distribution across the four simulated federated clients (Dirichlet $\alpha=0.5$, seed 42).}
+  \label{fig:client-dist}
+\end{figure}
 
 \subsection{Model Architecture}
 The base detector is YOLO11n \cite{jocher2024}, initialized from weights pretrained on the COCO dataset \cite{lin2014coco}, with an input resolution of $960\times960$. The adjusted model contains 2,591,010 parameters. All Batch Normalization layers were converted to Group Normalization \cite{wu2018groupnorm}, since cross-sample batch statistics are known to become unreliable under small, Non-IID per-client batches in federated settings \cite{li2021fedbn}; a final architecture audit confirmed 0 remaining BatchNorm modules and 81 GroupNorm modules across the network. This substitution is applied consistently across B1 and B2 so that normalization type is not a confounding factor in the centralized-versus-federated comparison reported in the \emph{Results} section below, and it additionally establishes architectural compatibility with the per-sample gradient computation required for a planned Differentially Private SGD (DP-SGD) extension of this pipeline (see the \emph{Planned Extension: Differential Privacy} subsection below). A fixed convolution inside the Distribution Focal Loss (DFL) module is set with \texttt{requires\_grad=False} and is excluded from optimization.
