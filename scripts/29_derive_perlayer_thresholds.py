@@ -33,11 +33,12 @@ same freeze, same frozen-param stripping) and asserting the live optimizer's
 ordered names are exactly the Phase A audit's recorded tensor list -- so
 threshold[i] provably corresponds to optimizer_param[i].
 
-Output: results/p2_perlayer_clip_thresholds.json
+Output: results/p2_perlayer_clip_thresholds[_<tag>].json (--tag matches scripts/28's
+own --tag, and also selects the matching Phase A input by default)
   { thresholds: {name: C_i}, ordered_names, ordered_C, C_vec_l2_norm,
     per_stage_summary, n_floored, rule, source }
 
-  python scripts/29_derive_perlayer_thresholds.py --device 0
+  python scripts/29_derive_perlayer_thresholds.py --device 0 --tag canonical
 
 No training. No modification to any existing output.
 """
@@ -94,7 +95,16 @@ def derive_thresholds(per_tensor: list[dict], c_total: float = 1.0,
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="0")
-    parser.add_argument("--audit-json", default="results/diag_p2_perstage_gradnorm.json")
+    parser.add_argument("--audit-json", default=None,
+                        help="Phase A output to consume (default: derived from --tag as "
+                             "results/diag_p2_perstage_gradnorm[_<tag>].json, matching "
+                             "scripts/28's own --tag convention)")
+    parser.add_argument("--tag", default="",
+                        help="suffix shared with scripts/28's --tag: selects the matching "
+                             "Phase A input (when --audit-json is not given explicitly) AND "
+                             "the Phase B output filename, so a re-derivation under a different "
+                             "generation of the code never silently overwrites a prior one "
+                             "(default: empty, byte-identical to the original filenames)")
     parser.add_argument("--c-total", type=float, default=1.0,
                         help="total sensitivity budget ||C_vec||_2 (default 1.0 == the flat "
                              "baseline C, so noise scale and accounting stay identical)")
@@ -104,6 +114,10 @@ def main() -> int:
                              "only for machines without the dataset/checkpoint")
     args = parser.parse_args()
 
+    suffix = f"_{args.tag}" if args.tag else ""
+    if args.audit_json is None:
+        args.audit_json = f"results/diag_p2_perstage_gradnorm{suffix}.json"
+
     if not Path(args.audit_json).exists():
         print(f"FAIL: {args.audit_json} not found -- run scripts/28_diag_p2_perstage_gradnorm.py first")
         return 1
@@ -111,6 +125,18 @@ def main() -> int:
         audit = json.load(f)
     per_tensor = audit["per_tensor"]
     audit_names = [t["name"] for t in per_tensor]
+
+    # generation-identity check: Phase B's derivation is only valid for
+    # thresholds measured under the SAME loss-normalization generation this
+    # experiment is meant to represent -- refuse to derive from a stale
+    # (e.g. pre-canonical-fix) Phase A capture.
+    expected_generation = "canonical_loss_normalization"
+    audit_generation = audit.get("loss_normalization_generation")
+    if audit_generation != expected_generation:
+        print(f"FAIL: {args.audit_json} was captured under generation "
+              f"{audit_generation!r}, expected {expected_generation!r} -- "
+              f"re-run scripts/28 with the current dp_sgd.py before deriving thresholds")
+        return 1
 
     thresholds, meta = derive_thresholds(per_tensor, c_total=args.c_total)
 
@@ -206,6 +232,7 @@ def main() -> int:
                 "||C_vec||_2 == C_total == flat baseline C: total sensitivity, noise scale "
                 "(sigma*||C_vec||_2) and privacy accounting are identical to flat clipping.",
         "source_audit_json": args.audit_json,
+        "loss_normalization_generation": audit_generation,
         "meta": meta,
         "per_stage_summary": per_stage,
         "order_audit": order_audit,
@@ -213,7 +240,7 @@ def main() -> int:
         "ordered_names": audit_names,      # Phase A capture order (== optimizer order per audit)
         "ordered_C": [thresholds[n] for n in audit_names],
     }
-    out_json = "results/p2_perlayer_clip_thresholds.json"
+    out_json = f"results/p2_perlayer_clip_thresholds{suffix}.json"
     Path("results").mkdir(exist_ok=True)
     with open(out_json, "w") as f:
         json.dump(out, f, indent=2)

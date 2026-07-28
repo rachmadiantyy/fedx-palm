@@ -166,6 +166,11 @@ def main() -> int:
     parser.add_argument("--base-weights", default="models/base_groupnorm.pt")
     parser.add_argument("--out-dir", default="runs/_diag_perstage_gradnorm_scratch",
                         help="scratch dir for Ultralytics' own run artifacts; NOT a real experiment path")
+    parser.add_argument("--tag", default="",
+                        help="suffix for the output JSON filename, e.g. --tag canonical so a "
+                             "re-run under a fixed dp_sgd.py never silently overwrites a "
+                             "measurement taken under a different generation of the code "
+                             "(default: empty, byte-identical to the original filename)")
     args = parser.parse_args()
 
     if not Path(args.base_weights).exists():
@@ -206,7 +211,7 @@ def main() -> int:
 
     restore = _install_probe()
     try:
-        final_state, _info = train_client_round_dp(
+        final_state, info = train_client_round_dp(
             global_weights_path=args.base_weights, client_data_yaml=data_yaml,
             hyp=hyp, dp_hyp=dp_hyp, round_idx=0, client_id=f"probe_{args.client}",
             out_dir=args.out_dir, device=args.device, freeze_stages=P2_FREEZE_STAGES,
@@ -215,6 +220,26 @@ def main() -> int:
         )
     finally:
         restore()
+
+    # generation-identity check: this probe reuses train_client_round_dp()
+    # unmodified, so it silently inherits whichever generation of dp_sgd.py's
+    # loss-normalization mechanism is installed -- record + assert it here so
+    # the output JSON can never be mistaken for a measurement taken under a
+    # different (e.g. pre-canonical-fix) generation of the code.
+    expected_loss_reduction = "mean"
+    expected_upstream_convention = "ultralytics_sum"
+    expected_explicit_normalization = "actual_microbatch_mean"
+    for key, expected in (
+        ("loss_reduction", expected_loss_reduction),
+        ("upstream_loss_convention", expected_upstream_convention),
+        ("explicit_loss_normalization", expected_explicit_normalization),
+    ):
+        got = info.get(key)
+        if got != expected:
+            print(f"FAIL: dp_sgd.py reported {key}={got!r}, expected {expected!r} -- "
+                  f"this probe's per-tensor norms would not be comparable to the "
+                  f"canonical-generation record; refusing to write output")
+            return 1
 
     if not _captured["per_chunk_norms"]:
         print("FAIL: no per-sample gradients were observed (empty dataloader or all batches skipped)")
@@ -311,12 +336,17 @@ def main() -> int:
         "physical_chunk_batch_sizes": _captured["chunk_batch_sizes"],
         "weights_byte_identical": weights_byte_identical,
         "weight_mismatches": mismatched,
+        "loss_normalization_generation": "canonical_loss_normalization",
+        "dp_loss_reduction": info.get("loss_reduction"),
+        "upstream_loss_convention": info.get("upstream_loss_convention"),
+        "explicit_loss_normalization": info.get("explicit_loss_normalization"),
         "global_total_norm": {**global_stats, "clip_fraction_at_flat_C": global_clip_frac},
         "per_stage": per_stage,
         "per_tensor": per_tensor,
         "unexpected_trainable_stages": unexpected,
     }
-    out_json = "results/diag_p2_perstage_gradnorm.json"
+    suffix = f"_{args.tag}" if args.tag else ""
+    out_json = f"results/diag_p2_perstage_gradnorm{suffix}.json"
     Path("results").mkdir(exist_ok=True)
     with open(out_json, "w") as f:
         json.dump(record, f, indent=2)
