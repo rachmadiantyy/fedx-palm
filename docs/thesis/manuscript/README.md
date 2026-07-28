@@ -1,6 +1,7 @@
 # Manuskrip JUTIF -- FedXPalm B1/B2
 
-- `manuscript.tex` -- sumber LaTeX (isi sama persis dengan `JUTIF_Manuscript_FedXPalm_B1B2.docx`, dipertahankan sebagai referensi/backup). Header/footer meniru `header1.xml`/`footer1.xml` template JUTIF asli (nama jurnal, Vol/No/Bulan/Tahun/Halaman, P-ISSN/E-ISSN, URL jurnal, DOI, nomor halaman otomatis).
+- `manuscript.tex` -- sumber LaTeX (isi sama persis dengan `JUTIF_Manuscript_FedXPalm_B1B2.docx`, dipertahankan sebagai referensi/backup). Diverifikasi langsung terhadap `JUTIF-Template.docx` (bukan cuma tebakan): margin (2,5/2,5/2,5/2,0 cm kiri/atas/kanan/bawah), *line spacing* 1,15, indentasi baris pertama paragraf 1,1cm, judul bold 14pt, nama penulis bold 10pt, header/footer (nama jurnal, Vol/No/Bulan/Tahun/Halaman, P-ISSN/E-ISSN, URL jurnal, DOI, nomor halaman otomatis), dan -- yang paling penting -- judul bab/subbab di template **TIDAK diberi nomor otomatis** (cuma bold huruf kapital utuh untuk bab utama, bold huruf normal untuk subbab), jadi seluruh referensi "Section N" di teks sudah diganti jadi nama subbab langsung (bukan `\ref{}` ke nomor yang memang tidak ada di template aslinya).
+- `JUTIF-Template.docx` -- template resmi kosong dari JUTIF, dipakai sebagai rujukan verifikasi di atas.
 - `manuscript.pdf` -- hasil build dari `manuscript.tex`.
 - `fedxpalm_manuscript_overleaf.zip` -- paket siap unggah ke Overleaf (isinya `manuscript.tex` + `figure_b2_convergence.png`).
 - `figure_b2_convergence.png` + `b2_k4_seed{42,123,2026}_history.json` -- Gambar 6 (kurva konvergensi B2) dan data sumbernya, lihat `scripts/43_plot_b2_convergence.py`.

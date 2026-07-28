@@ -6,11 +6,23 @@
 % Content transcribed 1:1 from the .docx in this folder; [TODO: ...] markers
 % preserved verbatim -- do NOT fill them with guesses, see docs/thesis/NOTES_FOR_RACHMA.md.
 %
-% Running header/footer below reproduces the actual JUTIF-Template.docx header1.xml
-% (journal name, Vol/No/Month/Year/Page, P-ISSN/E-ISSN, journal URL, DOI) and its
-% page-number footer field -- both were only in the .docx header/footer parts, not
-% the body text, so they weren't in the first LaTeX draft; added once the .docx's
-% header1.xml was inspected directly.
+% Running header/footer, margins, heading style, line spacing, and paragraph
+% indent below all mirror the REAL JUTIF-Template.docx (word/header1.xml,
+% word/footer1.xml, word/styles.xml pStyle definitions JUDUL/AUTHOR/BODYPARAGRAP/
+% 3METODE/4PEMBAHASAN/SUBJUDUL, word/document.xml sectPr) -- confirmed against
+% JUTIFTemplate.docx directly, not inferred from the manuscript body text alone:
+%  - pgMar: top=1418 right=1418 bottom=1134 left=1418 twips = 2.5/2.5/2.0/2.5 cm
+%    (top pushed out further below to fit the 3-line header block, matching
+%    what Word itself does when header content exceeds the nominal header gap)
+%  - BODYPARAGRAP: line=276/240=1.15 line spacing, firstLine indent=624 twips=1.1cm,
+%    after=0 (no extra paragraph skip -- indent-style, not block-style)
+%  - Section headings (3METODE/4PEMBAHASAN/5KESIMPULAN, based on Heading1): bold,
+%    ALL CAPS (w:caps), 12pt, NOT numbered (no numPr on these styles)
+%  - SUBJUDUL (sub-headings): bold, 12pt, normal case, also not numbered
+%  - JUDUL (title): bold, 14pt, centered  |  AUTHOR: bold, 10pt, centered
+% Because headings are unnumbered in the real template, all inline "Section N"
+% cross-references were rewritten as plain subsection names instead of \ref{}
+% (an unnumbered \section has no number for \ref to print).
 \documentclass[11pt]{article}
 
 \usepackage[a4paper,top=3.4cm,bottom=2cm,left=2.5cm,right=2.5cm,headheight=62pt,headsep=14pt]{geometry}
@@ -22,10 +34,25 @@
 \usepackage{amsmath}
 \usepackage{xcolor}
 \usepackage{fancyhdr}
+\usepackage{titlesec}
 \usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
 \usepackage[english]{babel}
 
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+% --- Body text: 1.15 line spacing, 1.1cm first-line indent, no paragraph skip
+% (BODYPARAGRAP style) ---
+\linespread{1.15}
+\setlength{\parindent}{1.1cm}
+\setlength{\parskip}{0pt}
+
+% --- Section headings: unnumbered, bold, ALL CAPS, 12pt (3METODE/4PEMBAHASAN/
+% 5KESIMPULAN styles); sub-headings: unnumbered, bold, normal case, 12pt (SUBJUDUL) ---
+\setcounter{secnumdepth}{-1}
+\titleformat{\section}{\normalfont\fontsize{12}{14}\bfseries\MakeUppercase}{}{0pt}{}
+\titlespacing*{\section}{0pt}{0.35cm}{0.18cm}
+\titleformat{\subsection}{\normalfont\fontsize{12}{14}\bfseries}{}{0pt}{}
+\titlespacing*{\subsection}{0pt}{0.35cm}{0.18cm}
 
 % --- JUTIF running header/footer (mirrors header1.xml / footer1.xml) ---
 \pagestyle{fancy}
@@ -42,10 +69,10 @@
 }
 \fancyfoot[C]{\thepage}
 
-\title{\vspace{-1.5em}\large Non-IID Federated Learning versus Centralized Training for Oil Palm Fresh Fruit Bunch Ripeness Detection Using YOLO11n}
+\title{\vspace{-1.5em}\fontsize{14}{17}\selectfont\bfseries Non-IID Federated Learning versus Centralized Training for Oil Palm Fresh Fruit Bunch Ripeness Detection Using YOLO11n}
 \author{
-  \todo{confirm co-author name(s) and order, e.g. supervisor/co-supervisor}$^{*1}$, Rachma Dianty$^{2}$ \\
-  \small ($^{*}$ = corresponding author) \\
+  \bfseries\fontsize{10}{12}\selectfont \todo{confirm co-author name(s) and order, e.g. supervisor/co-supervisor}$^{*1}$, Rachma Dianty$^{2}$ \\
+  \normalfont\small ($^{*}$ = corresponding author) \\
   \small Master of Electrical-Telecommunication Engineering, School of Electrical Engineering, Telkom University, Indonesia \\
   \small Email: \todo{corresponding author email} (only email for corresponding author) \\
   \small Received: \todo{date}; Revised: \todo{date}; Accepted: \todo{date}; Published: \todo{date} \\
@@ -75,7 +102,7 @@ Precise, non-destructive assessment of fresh fruit bunch (FFB) ripeness is a lon
 FL allows multiple clients to collaboratively train a shared model by exchanging model updates rather than raw data \cite{mcmahan2017fedavg}. While this removes the need to transmit images to a central server, it is well documented in the literature that model updates and gradients can still leak information about the underlying training samples \cite{zhu2019,zhao2020}, and that trained models themselves can leak membership information about individual training records \cite{shokri2017}. Differential Privacy (DP), and specifically DP-SGD, provides a formal, quantifiable guarantee that bounds the influence of any single training sample on the released model, at the cost of injected noise and consequent utility degradation \cite{dworkroth2014,abadi2016}. Understanding this privacy--utility trade-off is essential before DP-SGD can be responsibly adopted in applied agricultural computer-vision pipelines such as automated FFB grading systems intended for field or mobile deployment \cite{asrol2023}.
 
 \subsection*{Research Gap}
-Prior work has separately examined YOLO-based object detection for oil palm FFB ripeness \cite{lai2022,suharjito2021,suharjito2023dataset,asrol2023,goh2025} and Federated Learning for visual classification and detection tasks under Non-IID data \cite{mcmahan2017fedavg,hsu2019,kairouz2021}. The specific combination of (i) YOLO11-based multi-class FFB ripeness detection, (ii) a Non-IID federated setting (Dirichlet-partitioned, K=4 clients) evaluated under a leakage-free, source-group-aware split, and (iii) Group Normalization adopted specifically to remove batch-statistic dependence under Non-IID federated training, has, to the authors' knowledge, not been jointly examined for this task. This study does not claim to be the first application of Federated Learning to oil palm imagery or the first use of YOLO for FFB ripeness classification; rather, it establishes an empirical centralized-versus-federated baseline for this specific task, architecture, and federation setting, intended as the non-private reference point for a broader Differentially Private federated learning research program (Section~\ref{sec:planned-extension}).
+Prior work has separately examined YOLO-based object detection for oil palm FFB ripeness \cite{lai2022,suharjito2021,suharjito2023dataset,asrol2023,goh2025} and Federated Learning for visual classification and detection tasks under Non-IID data \cite{mcmahan2017fedavg,hsu2019,kairouz2021}. The specific combination of (i) YOLO11-based multi-class FFB ripeness detection, (ii) a Non-IID federated setting (Dirichlet-partitioned, K=4 clients) evaluated under a leakage-free, source-group-aware split, and (iii) Group Normalization adopted specifically to remove batch-statistic dependence under Non-IID federated training, has, to the authors' knowledge, not been jointly examined for this task. This study does not claim to be the first application of Federated Learning to oil palm imagery or the first use of YOLO for FFB ripeness classification; rather, it establishes an empirical centralized-versus-federated baseline for this specific task, architecture, and federation setting, intended as the non-private reference point for a broader Differentially Private federated learning research program (see the \emph{Planned Extension: Differential Privacy} subsection below).
 
 \subsection*{Research Question}
 The central research question addressed in this study is: how does Non-IID federated learning (FedAvg) affect the detection utility of YOLO11n for oil palm FFB ripeness classification, relative to centralized training, under a Dirichlet-partitioned, four-client setting?
@@ -99,7 +126,7 @@ Figure~\ref{fig:workflow} summarizes the overall research workflow described in 
 \end{figure}
 
 \subsection{Dataset}
-This study uses the Palm Fruit Ripeness Detection dataset (version 2) sourced from Roboflow, comprising 10,814 images annotated for six ripeness-related classes: Abnormal, Empty Bunch, Overripe, Ripe, Underripe, and Unripe, in a manner broadly consistent with other publicly documented efforts to build annotated FFB ripeness datasets for deep-learning-based grading \cite{suharjito2023dataset}. The six classes reflect an operational grading protocol rather than a strict physiological maturity scale. Unripe and Underripe capture fruit at progressively earlier stages of colour change with little to no loose fruit; Ripe and Overripe correspond to the harvest-optimal and post-optimal stages, distinguished mainly by the proportion of loose fruit and the extent of colour development; and Empty Bunch and Abnormal represent non-standard bunch conditions, respectively bunches with most fruit already detached and bunches whose shape, density, or development departs from the normal pattern, rather than points on the ripeness continuum. This class structure is relevant to interpreting the per-class results reported in Section~\ref{sec:b1-results}, since Ripe and Overripe are visually contiguous with their neighboring stages, whereas Empty Bunch and Abnormal are visually more distinct outlier conditions. Figure~\ref{fig:classes} shows a representative example image for each of the six classes.
+This study uses the Palm Fruit Ripeness Detection dataset (version 2) sourced from Roboflow, comprising 10,814 images annotated for six ripeness-related classes: Abnormal, Empty Bunch, Overripe, Ripe, Underripe, and Unripe, in a manner broadly consistent with other publicly documented efforts to build annotated FFB ripeness datasets for deep-learning-based grading \cite{suharjito2023dataset}. The six classes reflect an operational grading protocol rather than a strict physiological maturity scale. Unripe and Underripe capture fruit at progressively earlier stages of colour change with little to no loose fruit; Ripe and Overripe correspond to the harvest-optimal and post-optimal stages, distinguished mainly by the proportion of loose fruit and the extent of colour development; and Empty Bunch and Abnormal represent non-standard bunch conditions, respectively bunches with most fruit already detached and bunches whose shape, density, or development departs from the normal pattern, rather than points on the ripeness continuum. This class structure is relevant to interpreting the per-class results reported in \emph{B1: Centralized Reference Baseline Results} below, since Ripe and Overripe are visually contiguous with their neighboring stages, whereas Empty Bunch and Abnormal are visually more distinct outlier conditions. Figure~\ref{fig:classes} shows a representative example image for each of the six classes.
 
 \begin{figure}[htbp]
   \centering
@@ -136,7 +163,6 @@ Images are grouped by their originating source group prior to splitting, and the
 \end{figure}
 
 \subsection{Federated Partition}
-\label{sec:partition}
 Only the training subset (8,937 images) is partitioned among federated clients; the validation and held-out test splits are not partitioned. The federation uses K=4 clients under a Non-IID partition generated with a Dirichlet distribution ($\alpha = 0.5$, partition seed = 42). The Dirichlet distribution is a standard mechanism for constructing controllable Non-IID splits in federated learning research, since its concentration parameter directly governs the degree of class-distribution skew across clients without requiring additional heuristic allocation rules \cite{kairouz2021}. Table~\ref{tab:clients} reports the resulting client-level image distribution. The clients are simulated sample-level data shards and do not represent four physical plantations, estates, organizations, or devices; training is simulated sequentially on a single GPU. Images originating from one source group inside the training subset may be distributed across different clients; this does not violate the leakage-free train/validation/test split, since all client partitions are drawn exclusively from the training subset.
 
 \begin{table}[htbp]
@@ -158,10 +184,10 @@ Only the training subset (8,937 images) is partitioned among federated clients; 
 \end{table}
 
 \subsection{Model Architecture}
-The base detector is YOLO11n \cite{jocher2024}, initialized from weights pretrained on the COCO dataset \cite{lin2014coco}, with an input resolution of $960\times960$. The adjusted model contains 2,591,010 parameters. All Batch Normalization layers were converted to Group Normalization \cite{wu2018groupnorm}, since cross-sample batch statistics are known to become unreliable under small, Non-IID per-client batches in federated settings \cite{li2021fedbn}; a final architecture audit confirmed 0 remaining BatchNorm modules and 81 GroupNorm modules across the network. This substitution is applied consistently across B1 and B2 so that normalization type is not a confounding factor in the centralized-versus-federated comparison reported in Section~\ref{sec:results}, and it additionally establishes architectural compatibility with the per-sample gradient computation required for a planned Differentially Private SGD (DP-SGD) extension of this pipeline (Section~\ref{sec:planned-extension}). A fixed convolution inside the Distribution Focal Loss (DFL) module is set with \texttt{requires\_grad=False} and is excluded from optimization.
+The base detector is YOLO11n \cite{jocher2024}, initialized from weights pretrained on the COCO dataset \cite{lin2014coco}, with an input resolution of $960\times960$. The adjusted model contains 2,591,010 parameters. All Batch Normalization layers were converted to Group Normalization \cite{wu2018groupnorm}, since cross-sample batch statistics are known to become unreliable under small, Non-IID per-client batches in federated settings \cite{li2021fedbn}; a final architecture audit confirmed 0 remaining BatchNorm modules and 81 GroupNorm modules across the network. This substitution is applied consistently across B1 and B2 so that normalization type is not a confounding factor in the centralized-versus-federated comparison reported in the \emph{Results} section below, and it additionally establishes architectural compatibility with the per-sample gradient computation required for a planned Differentially Private SGD (DP-SGD) extension of this pipeline (see the \emph{Planned Extension: Differential Privacy} subsection below). A fixed convolution inside the Distribution Focal Loss (DFL) module is set with \texttt{requires\_grad=False} and is excluded from optimization.
 
 \subsection{Implementation Environment}
-All training and evaluation was performed on a single workstation equipped with an NVIDIA GeForce RTX 4080 GPU (16 GB VRAM), a multi-core CPU, and 32 GB of system RAM. The implementation used Python 3.10, PyTorch 2.5.1 with CUDA 12.1, and Ultralytics 8.4.51 for the YOLO11 model definition and training loop. Federated simulation (B2) executed clients sequentially on this single GPU within each communication round, rather than concurrently across separate physical machines; this is consistent with the simulated, single-host framing of the federation described in Section~\ref{sec:partition}.
+All training and evaluation was performed on a single workstation equipped with an NVIDIA GeForce RTX 4080 GPU (16 GB VRAM), a multi-core CPU, and 32 GB of system RAM. The implementation used Python 3.10, PyTorch 2.5.1 with CUDA 12.1, and Ultralytics 8.4.51 for the YOLO11 model definition and training loop. Federated simulation (B2) executed clients sequentially on this single GPU within each communication round, rather than concurrently across separate physical machines; this is consistent with the simulated, single-host framing of the federation described in the \emph{Federated Partition} subsection above.
 
 \subsection{B1: Centralized Reference Baseline}
 B1 is a centralized reference baseline (not a mathematical upper bound), trained for a maximum of 150 epochs with an early-stopping patience of 30 epochs, batch size 16, and input size $960\times960$. B1 is trained on the full training subset (8,937 images) in a single, non-federated run, using the same underlying training images that are subsequently partitioned across the four clients in B2; this ensures that any performance difference between B1 and B2 reflects the effect of federation and data partitioning rather than a difference in the underlying training data pool. The reported checkpoint is selected using validation performance and subsequently evaluated once on the held-out test split.
@@ -179,16 +205,13 @@ Detection performance is reported using standard object-detection metrics: mAP50
 Partition seed 42 is used for the federated partitioning underlying B2. B2 is repeated using three training seeds (42, 123, 2026) that vary only the stochastic training realization; the partition seed remains fixed across all three runs. \todo{Insert code/data availability statement once finalized.}
 
 \subsection{Planned Extension: Differential Privacy}
-\label{sec:planned-extension}
-This study is the initial, non-private stage of a broader research program that extends the B1/B2 baselines reported here with sample-level DP-SGD \cite{abadi2016}, applied both to the full trainable parameter set (Full DP-SGD) and to a backbone-frozen configuration (Partial DP-SGD), with per-client privacy accounting via a persistent PRV accountant \cite{gopi2021} implemented in Opacus \cite{yousefpour2021} at $\delta=10^{-5}$. This design is informed by evidence that careful configuration of which parameters are optimized under DP-SGD, rather than the noise mechanism alone, can substantially affect achievable utility \cite{de2022}, and it is complementary to client-level DP formulations that instead bound the influence of an entire client's local update \cite{mcmahan2017dprnn,geyer2017}; the present study adopts the sample-level formulation throughout. The Group Normalization substitution described in Section~\ref{sec:results} (Model Architecture) is a structural prerequisite for this extension, since per-sample gradient computation under DP-SGD is incompatible with cross-sample Batch Normalization statistics. Results for the DP-SGD configurations are outside the scope of the present manuscript and will be reported separately once the core noise-multiplier sweep and multi-seed confirmation are complete.
+This study is the initial, non-private stage of a broader research program that extends the B1/B2 baselines reported here with sample-level DP-SGD \cite{abadi2016}, applied both to the full trainable parameter set (Full DP-SGD) and to a backbone-frozen configuration (Partial DP-SGD), with per-client privacy accounting via a persistent PRV accountant \cite{gopi2021} implemented in Opacus \cite{yousefpour2021} at $\delta=10^{-5}$. This design is informed by evidence that careful configuration of which parameters are optimized under DP-SGD, rather than the noise mechanism alone, can substantially affect achievable utility \cite{de2022}, and it is complementary to client-level DP formulations that instead bound the influence of an entire client's local update \cite{mcmahan2017dprnn,geyer2017}; the present study adopts the sample-level formulation throughout. The Group Normalization substitution described in the \emph{Model Architecture} subsection above is a structural prerequisite for this extension, since per-sample gradient computation under DP-SGD is incompatible with cross-sample Batch Normalization statistics. Results for the DP-SGD configurations are outside the scope of the present manuscript and will be reported separately once the core noise-multiplier sweep and multi-seed confirmation are complete.
 
 \section{Results}
-\label{sec:results}
 
 This section reports results for the centralized reference baseline (B1) and the Non-IID federated learning baseline (B2). Results for the planned Differentially Private extension (Full and Partial DP-SGD) are outside the scope of this manuscript and will be reported separately.
 
 \subsection{B1: Centralized Reference Baseline Results}
-\label{sec:b1-results}
 Table~\ref{tab:b1} reports the finalized held-out test results for B1.
 
 \begin{table}[htbp]
@@ -211,7 +234,7 @@ Table~\ref{tab:b1} reports the finalized held-out test results for B1.
   \end{tabular}
 \end{table}
 
-Overall Precision = 0.8745; Overall Recall = 0.8653. Ripe is currently the weakest-performing class in B1 by both AP50 and AP50-95. \todo{Investigate and report the cause once confusion-matrix / dataset analysis is available; no cause is asserted here.} Consistent with the class structure described in Section~\ref{sec:results} (Dataset), the two structurally distinct classes (Abnormal, Empty Bunch) and the least visually ambiguous ripeness stage (Unripe) achieve the highest AP50 values (all $\ge 0.9817$), while Ripe, a mid-sequence stage bordered by both Underripe and Overripe, achieves the lowest AP50 (0.5571). Underripe (0.8275), also a mid-sequence stage, shows an intermediate AP50 value broadly consistent with this pattern, though Overripe (0.9406) does not fit as closely; resolving this discrepancy is left to the confusion-matrix analysis noted above. Figure~\ref{fig:b1-ap50} presents the per-class AP50 values from Table~\ref{tab:b1} for visual comparison across the six ripeness-related classes, and Figure~\ref{fig:b1-qual} provides qualitative detection examples, including at least one from the weaker-performing Ripe class.
+Overall Precision = 0.8745; Overall Recall = 0.8653. Ripe is currently the weakest-performing class in B1 by both AP50 and AP50-95. \todo{Investigate and report the cause once confusion-matrix / dataset analysis is available; no cause is asserted here.} Consistent with the class structure described in the \emph{Dataset} subsection above, the two structurally distinct classes (Abnormal, Empty Bunch) and the least visually ambiguous ripeness stage (Unripe) achieve the highest AP50 values (all $\ge 0.9817$), while Ripe, a mid-sequence stage bordered by both Underripe and Overripe, achieves the lowest AP50 (0.5571). Underripe (0.8275), also a mid-sequence stage, shows an intermediate AP50 value broadly consistent with this pattern, though Overripe (0.9406) does not fit as closely; resolving this discrepancy is left to the confusion-matrix analysis noted above. Figure~\ref{fig:b1-ap50} presents the per-class AP50 values from Table~\ref{tab:b1} for visual comparison across the six ripeness-related classes, and Figure~\ref{fig:b1-qual} provides qualitative detection examples, including at least one from the weaker-performing Ripe class.
 
 \begin{figure}[htbp]
   \centering
@@ -231,7 +254,7 @@ Overall Precision = 0.8745; Overall Recall = 0.8653. Ripe is currently the weake
 \end{figure}
 
 \subsection{B2: Federated Learning without DP --- Three-Seed Validation Results}
-Table~\ref{tab:b2} reports B2 validation results across the three training seeds. These are validation-set results; a direct B1-vs-B2 performance gap is not computed here, since B1 is reported on the held-out test split while B2 is reported on validation. An indicative comparison against B1 is given in Section~\ref{sec:comparison}, and a fully matched held-out-test comparison is deferred to future reporting.
+Table~\ref{tab:b2} reports B2 validation results across the three training seeds. These are validation-set results; a direct B1-vs-B2 performance gap is not computed here, since B1 is reported on the held-out test split while B2 is reported on validation. An indicative comparison against B1 is given in the \emph{Indicative Centralized--Federated Comparison} subsection below, and a fully matched held-out-test comparison is deferred to future reporting.
 
 \begin{table}[htbp]
   \centering
@@ -254,7 +277,6 @@ Table~\ref{tab:b2} reports B2 validation results across the three training seeds
 The best-validation checkpoint round varied notably across seeds: round 9 for seed 42, round 11 for seed 123, and round 40 (the final round) for seed 2026. This indicates that convergence speed under this Non-IID partition is sensitive to the stochastic training trajectory, even though final validation performance remains comparable across all three seeds (mAP50 range: 0.8594--0.8880).
 
 \subsection{Indicative Centralized--Federated Comparison}
-\label{sec:comparison}
 Figure~\ref{fig:b2-convergence} illustrates the per-round validation mAP50 trajectory for the three seeds, together with B1's held-out test mAP50 as a reference line. Although B1 and B2 are evaluated on different splits (held-out test versus validation) and are therefore not directly comparable in a matched sense, the gap between B1's held-out test mAP50 (0.8820) and B2's three-seed mean validation mAP50 (0.8775, SD = 0.0157) is small (0.0045), which is suggestive of comparable operating performance between the centralized and Non-IID federated configurations under this partition. A matched held-out test comparison for B2, using the same evaluation split as B1, is deferred to a subsequent report once the corresponding checkpoints are locked and evaluated.
 
 \begin{figure}[htbp]
@@ -269,10 +291,10 @@ Figure~\ref{fig:b2-convergence} illustrates the per-round validation mAP50 traje
 The B1 and B2 results reported here establish, respectively, a centralized reference point and a Non-IID federated (non-private) reference point for six-class oil palm FFB ripeness detection using YOLO11n with Group Normalization. B1's held-out test results indicate strong overall detection performance (mAP50 = 0.882037, mAP50-95 = 0.730947), with Ripe currently the weakest-performing class by a wide margin (AP50 = 0.5571 versus 0.8275 or higher for all other classes); a definitive cause cannot be asserted without confusion-matrix or dataset-level analysis, but plausible contributing factors include gradual visual transitions into and out of the Ripe stage and possible visual overlap with the adjacent Underripe and Overripe classes, which future work should investigate directly. B2's three-seed validation results (mean mAP50 = 0.8775, SD = 0.0157) indicate that FedAvg converges to a stable operating point across independent stochastic training realizations under this Non-IID partition (K=4, Dirichlet $\alpha=0.5$), despite Client 1 holding only 8.67\% of the training data against Client 2's 59.36\% share. This stability is consistent with the expectation that Group Normalization reduces the sensitivity of federated training to small, heterogeneous per-client batch statistics \cite{wu2018groupnorm,li2021fedbn}.
 
 \subsection*{Centralized-versus-Federated Utility Gap}
-The indicative comparison in Section~\ref{sec:comparison} suggests a small utility gap between centralized and Non-IID federated training under this dataset and partition, though the comparison is not strictly matched because B1 and B2 are currently reported on different splits (held-out test versus validation). One plausible contributor to this small gap is that FedAvg weights each client's local update by its number of local samples \cite{mcmahan2017fedavg}; since Client 2 alone contributes 59.36\% of the training data, its locally well-supported gradient signal may dominate the aggregated update, partially offsetting the heterogeneity introduced by the three smaller clients. A stricter, held-out-test-based comparison is deferred to future reporting, once B2 checkpoints are locked and evaluated under the same held-out protocol applied to B1.
+The indicative comparison in the \emph{Indicative Centralized--Federated Comparison} subsection above suggests a small utility gap between centralized and Non-IID federated training under this dataset and partition, though the comparison is not strictly matched because B1 and B2 are currently reported on different splits (held-out test versus validation). One plausible contributor to this small gap is that FedAvg weights each client's local update by its number of local samples \cite{mcmahan2017fedavg}; since Client 2 alone contributes 59.36\% of the training data, its locally well-supported gradient signal may dominate the aggregated update, partially offsetting the heterogeneity introduced by the three smaller clients. A stricter, held-out-test-based comparison is deferred to future reporting, once B2 checkpoints are locked and evaluated under the same held-out protocol applied to B1.
 
 \subsection*{Implications for the Planned Differential Privacy Extension}
-These B1/B2 baselines quantify a Non-IID federated utility reference point prior to the introduction of formal privacy noise. Because DP-SGD injects per-sample gradient noise on top of the federated optimization process, any utility degradation observed in the forthcoming DP-SGD extension (Full and Partial configurations, see Section~\ref{sec:planned-extension}) should be interpreted relative to B2's non-private federated performance, and not solely relative to B1's centralized performance, since federation itself already introduces a source of utility variation independent of privacy noise, here observed to be small. In particular, because client sample sizes vary substantially (Table~\ref{tab:clients}), the per-client sampling rate used by DP-SGD's privacy accountant will also vary by client; the smaller clients (Client 0 and Client 1) are expected to accumulate privacy expenditure more quickly than the larger clients under a matched noise multiplier, which motivates reporting epsilon per client rather than as a single pooled value in the forthcoming DP results.
+These B1/B2 baselines quantify a Non-IID federated utility reference point prior to the introduction of formal privacy noise. Because DP-SGD injects per-sample gradient noise on top of the federated optimization process, any utility degradation observed in the forthcoming DP-SGD extension (Full and Partial configurations, see the \emph{Planned Extension: Differential Privacy} subsection in Materials and Methods) should be interpreted relative to B2's non-private federated performance, and not solely relative to B1's centralized performance, since federation itself already introduces a source of utility variation independent of privacy noise, here observed to be small. In particular, because client sample sizes vary substantially (Table~\ref{tab:clients}), the per-client sampling rate used by DP-SGD's privacy accountant will also vary by client; the smaller clients (Client 0 and Client 1) are expected to accumulate privacy expenditure more quickly than the larger clients under a matched noise multiplier, which motivates reporting epsilon per client rather than as a single pooled value in the forthcoming DP results.
 
 \subsection*{Limitations}
 Several limitations should be considered when interpreting these results. First, federated training was simulated sequentially on a single GPU; the study therefore evaluates statistical (Non-IID) client heterogeneity but not distributed-systems factors such as network latency, client dropout, or communication failure. Second, the dataset originates from a single source, so generalization to other plantations, cultivars, cameras, or lighting conditions has not been directly evaluated. Third, B2 was replicated using three training seeds, which reduces but does not eliminate dependence on stochastic training variance; a larger number of replications would provide a tighter variance estimate. Fourth, the four clients are simulated data shards drawn from a single training subset and do not represent four physically distinct plantations, estates, or organizations; conclusions about federated learning here are limited to the simulated statistical heterogeneity captured by the Dirichlet partition. Fifth, B2 is currently reported only on the validation split; the held-out test evaluation of B2, and consequently a fully matched B1-versus-B2 comparison, is deferred to future reporting once the corresponding checkpoints are locked.
