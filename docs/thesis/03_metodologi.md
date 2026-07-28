@@ -1,466 +1,315 @@
 <!--
 CATATAN PENULISAN (hapus komentar ini sebelum submit):
-Bab ini merombak total Bab 3 dan ditulis SUPAYA PERSIS MENGIKUTI kode
-implementasi pada repo ini (src/fedxpalm/, scripts/, configs/*.yaml).
-Setiap nilai hiperparameter dikutip langsung dari configs/*.yaml --
-jika kamu mengubah file konfigurasi tersebut sebelum menjalankan
-eksperimen, perbarui juga angka-angka di bab ini agar tetap konsisten.
-Referensi path file (mis. `src/fedxpalm/...`) sengaja dipertahankan
-sebagai jejak audit ke kode sesungguhnya.
+Bab ini dipersempit selaras dengan Bab 1-2: hanya B1 (tersentral) dan B2
+(federasi FedAvg tanpa DP, K=4) yang dibahas sebagai metodologi inti.
+Subbab DP-SGD (Opacus, akuntansi privasi ε), DP-FedAvg tingkat-klien,
+evaluasi Grad-CAM++/AD/FRR, dan deployment Docker DIHAPUS dari bab ini
+dan dipindah menjadi catatan cakupan yang ditunda (Subbab 3.9). Seluruh
+angka pada bab ini (jumlah citra, distribusi klien, hiperparameter)
+dikutip langsung dari eksperimen nyata yang sudah dijalankan penulis di
+GPU (lihat docs/thesis/manuscript/JUTIF_Manuscript_FedXPalm_B1B2.docx),
+BUKAN dari config template -- cross-check terhadap configs/*.yaml sebelum
+submit bila konfigurasi berubah.
 -->
 
 # CHAPTER 3 -- METODOLOGI PENELITIAN
 
 ## 3.1 Rancangan Penelitian
 
-Penelitian ini dirancang sebagai eksperimen kuantitatif bertingkat, dimulai
-dari pembagian dataset bebas-kebocoran dan partisi Non-IID Dirichlet,
-dilanjutkan empat blok eksperimen (B1, B2, E1, E2), dan dievaluasi pada tiga
-dimensi: utilitas deteksi, privasi formal, dan keterjelasan (*explainability*).
-Seluruh kode implementasi diorganisasikan sebagai paket Python `fedxpalm`
-(`src/fedxpalm/`), dikendalikan oleh berkas konfigurasi YAML
-(`configs/dataset.yaml`, `configs/fl_config.yaml`, `configs/dp_config.yaml`),
-dan dijalankan melalui sepuluh skrip bernomor (`scripts/01_*.py` hingga
-`scripts/10_*.py`) yang mengikuti urutan tahapan pada Subbab 1.5.2.
+Penelitian tahap ini dirancang sebagai eksperimen kuantitatif dua-blok,
+dimulai dari pembagian dataset bebas-kebocoran dan partisi Non-IID
+Dirichlet, dilanjutkan dua blok eksperimen -- **B1** (*baseline* tersentral)
+dan **B2** (*baseline* federasi FedAvg tanpa DP) -- dan dievaluasi pada satu
+dimensi: utilitas deteksi. Seluruh kode implementasi diorganisasikan sebagai
+paket Python `fedxpalm` (`src/fedxpalm/`), dikendalikan oleh berkas
+konfigurasi YAML (`configs/dataset.yaml`, `configs/fl_config.yaml`), dan
+dijalankan melalui skrip bernomor (`scripts/01_*.py` hingga
+`scripts/06_*.py`) yang mengikuti urutan tahapan pada Subbab 1.5.2. Blok
+eksperimen DP-SGD (E1/E2) yang juga tersedia pada repositori kode
+(`scripts/07_*.py`, `scripts/08_*.py`) tidak dijalankan/dilaporkan pada
+tahap ini -- lihat Subbab 3.9.
 
 ## 3.2 Lingkungan dan Perangkat Implementasi
 
 ### 3.2.1 Spesifikasi Perangkat Keras
 
-Seluruh pelatihan (B1, B2, E1, E2) dijalankan pada satu GPU **NVIDIA
-GeForce RTX 4080 (16 GB VRAM)** [VERIFIKASI: lengkapi spesifikasi CPU/RAM
-*workstation*/*server* pendukung bila relevan]; simulasi federasi K klien
-direalisasikan sebagai *loop* FedAvg sekuensial pada GPU tunggal tersebut
-(Subbab 3.6.2), bukan sebagai proses terdistribusi lintas-*host* fisik.
-*Deployment* akhir (Subbab 3.12) dijalankan pada sebuah *Virtual Private
-Server* (VPS) CPU-*only* untuk menguji portabilitas praktis tanpa
-ketergantungan GPU pada tahap produksi.
+Seluruh pelatihan (B1, B2) dijalankan pada satu *workstation* dengan
+akselerator GPU **NVIDIA GeForce RTX 4080 (16 GB VRAM)**, CPU multi-*core*,
+dan RAM sistem 32 GB. Simulasi federasi K = 4 klien direalisasikan sebagai
+*loop* FedAvg sekuensial pada GPU tunggal tersebut (Subbab 3.6.2), bukan
+sebagai proses terdistribusi lintas-*host* fisik.
 
 ### 3.2.2 Konfigurasi Perangkat Lunak
 
-Implementasi memakai Python 3.11 dengan versi pustaka yang dikunci
+Implementasi memakai Python 3.10 dengan versi pustaka yang dikunci
 (*pinned*) pada `requirements.txt` demi reprodusibilitas:
 
 | Pustaka | Versi | Peran |
 |---|---|---|
-| PyTorch | 2.5.1 | *Backend deep learning* |
-| torchvision | 0.20.1 | Utilitas visi pendukung PyTorch |
+| PyTorch | 2.5.1 (CUDA 12.1) | *Backend deep learning* |
 | Ultralytics | 8.4.51 | Arsitektur dan *training loop* YOLOv11 |
-| Opacus | 1.5.4 | DP-SGD per-sampel (`PrivacyEngine`) |
 | Roboflow | 1.3.11 | Pengunduhan dataset |
 
 Pelatihan federasi dijalankan sebagai simulasi *sequential* FedAvg pada satu
-GPU (`src/fedxpalm/federated/server.py`). Model akhir di-*deploy* sebagai
-layanan inferensi Flask + Ultralytics (CPU) di dalam *image* Docker
-(`deployment/`), dijalankan pada satu VPS.
+GPU (`src/fedxpalm/federated/server.py`). Dependensi Opacus tetap terkunci
+pada `requirements.txt` sebagai persiapan tahap DP-SGD lanjutan (Subbab
+3.9), namun tidak dipakai pada eksekusi B1/B2 di bab ini.
 
 ## 3.3 Dataset dan Strategi Pembagian Data
 
 ### 3.3.1 Karakteristik Dataset
 
-Dataset diperoleh dari platform Roboflow, proyek
-*palm-fruit-ripeness-detection-f6sac-ccb2z* versi 2 pada *workspace*
-*dydy-worker*, diunduh dalam format anotasi `yolov11` melalui
-`scripts/01_download_dataset.py` (membungkus
-`src/fedxpalm/data/download.py`). Dataset mencakup enam kelas kematangan TBS
-sebagaimana dijabarkan pada Subbab 2.1.2, dengan total **10.814 citra**
-sebelum pembagian ulang bebas-kebocoran (lihat Subbab 3.3.2). [VERIFIKASI
-setelah `scripts/02_prepare_splits.py` dijalankan ulang dengan split
-bunch-level: isi Tabel 3.1 (distribusi instans per kelas per *split*) dengan
-angka aktual dari keluaran skrip tersebut -- angka pada draf sebelumnya
-dihitung di atas *split* bawaan Roboflow yang sudah tidak dipakai lagi,
-lihat catatan di Subbab 3.3.2.]
+Dataset diperoleh dari platform Roboflow (proyek *palm-fruit-ripeness-
+detection-f6sac-ccb2z* versi 2, *workspace* *dydy-worker*), diunduh dalam
+format anotasi `yolov11` melalui `scripts/01_download_dataset.py`. Dataset
+mencakup enam kelas kematangan TBS sebagaimana dijabarkan pada Subbab
+2.1.2, dengan total **10.814 citra** sebelum pembagian ulang
+bebas-kebocoran.
 
-### 3.3.2 Strategi Pemisahan Berbasis Identitas Tandan (`bunch_id`)
+### 3.3.2 Pembagian Bebas-Kebocoran Berbasis Kelompok Sumber
 
-*Split* bawaan Roboflow (train/valid/test) bersifat per-*frame* dan acak,
-sehingga berisiko menempatkan beberapa foto dari tandan fisik yang sama pada
-*split* train dan test sekaligus -- model kemudian sebagian "menghafal"
-tandan yang justru dipakai mengujinya, mengembang-gelembungkan metrik
-evaluasi secara optimistis-palsu. Ini bukan kekhawatiran teoretis semata:
-sebuah percobaan langsung menggunakan *split* bawaan Roboflow apa adanya
-pada dataset ini mengembalikan mAP@0,5=0,993 dan mAP@0,5:0,95=0,906 --
-angka yang tidak realistis dicapai detektor manapun pada *held-out set*
-yang jujur untuk enam kelas kematangan yang kemiripan visualnya tinggi.
+Citra dikelompokkan berdasarkan identitas kelompok sumbernya (*source
+group*, diuraikan dari identitas `bunch_id` pada nama berkas citra --
+`src/fedxpalm/data/split.py`, `leakage_free_split`) sebelum dipisah, dan
+partisi *train*/*validation*/*held-out test* dibentuk pada **level
+kelompok sumber** (bukan level citra), untuk mencegah kebocoran terkait
+sumber antar-*split*. Pendekatan ini penting karena *split* acak per-*frame*
+berisiko menempatkan beberapa foto dari tandan fisik yang sama pada *split*
+*train* dan *test* sekaligus -- model kemudian sebagian "menghafal" tandan
+yang justru dipakai mengujinya, mengembang-gelembungkan metrik evaluasi
+secara optimistis-palsu. Hasil pembagian dirangkum pada Tabel 3.1.
 
-`src/fedxpalm/data/split.py` (`leakage_free_split`) menanggulangi ini dengan
-mengumpulkan ulang seluruh citra lintas *split* bawaan Roboflow,
-mengelompokkannya berdasarkan `bunch_id` yang diuraikan dari nama berkas
-citra -- pola *regex* menghapus akhiran `.rf.<hash>` milik Roboflow terlebih
-dahulu, lalu mencocokkan token `frame[^-]+` di awal nama berkas sebagai
-identitas tandan (mis. `frame1-10-_png_jpg.rf.<hash>.jpg` -> `frame1`) --
-lalu membagi ulang pada **level *bunch*** (bukan level citra) mengikuti
-rasio 80% *train* : 10% *validation* : 10% *test* (*seed* = 42), distratifikasi
-menurut kelas dominan tiap *bunch* supaya kelas minoritas (Empty Bunch)
-tidak terkonsentrasi tidak sengaja pada satu *split*.
+Tabel 3.1. Pembagian dataset bebas-kebocoran
 
-### 3.3.3 Audit Kebocoran Data
+| Split | Citra | Kelompok sumber |
+|---|---|---|
+| Training | 8.937 | 72 |
+| Validation | 826 | 8 |
+| Held-out test | 1.051 | 11 |
 
-Setelah pembagian, `leakage_free_split` menjalankan audit otomatis:
-memverifikasi bahwa tidak ada satupun `bunch_id` yang muncul pada lebih dari
-satu *split* (`assert not leaked`). Audit ini dijalankan sebagai bagian
-integral dari `scripts/02_prepare_splits.py`, bukan langkah manual terpisah,
-sehingga kebocoran data akan menghentikan pipeline dengan galat eksplisit
-alih-alih lolos secara diam-diam.
+Audit kebocoran dijalankan untuk mengonfirmasi: tidak ada kelompok sumber
+yang tumpang tindih antara *split* *training*, *validation*, dan *test*;
+tidak ada duplikat citra identik lintas-*split*; dan tidak ditemukan
+duplikat lintas-*split* yang terkonfirmasi menurut prosedur audit yang
+diimplementasikan. Audit ini dijalankan sebagai bagian integral dari
+`scripts/02_prepare_splits.py`, bukan langkah manual terpisah.
 
-Selain audit kebocoran, `leakage_free_split` juga menjalankan audit distribusi
-kelas per *split* (`audit_class_distribution`) untuk memastikan tidak ada
-kelas yang kebetulan berjumlah nol instans pada *split* manapun -- relevan
-karena "Empty Bunch" adalah kelas minoritas di seluruh dataset (~20% dari
-kelas terbesar).
-
-## 3.4 Partisi Data Non-IID Berbasis Distribusi Dirichlet
+## 3.4 Partisi Data Non-IID Berbasis Distribusi Dirichlet (K = 4)
 
 ### 3.4.1 Formulasi Partisi Dirichlet
 
 `src/fedxpalm/data/partition.py` (`dirichlet_partition`) mengimplementasikan
-skema *latent Dirichlet allocation* (Subbab 2.3.3) atas *split* train.
-Karena satu citra deteksi objek dapat memuat kotak dari beberapa kelas
-sekaligus, setiap citra terlebih dahulu diberi **kelas primer** = kelas
-yang paling sering muncul di antara kotak anotasi YOLO-nya
-(`_primary_class`). Untuk tiap kelas $c \in \{0,\ldots,5\}$, proporsi
-sampel yang jatuh ke $K$ klien ditarik dari $\mathrm{Dir}(\alpha,\ldots,
-\alpha)$ dengan $\alpha = 0{,}5$ (*seed* = 42), lalu citra kelas tersebut
-dibagi mengikuti proporsi itu. Citra tanpa anotasi (jika ada) dibagi
-*round-robin* antar klien agar tidak ada klien yang sama sekali tidak
-kebagian sampel. Hasil partisi disimpan sebagai `data/splits/
-federated_partitions/k{K}.json` (peta `client_id -> daftar nama berkas`),
-lalu dimaterialisasikan menjadi folder per-klien berisi *symlink* citra +
-label dan `data.yaml` masing-masing oleh
-`src/fedxpalm/federated/client_data.py` (`materialize_clients`) --
-setiap klien memakai *split* *validation*/*test* global yang sama (bukan
-lokal), karena evaluasi federasi dilakukan di sisi *server* atas data yang
-tidak pernah "dimiliki" satu klien manapun.
+skema *latent Dirichlet allocation* (Subbab 2.3.3) atas *split train*
+(8.937 citra) saja; *split validation* dan *held-out test* tidak
+dipartisi. Karena satu citra deteksi objek dapat memuat kotak dari beberapa
+kelas sekaligus, setiap citra terlebih dahulu diberi **kelas primer** =
+kelas yang paling sering muncul di antara kotak anotasi YOLO-nya. Federasi
+memakai **K = 4 klien** di bawah partisi Dirichlet ($\alpha = 0{,}5$,
+*partition seed* = 42). Klien-klien ini adalah pecahan data (*data shard*)
+tersimulasi pada level sampel, bukan representasi empat perkebunan,
+afdeling, organisasi, atau perangkat fisik; pelatihan disimulasikan secara
+sekuensial pada satu GPU. Citra yang berasal dari satu kelompok sumber di
+dalam *split train* dapat terdistribusi ke klien berbeda; hal ini tidak
+melanggar pembagian bebas-kebocoran *train*/*validation*/*test* pada Subbab
+3.3, karena seluruh partisi klien ditarik semata-mata dari *split train*.
 
-### 3.4.2 Konfigurasi Jumlah Klien (K)
+### 3.4.2 Distribusi Citra Antar Klien
 
-Jumlah klien di-*sweep* pada $K \in \{2, 4, 8, 12, 16\}$
-(`configs/fl_config.yaml: clients.k_values`), merepresentasikan skenario
-jumlah kebun/afdeling yang berpartisipasi dalam federasi -- dari kolaborasi
-kecil (2 kebun) hingga jaringan yang lebih luas (16 kebun). Untuk tiap K,
-partisi dan materialisasi klien dijalankan sekali oleh
-`scripts/03_partition_clients.py` dan dipakai ulang di seluruh blok
-eksperimen (B2, E1, E2) pada K tersebut, sehingga perbandingan antar blok
-pada K yang sama selalu berjalan di atas pembagian data klien yang identik.
+Tabel 3.2 melaporkan distribusi citra hasil partisi Dirichlet aktual pada
+K = 4, $\alpha = 0{,}5$, *seed* = 42. Ketimpangan yang dihasilkan
+substansial: Klien 1 hanya memegang 8,67% dari *split train*, sedangkan
+Klien 2 memegang 59,36%.
 
-## 3.5 Arsitektur Detektor YOLOv11
+Tabel 3.2. Distribusi citra klien federasi (K = 4, Dirichlet α = 0,5, seed = 42)
+
+| Klien | Citra | Porsi (%) |
+|---|---|---|
+| Klien 0 | 860 | 9,62 |
+| Klien 1 | 775 | 8,67 |
+| Klien 2 | 5.305 | 59,36 |
+| Klien 3 | 1.997 | 22,35 |
+| **Total** | **8.937** | **100,00** |
+
+*Sweep* atas jumlah klien K lain (mis. {2, 8, 12, 16}) tersedia pada
+infrastruktur kode (`configs/fl_config.yaml: clients.k_values`) namun tidak
+dijalankan/dilaporkan pada tahap penelitian ini -- lihat Subbab 3.9 dan
+5.3.
+
+## 3.5 Arsitektur Detektor YOLOv11n dan Konversi GroupNorm
 
 ### 3.5.1 Struktur *Backbone-Neck-Head*
 
-Detektor yang dipakai adalah **YOLOv11n** (varian *nano*, ~2,6 juta
-parameter, `yolo11n.pt` sebagai titik awal pra-latih COCO), dengan struktur
-*backbone* (tahap indeks 0-10: `Conv`, `C3k2`, `SPPF`, `C2PSA`), *neck*
-PAN-FPN (tahap 11-22), dan *head* `Detect` *anchor-free* *decoupled* (tahap
-23), sebagaimana dijabarkan pada Subbab 2.2.1. Struktur tahap ini
-diverifikasi identik pada seluruh varian ukuran YOLOv11 (n/s/m/l/x), sebuah
-sifat yang dimanfaatkan agar pemilihan lapisan target Grad-CAM++ (Subbab
-3.9.1) dan indeks tahap *backbone* yang dibekukan pada eksperimen E2
-(Subbab 3.10.4) tetap sahih bila varian model diganti di kemudian hari.
-
-Bobot pra-latih COCO ditransplantasikan ke kepala deteksi berkelas-6
+Detektor yang dipakai adalah **YOLOv11n** (varian *nano*, `yolo11n.pt`
+sebagai titik awal pra-latih COCO, resolusi masukan 960x960), dengan
+struktur *backbone* (tahap indeks 0-10: `Conv`, `C3k2`, `SPPF`, `C2PSA`),
+*neck* PAN-FPN (tahap 11-22), dan *head* `Detect` *anchor-free* *decoupled*
+(tahap 23), sebagaimana dijabarkan pada Subbab 2.2.1. Bobot pra-latih COCO
+ditransplantasikan ke kepala deteksi berkelas-6
 (`scripts/04_prepare_base_model.py`): tensor bobot yang cocok nama dan
 bentuknya antara `yolo11n.pt` (80 kelas COCO) dan arsitektur target (6
-kelas TBS sawit) disalin langsung -- meliputi seluruh *backbone* dan *neck*
-karena keduanya tidak bergantung pada jumlah kelas -- sedangkan lapisan
-klasifikasi pada *head* yang berdimensi kelas diinisialisasi ulang dari
-awal.
+kelas TBS sawit) disalin langsung, sedangkan lapisan klasifikasi pada
+*head* yang berdimensi kelas diinisialisasi ulang dari awal. Model hasil
+penyesuaian ini memuat **2.591.010 parameter**.
 
 ### 3.5.2 Fungsi Kerugian Komposit
 
 Fungsi kerugian mengikuti Persamaan (2.2): CIoU untuk regresi kotak,
 *Binary Cross-Entropy* untuk klasifikasi, dan *Distribution Focal Loss*
 untuk representasi probabilistik tepi kotak, dengan pemasangan target
-melalui *Task-Aligned Assigner* bawaan Ultralytics (Subbab 2.2.2). Bobot
-komponen kerugian ($\lambda_{box}=7{,}5$; $\lambda_{cls}=0{,}5$;
-$\lambda_{dfl}=1{,}5$) memakai nilai baku Ultralytics untuk YOLOv11, tidak
-diubah pada penelitian ini.
+melalui *Task-Aligned Assigner* bawaan Ultralytics (Subbab 2.2.2). Sebuah
+konvolusi tetap di dalam modul DFL ditetapkan `requires_grad=False` dan
+dikecualikan dari optimisasi.
 
 ### 3.5.3 Konversi *BatchNorm* ke *GroupNorm*
 
-Sebagaimana dijabarkan pada Subbab 2.6, seluruh **81 lapisan
+Sebagaimana dijabarkan pada Subbab 2.5, seluruh **81 lapisan
 `BatchNorm2d`** pada YOLOv11n dikonversi menjadi `GroupNorm` melalui
 `src/fedxpalm/models/groupnorm.py` (`convert_batchnorm_to_groupnorm`),
 dengan jumlah grup tiap lapisan dipilih sebagai pembagi terbesar dari
-jumlah kanal lapisan tersebut yang $\le 32$. Bobot dan bias afin
-`GroupNorm` diinisialisasi dari `BatchNorm` yang digantikannya (statistik
-`running_mean`/`running_var`, yang tidak dimiliki `GroupNorm`, tidak
-ditransfer). Konversi ini dijalankan **sekali** oleh
-`scripts/04_prepare_base_model.py` menghasilkan satu *checkpoint* dasar
-bersama (`models/base_groupnorm.pt`) yang menjadi titik awal identik bagi
-**seluruh** blok eksperimen B1, B2, E1, dan E2 -- bukan hanya blok berDP --
-agar perbedaan performa antar blok murni mencerminkan perbedaan mekanisme
-FL/DP yang diuji, bukan perbedaan arsitektur normalisasi.
+jumlah kanal lapisan tersebut yang $\le 32$. Audit arsitektur akhir
+mengonfirmasi **0 modul BatchNorm tersisa** dan **81 modul GroupNorm**.
+Konversi ini dijalankan **sekali** oleh `scripts/04_prepare_base_model.py`
+menghasilkan satu *checkpoint* dasar bersama yang menjadi titik awal
+identik bagi **B1 maupun B2**, agar perbedaan performa antar blok murni
+mencerminkan efek federasi, bukan perbedaan arsitektur normalisasi.
 
-Dua persoalan implementasi tak terduga ditemukan dan ditangani selama
-pengembangan kerangka ini, dicatat di sini sebagai bagian metodologi karena
-keduanya memengaruhi validitas hasil apabila tidak ditangani:
-
-1. **Aktivasi SiLU *in-place* merusak *hook* Opacus.** Blok `Conv`
-   Ultralytics menjalankan aktivasi SiLU dengan `inplace=True`, yang
-   menimpa tensor aktivasi sebelum `GradSampleModule` Opacus sempat
-   membaca nilainya pada *backward pass*, memicu galat *"Output ... is a
-   view and is being modified inplace"*. Ditangani dengan menonaktifkan
-   `inplace` pada seluruh modul aktivasi model
-   (`disable_inplace_ops`) sebagai bagian dari persiapan model DP.
-2. ***Auto-fusing* Ultralytics tidak kompatibel dengan `GroupNorm`.**
-   `model.val()`/`.predict()` Ultralytics secara otomatis menyatukan
-   (*fuse*) tiap `Conv`+`BatchNorm` menjadi satu operasi untuk mempercepat
-   inferensi, dengan asumsi keras bahwa lapisan normnya adalah
-   `BatchNorm2d` (mengakses atribut `running_var`). Ditangani dengan
-   menambal (*monkeypatch*) `BaseModel.fuse()` agar melewati lapisan
-   `GroupNorm` alih-alih menyatukannya, diterapkan otomatis pada saat
-   modul `fedxpalm` diimpor (`src/fedxpalm/models/groupnorm.py:
-   patch_fuse_for_groupnorm`).
-
-## 3.6 Prosedur Pelatihan Federasi (FedAvg)
-
-### 3.6.1 Hiperparameter Pelatihan Lokal
-
-| Hiperparameter | Nilai | Sumber |
-|---|---|---|
-| *Epoch* lokal per ronde | 2 | `fl_config.yaml: local_training.epochs_per_round` |
-| Ukuran *batch* | 16 | `local_training.batch_size` |
-| Ukuran citra | 640×640 | `model.imgsz` |
-| *Optimizer* | SGD | `local_training.optimizer` |
-| *Learning rate* awal | 0,01 | `local_training.lr0` |
-| Momentum | 0,9 | `local_training.momentum` |
-| *Weight decay* | 0,0005 | `local_training.weight_decay` |
-| Jumlah ronde federasi | 40 | `federated.rounds` |
-
-SGD momentum dipilih (bukan *optimizer* adaptif seperti AdamW) atas dua
-alasan. Pertama, mengikuti literatur DP-SGD sendiri (Subbab 2.4.3): SGD
-adalah *optimizer* yang dipakai pada karakterisasi teoretis dan empiris asli
-mekanisme *clipping*+*noise* Gaussian; estimasi momen kedua *optimizer*
-adaptif seperti AdamW ikut tercemar oleh *noise* per-langkah yang disuntikkan
-DP-SGD, sebuah interaksi yang belum sama matangnya dikaji pada literatur
-dibanding SGD polos. Kedua, dan lebih penting untuk validitas perbandingan:
-SGD dipakai **seragam di keempat blok eksperimen** (B1, B2, E1, E2) --
-bukan hanya pada blok berDP -- agar selisih utilitas $\Delta_{FL}$ (B1
-vs B2) dan $\Delta_{DP}$ (B2 vs E1/E2) murni mencerminkan efek federasi dan
-privasi yang diteliti, bukan tercampur dengan efek pergantian *optimizer*
-antarblok.
-
-### 3.6.2 Algoritma FedAvg
-
-`src/fedxpalm/federated/server.py` (`run_federated_training`) mengorkestrasi
-$T=40$ ronde: pada tiap ronde, setiap klien memanggil
-`src/fedxpalm/federated/client.py` (`train_client_round`) untuk melakukan
-*fine-tuning* lokal atas bobot global ronde tersebut, lalu
-`src/fedxpalm/federated/fedavg.py` (`fedavg`) merata-ratakan seluruh
-`state_dict` klien secara berbobot sesuai Persamaan (2.3). Bobot global
-baru disimpan sebagai *checkpoint* `global_round_{t}.pt` dan dikirim ke
-ronde berikutnya.
-
-Implementasi `train_client_round` **tidak** memakai API tingkat tinggi
-`YOLO(path).train(...)` Ultralytics secara langsung. Ditemukan bahwa API
-tersebut, ketika dimuat dari sebuah *checkpoint* `.pt`, selalu membangun
-ulang arsitektur model dari berkas `.yaml`-nya dan hanya mentransplantasi
-tensor yang cocok nama+bentuknya (`Model.train()`'s
-`self.trainer.model = self.trainer.get_model(weights=self.model,
-cfg=self.model.yaml)`) -- karena `parse_model()` Ultralytics selalu
+Satu persoalan implementasi tak terduga ditemukan dan ditangani selama
+pengembangan, dicatat di sini karena memengaruhi validitas hasil B2 apabila
+tidak ditangani: API tingkat tinggi `YOLO(path).train(...)` Ultralytics,
+ketika dimuat dari sebuah *checkpoint* `.pt`, selalu membangun ulang
+arsitektur model dari berkas `.yaml`-nya dan hanya mentransplantasi tensor
+yang cocok nama+bentuknya -- karena `parse_model()` Ultralytics selalu
 membuat `nn.BatchNorm2d` baru untuk tiap blok `Conv`, perilaku ini secara
 diam-diam **mengembalikan seluruh `GroupNorm` menjadi `BatchNorm`** setiap
 kali dipanggil, ditemukan lewat kegagalan agregasi FedAvg pada ronde kedua
 (`state_dict` klien tiba-tiba memiliki kunci `running_mean`/`running_var`
-tambahan yang tidak dimiliki bobot global sebelumnya). Sebagai gantinya,
-`train_client_round` memakai `src/fedxpalm/federated/trainer_utils.py`
+tambahan yang tidak dimiliki bobot global sebelumnya). Ditangani dengan
+`src/fedxpalm/federated/trainer_utils.py`
 (`build_trainer_from_checkpoint`): memuat model dari *checkpoint* secara
-langsung sebagai objek `nn.Module`, menetapkannya pada
-`DetectionTrainer.model` **sebelum** memanggil `trainer.train()` --
-`setup_model()` Ultralytics melewati pembangunan-ulang bila model yang
-diberikan sudah berupa `nn.Module` -- sehingga arsitektur `GroupNorm`
-dijamin bertahan di sepanjang seluruh 40 ronde federasi.
+langsung sebagai objek `nn.Module` dan menetapkannya pada
+`DetectionTrainer.model` **sebelum** memanggil `trainer.train()`, sehingga
+arsitektur `GroupNorm` dijamin bertahan di sepanjang seluruh ronde
+federasi.
 
-## 3.7 Mekanisme *Differential Privacy* Berbasis DP-SGD Per-Sampel
+## 3.6 B1: Prosedur Pelatihan Tersentral
 
-### 3.7.1 Integrasi DP-SGD melalui Opacus `PrivacyEngine`
+B1 adalah *baseline* tersentral (bukan batas atas matematis), dilatih atas
+**seluruh** *split train* (8.937 citra) dalam satu *run* non-federasi,
+memakai bobot dasar GroupNorm yang identik dengan titik awal B2 (Subbab
+3.5.3), sehingga selisih performa B1-versus-B2 mencerminkan efek federasi,
+bukan perbedaan data latih. Tabel 3.3 merangkum hiperparameternya.
 
-`src/fedxpalm/privacy/dp_sgd.py` (`train_client_round_dp`) merealisasikan
-Subbab 2.4 dan 2.7. Karena Opacus membutuhkan kendali langsung atas
-`model`, `optimizer`, dan `DataLoader` -- kendali yang tidak diekspos API
-tingkat tinggi `YOLO.train()` -- fungsi ini memakai pola serupa
-`build_trainer_from_checkpoint` untuk memperoleh `DetectionTrainer` dengan
-model, *optimizer* (SGD, hiperparameter sama seperti Subbab 3.6.1), dan
-*dataloader* lokal klien yang sudah disiapkan Ultralytics, lalu
-membungkus ketiganya dengan `opacus.PrivacyEngine.make_private(...,
-poisson_sampling=True)`. Presisi campuran (AMP) dinonaktifkan
-(`amp=False`) karena Opacus tidak secara resmi mendukungnya.
+Tabel 3.3. Hiperparameter B1
 
-### 3.7.2 Operasi DP-SGD Per-Langkah
+| Hiperparameter | Nilai |
+|---|---|
+| *Epoch* maksimum | 150 |
+| *Early-stopping patience* | 30 |
+| Ukuran *batch* | 16 |
+| Ukuran citra | 960×960 |
+| *Optimizer* | SGD |
 
-Berbeda dari `train_client_round` (B2) yang memanggil `trainer.train()`
-penuh (dengan penjadwalan *learning rate*, EMA, dsb. otomatis dari
-Ultralytics), jalur DP menjalankan ***loop* langkah manual**: untuk tiap
-*batch* dari `DPDataLoader` (ukuran *batch* bervariasi karena *Poisson
-sampling*, Subbab 2.7), citra dipraproses lewat `trainer.preprocess_batch`,
-diteruskan lewat model taat-DP untuk memperoleh kerugian
-(`dp_model(batch)`, memakai jalur `BaseModel.loss()` Ultralytics yang
-mengembalikan kerugian langsung tanpa perlu *forward* eksplisit terpisah),
-lalu `loss.sum().backward()` dan `dp_optimizer.step()` -- langkah inilah
-yang, di balik layar, menjalankan *clipping* per-sampel (2.5) dan mekanisme
-Gaussian (2.6) secara otomatis pada `DPOptimizer`. *Batch* kosong (dapat
-terjadi karena *Poisson sampling*) dilewati.
+*Checkpoint* yang dilaporkan dipilih berdasarkan performa *validation*, lalu
+dievaluasi sekali pada *split held-out test* (Subbab 3.8).
 
-### 3.7.3 Akuntansi Anggaran Privasi (*PRV Accountant*)
+## 3.7 B2: Prosedur Pelatihan Federasi (FedAvg) Tanpa DP
 
-Setelah seluruh langkah lokal satu ronde selesai, $\varepsilon$ kumulatif
-klien tersebut dihitung memakai *accountant* PRV Opacus
-(`privacy_engine.get_epsilon(delta=10^{-5})`), sesuai Subbab 2.4.4.
-$\varepsilon$ dilaporkan per klien per ronde dalam `history.json` tiap
-*run* federasi; nilai $\varepsilon$ akhir yang dilaporkan pada Bab 4 untuk
-tiap konfigurasi $(K,\sigma)$ adalah **nilai maksimum lintas klien** pada
-ronde terakhir, karena jaminan privasi keseluruhan sistem dibatasi oleh
-klien dengan kebocoran privasi terbesar. `src/fedxpalm/privacy/
-accounting.py` menyediakan utilitas mandiri untuk memproyeksikan tabel
-$\sigma \to \varepsilon$ tanpa perlu menjalankan pelatihan penuh terlebih
-dahulu, berguna untuk perencanaan sebelum menjalankan *sweep* GPU yang
-mahal.
+### 3.7.1 Hiperparameter Pelatihan Lokal dan Federasi
 
-## 3.8 Mekanisme Pembanding: DP-FedAvg Tingkat-Klien
+B2 menerapkan FedAvg [12], [13] tanpa *Differential Privacy* di bawah
+konfigurasi K = 4, Dirichlet $\alpha = 0{,}5$, *partition seed* = 42 yang
+sama dengan Subbab 3.4. Tabel 3.4 merangkum hiperparameternya.
 
-Sebagai pembanding pendahuluan (bukan eksperimen utama, lihat Subbab
-2.4.5), *noise* Gaussian disuntikkan pada level pembaruan bobot
-(*delta*) tiap klien setelah pelatihan lokal (tanpa DP) selesai, sebelum
-dikirim ke *server* -- berbeda dari DP-SGD per-sampel yang menyuntikkan
-*noise* pada tiap langkah gradien selama optimisasi. Hasil eksperimen
-pendahuluan ini (Bab 4) memotivasi pemilihan DP-SGD per-sampel sebagai
-mekanisme privasi utama penelitian, dengan dua *confound* (perbedaan
-BatchNorm/GroupNorm dan cara pemetaan $\varepsilon$ antara kedua skema)
-diakui secara eksplisit sebagai keterbatasan perbandingan tersebut.
+Tabel 3.4. Hiperparameter B2
 
-## 3.9 Evaluasi Kualitas Penjelasan Berbasis Grad-CAM++
+| Hiperparameter | Nilai |
+|---|---|
+| Ronde komunikasi | 40 |
+| *Epoch* lokal per ronde | 2 |
+| *Optimizer* | SGD |
+| *Learning rate* awal | 0,01 |
+| Momentum | 0,9 |
+| *Weight decay* | 0,0005 |
+| Ukuran *batch* | 8 |
+| Ukuran citra | 960×960 |
+| *Warmup* | Tidak ada |
 
-### 3.9.1 Pemilihan Lapisan Target (*Target Layer*)
+SGD momentum dipilih dan dipakai **seragam di B1 maupun B2** (bukan
+*optimizer* adaptif seperti AdamW), agar selisih utilitas federasi
+($\Delta_{FL}$, B1 vs B2) murni mencerminkan efek federasi yang diteliti,
+bukan tercampur efek pergantian *optimizer* antarblok; pilihan ini juga
+konsisten dengan literatur DP-SGD yang menjadi rujukan tahap penelitian
+lanjutan (Subbab 3.9), yang karakterisasinya dibangun di atas SGD polos.
 
-Sesuai Subbab 2.8.1, Grad-CAM++ (`src/fedxpalm/xai/gradcam.py`,
-`YOLOGradCAMPlusPlus`) dipasang pada tahap indeks **ke-22** arsitektur
-YOLOv11 (blok C3k2 terakhir pada *neck*, sebelum *head* `Detect`), melalui
-*forward hook* dan *full backward hook* PyTorch pada modul tersebut.
+### 3.7.2 Algoritma FedAvg dan Replikasi Multi-*Seed*
 
-### 3.9.2 Metrik *Average Drop* (AD) dan *Focus Retention Rate* (FRR)
+`src/fedxpalm/federated/server.py` (`run_federated_training`)
+mengorkestrasi $T=40$ ronde: pada tiap ronde, setiap klien menjalankan
+*fine-tuning* lokal atas bobot global ronde tersebut
+(`src/fedxpalm/federated/client.py`, `train_client_round`), lalu
+`src/fedxpalm/federated/fedavg.py` (`fedavg`) merata-ratakan seluruh
+`state_dict` klien secara berbobot sesuai Persamaan (2.3). Pelatihan B2
+diulang pada **tiga *seed* pelatihan** (42, 123, 2026) yang hanya
+memvariasikan realisasi stokastik pelatihan dan tidak dipilih atas dasar
+properti numerik tertentu; *partition seed* tetap 42 di ketiga *run*,
+sehingga ketiga replikasi berjalan di atas partisi klien yang identik
+(Tabel 3.2) dan hanya berbeda pada inisialisasi/urutan stokastik
+pelatihannya -- tujuannya menguji stabilitas konvergensi FedAvg di bawah
+ketimpangan data antar klien yang substansial.
 
-Kedua metrik mengikuti definisi operasional Persamaan (2.9) dan (2.10),
-diimplementasikan pada `src/fedxpalm/xai/metrics.py`. Oklusi AD dilakukan
-pada **20% piksel teratas** berdasarkan nilai aktivasi Grad-CAM++
-(`top_fraction=0.2`), diganti dengan rata-rata kanal citra yang
-bersangkutan sebagai *fill* netral.
+## 3.8 Protokol Uji *Held-Out* dan Metrik Evaluasi
 
-### 3.9.3 Prosedur Evaluasi Penjelasan
+*Split held-out test* dicadangkan khusus untuk pelaporan akhir dan tidak
+dipakai untuk memilih hiperparameter, jumlah ronde, atau *checkpoint*. B1
+dievaluasi pada *split held-out test* hanya setelah *checkpoint*-nya
+dikunci, dan hasil tersebut tidak dipakai untuk memilih atau mengubah
+konfigurasi B2. Untuk B2, ketiga *checkpoint seed* yang terkunci ditujukan
+untuk evaluasi *held-out test* yang sama pada pelaporan berikutnya; pada
+tahap penulisan ini, hasil B2 dilaporkan pada *split validation*, dan
+metrik *validation* serta *held-out test* tidak dicampur dalam
+perbandingan langsung pada Bab 4 (lihat Subbab 4.3 dan 4.6).
 
-`src/fedxpalm/xai/evaluate.py` (`evaluate_faithfulness`) menjalankan
-evaluasi atas *split* *test* global: untuk setiap kotak *ground-truth*
-pada setiap citra, *anchor* dengan skor tertinggi model untuk kelas kotak
-tersebut dipilih, Grad-CAM++ dan kedua metrik faithfulness dihitung untuk
-*anchor* itu, lalu dirata-ratakan per kelas dan secara global. Prosedur ini
-dijalankan pada *checkpoint* yang ditetapkan sebagai "model operasional"
-(lihat Subbab 4.1) melalui `scripts/09_evaluate_xai.py`, yang juga dapat
-menyimpan visualisasi tumpang-tindih (*overlay*) peta panas untuk
-inspeksi kualitatif (Gambar 4.5/4.7 pada Bab 4).
+Performa deteksi dihitung oleh `src/fedxpalm/eval/detection_metrics.py`
+(membungkus `model.val()` Ultralytics) memakai metrik deteksi objek
+standar: mAP@0.5, mAP@0.5:0.95, *Precision*, dan *Recall*, dihitung pada
+*split* yang ditentukan pada tiap tabel hasil (Bab 4) -- *split held-out
+test* untuk B1, *split validation* untuk B2.
 
-## 3.10 Skenario Eksperimen
+## 3.9 Cakupan yang Ditunda: DP-SGD, XAI, dan *Deployment*
 
-Empat blok eksperimen dijalankan berurutan mengikuti `scripts/05` hingga
-`scripts/08`; ringkasannya:
+Bab ini secara sengaja tidak membahas metodologi tiga komponen berikut,
+yang tersedia sebagai infrastruktur kode pada repositori namun berada di
+luar cakupan rumusan masalah tahap penelitian ini (Subbab 1.4):
 
-### 3.10.1 B1 -- *Baseline* Tersentral (*Centralized*)
+1. **DP-SGD per-sampel** (`src/fedxpalm/privacy/`, `scripts/07_*.py`,
+   `scripts/08_*.py`) -- proteksi privasi formal berbasis Opacus
+   (`PrivacyEngine`), direncanakan sebagai perluasan langsung di atas
+   *checkpoint* GroupNorm B1/B2 yang sudah kompatibel secara arsitektural
+   (Subbab 2.5).
+2. **Explainable AI berbasis Grad-CAM++** (`src/fedxpalm/xai/`,
+   `scripts/09_*.py`) -- validasi interpretasi visual model.
+3. **Deployment layanan inferensi berbasis Docker** (`deployment/`) --
+   demonstrasi operasional model.
 
-`scripts/05_train_b1_centralized.py`. *Fine-tuning* atas **seluruh** *split*
-*train* terkumpul tanpa federasi maupun DP, 150 *epoch* dengan
-*early-stopping* (*patience* 30). Berfungsi sebagai batas atas (*upper
-bound*) utilitas yang dibandingkan dengan seluruh blok federasi/privat.
+Ketiganya direncanakan sebagai materi Bab 3-5 pada laporan penelitian
+lanjutan yang dibangun di atas titik rujukan B1/B2 yang ditetapkan pada bab
+ini (lihat Subbab 5.3).
 
-### 3.10.2 B2 -- *Baseline* Federasi tanpa DP
+## 3.10 Reproduktibilitas dan Ketersediaan Kode
 
-`scripts/06_train_b2_federated.py`. FedAvg murni (Subbab 3.6), di-*sweep*
-atas seluruh $K \in \{2,4,8,12,16\}$, 40 ronde per konfigurasi.
-
-### 3.10.3 E1 -- DP-SGD Penuh
-
-`scripts/07_train_e1_dp_full.py`. DP-SGD (Subbab 3.7) diterapkan pada
-**seluruh** parameter yang dapat dilatih, di-*sweep* atas *grid* penuh
-$K \times \sigma$, dengan $\sigma \in \{0{,}5;\ 1{,}0;\ 1{,}5;\ 2{,}0;\
-3{,}0\}$ dan $C=1{,}0$ tetap (`configs/dp_config.yaml`).
-
-### 3.10.4 E2 -- DP-SGD Parsial (*Backbone* Beku)
-
-`scripts/08_train_e2_dp_partial.py`. Identik dengan E1, kecuali seluruh
-tahap *backbone* (indeks 0-10, lihat Subbab 3.5.1) dibekukan
-(`freeze=[0,...,10]`, memakai mekanisme *freeze* bawaan `DetectionTrainer`
-Ultralytics) -- hanya *neck* dan *head* yang menerima pembaruan DP-SGD.
-Menguji apakah pembekuan *backbone* pra-latih menguntungkan performa pada
-domain sawit, sebagaimana disarankan literatur klasifikasi citra untuk
-domain yang jauh dari data pra-latih.
-
-Tabel 3.1 merangkum keempat blok.
-
-| Kode | Federasi | DP | Parameter di-DP | Jumlah *run* |
-|---|---|---|---|---|
-| B1 | Tidak | Tidak | - | 1 |
-| B2 | Ya | Tidak | - | 5 (per K) |
-| E1 | Ya | Ya (*full*) | Seluruh | 25 (5 K × 5 σ) |
-| E2 | Ya | Ya (*partial*) | *Neck*+*head* saja | 25 (5 K × 5 σ) |
-
-## 3.11 Metrik Evaluasi dan Ambang Operasional
-
-### 3.11.1 Metrik Utilitas Deteksi
-
-Dihitung oleh `src/fedxpalm/eval/detection_metrics.py`
-(membungkus `model.val()` Ultralytics) atas *split* *test* global:
-mAP@0.5, mAP@0.5:0.95, *Precision*, *Recall*, dan F1-*Score*, secara
-global maupun per kelas.
-
-### 3.11.2 Metrik Privasi
-
-*Privacy budget* $\varepsilon$ (Subbab 3.7.3) pada $\delta=10^{-5}$ tetap.
-
-### 3.11.3 Ambang Operasional
-
-Mengikuti H1 (Subbab 1.6), model federasi dikategorikan **layak**
-(*acceptable*) bila mAP@0.5 $\ge 0{,}70$ dan selisihnya terhadap B1
-(*FL-cost*) kecil. Ambang ini dipakai konsisten di seluruh Bab 4 untuk
-menandai konfigurasi mana yang dianggap "model operasional" layak
-di-*deploy* (Subbab 3.12).
-
-### 3.11.4 Catatan Metrik Per-Kelas
-
-Karena partisi Dirichlet (Subbab 3.4) menghasilkan distribusi kelas yang
-timpang antar klien, metrik per-kelas (terutama *recall* pada kelas
-minoritas seperti *Empty Bunch*/*Abnormal*) dilaporkan terpisah dari metrik
-makro pada Bab 4, karena rata-rata makro dapat menyembunyikan degradasi
-performa yang terkonsentrasi pada kelas jarang.
-
-## 3.12 *Deployment* Layanan Inferensi Berbasis Docker
-
-Model operasional (Subbab 3.11.3) dikemas menjadi layanan inferensi
-berbasis Flask (`deployment/app.py`) di dalam *image* Docker
-(`deployment/Dockerfile`, CPU-*only*, wheel PyTorch CPU untuk memperkecil
-ukuran *image*). Layanan menerima unggahan citra TBS, menjalankan deteksi
-kelas dengan keyakinan tertinggi, menghitung Grad-CAM++ untuk deteksi
-tersebut (memakai mesin `YOLOGradCAMPlusPlus` yang sama dengan Subbab
-3.9.1, bukan implementasi terpisah), dan mengembalikan citra hasil dengan
-kotak deteksi serta tumpang-tindih peta panas dalam satu halaman web
-(`deployment/templates/index.html`), mendemonstrasikan bahwa transparansi
-XAI tidak hanya alat analisis Bab 4, tetapi juga bagian dari antarmuka
-produksi.
-
-## 3.13 Reproduktibilitas dan Ketersediaan Kode
-
-Seluruh kode -- pemrosesan data, pelatihan federasi, DP-SGD, evaluasi XAI,
-dan *deployment* -- tersedia pada repositori `fedx-palm`
-(*branch* `claude/palm-oil-yolov11-federated-m4o613`), terorganisasi
-sebagai:
+Seluruh kode -- pemrosesan data, pelatihan tersentral dan federasi, serta
+evaluasi -- tersedia pada repositori `fedx-palm` (*branch*
+`claude/tesis-b1-b2-c77afk`), terorganisasi sebagai:
 
 ```
-configs/            konfigurasi dataset, FL, dan DP (YAML)
-src/fedxpalm/        paket Python inti (data, models, federated, privacy, xai, eval)
-scripts/             sepuluh skrip orkestrasi bernomor (01-10)
-deployment/          Dockerfile, layanan Flask, template HTML
-notebooks/           notebook Colab/Jupyter end-to-end
-docs/thesis/          bab-bab tesis ini
+configs/            konfigurasi dataset dan FL (YAML)
+src/fedxpalm/         paket Python inti (data, models, federated, eval; privacy/xai disiapkan untuk tahap lanjutan)
+scripts/             skrip orkestrasi bernomor (01-06 dipakai pada tahap ini; 07-10 untuk tahap lanjutan)
+docs/thesis/          bab-bab tesis ini, termasuk manuskrip JUTIF (docs/thesis/manuscript/)
 ```
 
 Versi pustaka dikunci pada `requirements.txt`; *seed* acak untuk pembagian
-data (42), partisi Dirichlet (42), dan inisialisasi Ultralytics
-didokumentasikan pada `configs/*.yaml` masing-masing tahap, guna menjamin
-hasil dapat direproduksi ulang oleh peneliti lain di lingkungan komputasi
-yang berbeda.
+data (42), partisi Dirichlet (42), dan tiga *seed* pelatihan B2 (42, 123,
+2026) didokumentasikan pada `configs/*.yaml` dan Subbab 3.7.2, guna
+menjamin hasil dapat direproduksi ulang oleh peneliti lain di lingkungan
+komputasi yang berbeda.

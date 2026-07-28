@@ -1,14 +1,20 @@
 <!--
 CATATAN PENULISAN (hapus komentar ini sebelum submit):
-Bab ini adalah rombak total Bab 1 mengikuti kerangka FedX-Palm, tetapi
-dijalankan ulang di atas dataset Roboflow baru ("palm-fruit-ripeness-
-detection-f6sac-ccb2z" v2, workspace "dydy-worker") dan konfigurasi
-eksperimen yang diperbarui (YOLOv11n, optimizer SGD, K in
-{2,4,8,12,16}, 40 ronde federasi, sigma in {0.5,1.0,1.5,2.0,3.0}).
-Bagian yang ditandai [VERIFIKASI: ...] harus dicek terhadap data.yaml
-hasil unduhan Roboflow yang sesungguhnya dan spesifikasi perangkat
-keras aktual sebelum bab ini dianggap final -- lihat
-docs/thesis/NOTES_FOR_RACHMA.md.
+Bab ini dipersempit cakupannya secara sengaja pada tahap penulisan ini:
+HANYA B1 (baseline tersentral) dan B2 (baseline federasi tanpa DP) yang
+menjadi materi inti Bab 1-5. DP-SGD (E1/E2), Explainable AI (Grad-CAM++),
+dan deployment Docker -- yang pada draf sebelumnya menjadi tulang punggung
+kerangka FedX-Palm -- kini disebut hanya sebagai arah pengembangan lanjutan
+yang direncanakan, BUKAN bagian dari rumusan masalah/tujuan/hipotesis/
+batasan penelitian tahap ini. Ini selaras dengan manuskrip JUTIF yang
+sudah ditulis berdasarkan hasil eksperimen nyata (lihat
+`docs/thesis/manuscript/JUTIF_Manuscript_FedXPalm_B1B2.docx`), yang secara
+eksplisit membingkai B1/B2 sebagai "non-private utility reference point"
+dan menyatakan hasil DP-SGD "outside the scope of the present manuscript".
+Angka pada bab ini (jumlah citra, distribusi klien, dst.) dikutip langsung
+dari manuskrip tersebut, hasil eksperimen nyata di GPU penulis (NVIDIA
+GeForce RTX 4080, 16 GB VRAM). Lihat docs/thesis/NOTES_FOR_RACHMA.md untuk
+riwayat keputusan penyempitan cakupan ini.
 -->
 
 # CHAPTER 1 -- PENDAHULUAN
@@ -29,324 +35,213 @@ terpengaruh kelelahan, dan menurun akurasinya pada pencahayaan lapangan yang
 kurang baik. Persoalan konsistensi inilah yang membuat otomatisasi berbasis
 visi komputer relevan untuk diterapkan pada rantai pascapanen sawit.
 
-Pada sisi teknologi, model *object detection* mutakhir seperti YOLOv11
-memungkinkan pengenalan enam tingkat kematangan TBS -- *Unripe*, *Underripe*,
-*Ripe*, *Overripe*, *Empty Bunch*, dan *Abnormal* (urutan kelas pada
-`data.yaml` proyek Roboflow *palm-fruit-ripeness-detection-f6sac-ccb2z*
-versi 2, workspace *dydy-worker*, adalah alfabetis: *Abnormal*, *Empty
-Bunch*, *Overripe*, *Ripe*, *Underripe*, *Unripe* -- lihat
-`configs/dataset.yaml`) -- dilakukan dalam satu tahap inferensi yang
-menggabungkan lokalisasi dan klasifikasi. Kemampuan tersebut menjanjikan,
-namun bergantung pada ketersediaan data latih yang beragam. Di sinilah
-persoalan privasi muncul. Citra perkebunan bukan sekadar gambar buah; di
-dalamnya dapat tersingkap lokasi blok, pola budidaya, hingga volume produksi
-yang oleh perusahaan kelapa sawit dipandang sebagai rahasia dagang.
-Akibatnya, mengumpulkan citra dari banyak kebun ke satu server pusat menjadi
-pilihan yang sulit diterima oleh pemilik data.
+Model *object detection* satu-tahap seperti keluarga YOLO telah banyak
+dipakai untuk tugas ini karena menggabungkan kecepatan inferensi *real-time*
+dengan akurasi deteksi yang kompetitif. Pada praktiknya, citra TBS sering
+tersebar di berbagai sumber -- lokasi panen, kelompok pengambilan data, atau
+mitra pengumpul data yang berbeda -- alih-alih berada dalam satu repositori
+terpusat. Mengumpulkan seluruh citra tersebut ke satu server pusat untuk
+pelatihan model menimbulkan persoalan berbagi data, logistik, dan privasi,
+yang melatarbelakangi penggunaan *Federated Learning* (FL) sebagai
+alternatif. Pada skema FL, tiap *client node* melatih model secara lokal di
+atas datanya sendiri, dan hanya pembaruan parameter model -- bukan citra
+mentah -- yang dipertukarkan dengan *server* pengagregasi. Meski demikian,
+literatur keamanan mencatat bahwa pembaruan model dan gradien tetap berpotensi
+membocorkan informasi tentang data latihnya, dan model yang sudah terlatih
+dapat membocorkan informasi keanggotaan (*membership*) sampel latih tertentu.
+*Differential Privacy* (DP), khususnya DP-SGD, menyediakan jaminan formal dan
+terukur yang membatasi pengaruh satu sampel data terhadap model yang
+dirilis -- namun dengan konsekuensi *noise* yang disuntikkan dan penurunan
+utilitas model. Memahami *trade-off* privasi-utilitas ini penting sebelum
+DP-SGD dapat diadopsi secara bertanggung jawab pada *pipeline* visi komputer
+pertanian terapan; oleh karena itu, penelitian ini memposisikan diri sebagai
+**tahap awal yang non-privat** dari sebuah program riset yang lebih besar,
+dan secara eksplisit membatasi cakupannya (Subbab 1.4) pada perbandingan
+pelatihan tersentral versus federasi Non-IID sebagai titik rujukan utilitas
+sebelum lapisan DP-SGD ditambahkan pada tahap lanjutan.
 
-*Horizontal Federated Learning* (HFL) menawarkan jalan keluar yang lebih
-alami untuk situasi seperti ini. Pada skema HFL, tiap *client node* (yang
-merepresentasikan kebun berbeda) berbagi ruang fitur citra yang sama tetapi
-memegang sampel data yang sepenuhnya terisolasi. Pelatihan berjalan lokal di
-setiap node, dan yang dipertukarkan ke *server aggregator* hanya pembaruan
-parameter model, bukan citra mentahnya. Seluruh pelatihan dijalankan pada
-satu GPU NVIDIA GeForce RTX 4080 (16 GB VRAM). Penelitian ini juga
-merealisasikan *deployment* inferensi berbasis Docker: model akhir dikemas
-ke dalam *image* Docker dan dijalankan sebagai layanan inferensi nyata pada
-sebuah *Virtual Private Server* (VPS) CPU-*only* -- terpisah dari GPU yang
-dipakai pelatihan -- guna menjaga reprodusibilitas dan portabilitas antar
-lingkungan komputasi. Yang berada di luar cakupan adalah pelatihan
-*Federated Learning* terdistribusi lintas-*host* fisik, yang dijalankan
-sebagai simulasi ekuivalen pada satu GPU tersebut.
-
-Memisahkan data mentah saja ternyata tidak cukup. Riset keamanan beberapa
-tahun terakhir memperlihatkan bahwa parameter model yang dipertukarkan dapat
-dimanfaatkan untuk serangan inferensi tingkat lanjut. Dua di antara yang
-paling sering disebut adalah *Membership Inference Attack* dan *Model
-Inversion Attack*, yang berpotensi memulihkan kembali citra-citra sensitif
-hanya dari bobot yang disadap. Jaminan formal yang bersifat matematis
-diperlukan di sini, dan *Differential Privacy* (DP) merupakan kerangka
-teoretis yang paling matang untuk tujuan tersebut. Penelitian ini mewujudkan
-DP melalui mekanisme *Differentially Private Stochastic Gradient Descent*
-(DP-SGD) per-sampel, yaitu pembatasan norma gradien per-sampel (*gradient
-clipping*) yang dipadukan dengan penambahan *noise* Gaussian terkalibrasi.
-Pemilihan jalur per-sampel ini konsisten dengan temuan generasi pertama
-kerangka FedX-Palm: penyuntikan *noise* pada level pembaruan bobot
-teragregasi (DP-FedAvg tingkat-klien) cenderung menyebabkan *collapse* model
-deteksi objek yang lebih mendadak, sedangkan *noise* pada level gradien
-per-sampel berinteraksi lebih halus dengan dinamika SGD. Dua varian DP-SGD
-dibandingkan pada penelitian ini: *full* DP-SGD (seluruh parameter) versus
-*partial* DP-SGD (hanya kepala deteksi, *backbone* dibekukan), guna menguji
-apakah pembekuan *backbone* pra-latih -- sebagaimana disarankan pada
-literatur klasifikasi citra untuk domain yang jauh dari data pra-latihnya --
-juga menguntungkan pada deteksi objek domain sawit. Tentu saja, pemberian
-*noise* membawa konsekuensi pada konvergensi dan akurasi, fenomena yang
-dikenal sebagai *privacy-utility trade-off*.
-
-Kendala lain dalam adopsi model *Deep Learning* di sektor pertanian adalah
-karakter *black-box*-nya: pengguna sulit memahami alasan model menghasilkan
-keputusan tertentu. Dalam merespons keterbatasan tersebut, penelitian
-menambahkan lapisan transparansi melalui pendekatan *Explainable AI* (XAI),
-khususnya Grad-CAM++, pada model YOLOv11 hasil federasi. Tujuannya bukan
-sekadar menampilkan peta panas, melainkan menunjukkan secara empiris bahwa
-keputusan model bertumpu pada ciri morfologis buah seperti gradasi warna,
-kepadatan brondolan, dan tekstur permukaan, bukan pada latar atau distorsi
-akibat injeksi *noise* DP.
-
-Dibandingkan dengan iterasi pertama kerangka ini, penelitian ini
-menjalankan ulang keseluruhan pipeline pada **dataset publik baru** yang
-diperoleh dari Roboflow (proyek *palm-fruit-ripeness-detection-f6sac-ccb2z*,
-versi 2, workspace *dydy-worker*), dan memperbarui sejumlah pilihan
-rancangan berdasarkan tinjauan pustaka atas penelitian sejenis: arsitektur
-tetap YOLOv11 varian **nano** (bukan varian yang lebih besar), karena
-mayoritas penelitian deteksi kematangan TBS sawit berbasis YOLOv11 yang
-dijumpai pada tinjauan pustaka penelitian ini memilih varian nano justru
-demi ruang gerak *deployment* CPU/edge -- konsisten dengan tujuan
-*deployment* CPU-only pada Bab 4. *Local optimizer* dipertahankan sebagai
-SGD momentum di seluruh blok eksperimen (bukan diganti ke *optimizer*
-adaptif seperti AdamW), konsisten dengan literatur DP-SGD yang
-karakterisasinya dibangun di atas SGD polos (Bab 2.4), dan agar selisih
-utilitas antarblok murni mencerminkan efek federasi/privasi, bukan
-tercampur efek pergantian *optimizer*. Berangkat dari keempat elemen di
-atas, penelitian ini mengusulkan **FedX-Palm: A YOLOv11-Based Federated
-Learning Framework with Differential Privacy and Explainable AI for Oil Palm
-Ripeness Detection**. HFL menjadi tulang punggung komputasi terdistribusi,
-DP-SGD per-sampel berfungsi sebagai lapisan proteksi matematis, dan
-Grad-CAM++ menyediakan jendela interpretabilitas. FedX-Palm diharapkan
-menjadi rujukan rancangan AI pertanian yang akurat, melindungi privasi data,
-sekaligus keputusannya dapat dipertanggungjawabkan.
+Penelitian ini menetapkan titik rujukan (*baseline*) tersebut dengan
+membandingkan dua model: **B1**, model YOLOv11n yang dilatih secara
+tersentral di atas seluruh data latih, dan **B2**, model YOLOv11n yang
+dilatih melalui *Federated Averaging* (FedAvg) di atas partisi klien
+Non-IID (distribusi Dirichlet, α = 0,5, K = 4 klien tersimulasi). Seluruh
+lapisan *Batch Normalization* pada kedua model dikonversi menjadi *Group
+Normalization*, untuk menghilangkan ketergantungan pada statistik lintas
+sampel yang menjadi tidak stabil pada *batch* kecil dan Non-IID per klien --
+substitusi ini sekaligus menjadikan arsitektur kompatibel secara struktural
+dengan rencana perluasan ke DP-SGD per-sampel pada tahap penelitian
+berikutnya, meski DP-SGD itu sendiri berada di luar cakupan bab ini.
+Evaluasi dilakukan pada dataset TBS sawit publik (Roboflow, 10.814 citra
+enam kelas kematangan), dengan pembagian *train*/*validation*/*held-out
+test* yang bebas-kebocoran pada level kelompok sumber citra (lihat Subbab
+3.3), agar selisih performa antara B1 dan B2 murni mencerminkan efek
+federasi, bukan pencemaran data antar-*split*.
 
 ## 1.2 Rumusan Masalah
 
-Praktik penilaian kematangan TBS yang berjalan saat ini meninggalkan tiga
-persoalan yang saling berkelindan. Pertama, inspeksi visual manual bersifat
-subjektif dan tidak konsisten antar pemanen, sehingga otomatisasi berbasis
-*deep learning* menjadi kebutuhan. Kedua, otomatisasi itu sendiri menuntut
-data citra dalam jumlah besar, sementara pengumpulan terpusat berisiko
-menyingkap informasi operasional kebun dan rentan terhadap serangan
-inferensi pada parameter model. Ketiga, model deteksi modern bersifat
-*black-box*, sehingga keputusannya sulit dipercaya oleh agronom maupun
-pemangku kepentingan. Ketiga persoalan inilah yang melatari kebutuhan akan
-desain terpadu *Federated Learning*, *Differential Privacy*, dan *Explainable
-AI*. Berdasarkan latar tersebut, rumusan masalah penelitian ini adalah:
+Praktik penilaian kematangan TBS yang berjalan saat ini bersifat subjektif
+dan tidak konsisten antar pemanen, sehingga otomatisasi berbasis *deep
+learning* menjadi kebutuhan. Otomatisasi itu sendiri menuntut data citra
+dalam jumlah besar, sementara pengumpulan terpusat berisiko menyingkap
+informasi operasional kebun -- inilah yang melatari kebutuhan pendekatan
+*Federated Learning*. Namun, mengadopsi FL tanpa mengetahui berapa besar
+utilitas yang harus "dibayar" dibandingkan pelatihan tersentral membuat
+keputusan tersebut sulit dipertanggungjawabkan secara kuantitatif.
+Berdasarkan latar tersebut, rumusan masalah penelitian ini adalah:
 
 1. Mengingat pendekatan pelatihan terpusat berisiko membocorkan data
    operasional perkebunan, bagaimana arsitektur *Federated Learning* (FL)
-   dapat dirancang agar model deteksi objek YOLOv11 dapat dilatih secara
-   kolaboratif tanpa harus memindahkan citra mentah dari masing-masing
-   lokasi perkebunan?
+   berbasis FedAvg dapat dirancang agar model deteksi objek YOLOv11n dapat
+   dilatih secara kolaboratif tanpa harus memindahkan citra mentah dari
+   masing-masing sumber data?
 
-2. Mengingat pertukaran parameter model masih rawan terhadap *membership
-   inference* dan *model inversion*, sejauh mana mekanisme *Differential
-   Privacy* berbasis DP-SGD per-sampel mampu memberikan proteksi formal, dan
-   bagaimana dampaknya terhadap utilitas model seiring variasi anggaran
-   privasi ε dan skala jaringan federasi (jumlah klien K)?
+2. Sejauh mana pelatihan federasi Non-IID (B2) mampu mendekati utilitas
+   deteksi model yang dilatih secara tersentral (B1) pada tugas deteksi
+   kematangan TBS enam kelas, di bawah partisi klien Dirichlet dengan
+   ketimpangan data substansial antar klien?
 
-3. Mengingat karakter *black-box* model deteksi menghambat kepercayaan
-   pengguna, bagaimana penerapan teknik *Explainable AI* (XAI) berbasis
-   Grad-CAM++ dapat memberikan penjelasan visual yang dapat
-   dipertanggungjawabkan atas keputusan deteksi yang dihasilkan oleh model
-   YOLOv11 hasil federasi?
+Rumusan masalah terkait proteksi privasi formal (DP-SGD) dan keterjelasan
+model (*Explainable AI*) yang menjadi bagian kerangka FedX-Palm secara lebih
+luas **tidak** dijawab pada tahap penelitian ini; keduanya diposisikan
+sebagai arah pengembangan lanjutan (Subbab 1.4 dan 5.3), dibangun di atas
+titik rujukan utilitas B1/B2 yang dilaporkan di sini.
 
 ## 1.3 Tujuan Penelitian
 
 Sejalan dengan rumusan masalah di atas, penelitian ini diarahkan untuk:
 
-1. Membangun arsitektur *Federated Learning* yang terintegrasi dengan model
-   YOLOv11n untuk klasifikasi enam tingkat kematangan TBS kelapa sawit dalam
-   skema komputasi terdistribusi, dievaluasi pada dataset publik baru dari
-   Roboflow.
+1. Membangun dan mengevaluasi arsitektur *Federated Learning* berbasis
+   FedAvg yang terintegrasi dengan model YOLOv11n untuk klasifikasi enam
+   tingkat kematangan TBS kelapa sawit, dievaluasi pada dataset publik dari
+   Roboflow dengan pembagian data bebas-kebocoran.
 
-2. Menyelidiki dan mengukur dampak penerapan *Differential Privacy*
-   berbasis DP-SGD per-sampel terhadap utilitas deteksi melalui *sweep noise
-   multiplier* (σ) dan jumlah klien (K); membandingkan strategi *full*
-   DP-SGD dengan *partial* DP-SGD (*backbone* beku) untuk mengidentifikasi
-   konfigurasi yang paling mempertahankan utilitas.
-
-3. Mengembangkan komponen *Explainable AI* berbasis Grad-CAM++ yang
-   menyediakan interpretasi visual yang dapat diverifikasi atas keputusan
-   model YOLOv11 hasil federasi, divalidasi dengan metrik *Average Drop*
-   dan *Focus Retention Rate*.
+2. Mengukur dan membandingkan utilitas deteksi model tersentral (B1) dengan
+   model federasi Non-IID (B2, direplikasi pada tiga *seed* pelatihan
+   independen) menggunakan metrik deteksi standar (mAP@0.5, mAP@0.5:0.95,
+   *Precision*, *Recall*), sebagai titik rujukan non-privat sebelum
+   perluasan DP-SGD pada tahap penelitian berikutnya.
 
 ## 1.4 Batasan Masalah
 
-Agar fokus dan hasilnya tetap terukur, penelitian dibatasi pada cakupan
-berikut:
+Agar fokus dan hasilnya tetap terukur, penelitian pada tahap ini dibatasi
+pada cakupan berikut:
 
 1. Subjek deteksi adalah citra Tandan Buah Segar (TBS) kelapa sawit yang
-   dikategorikan ke dalam enam kelas kematangan: *Unripe*, *Underripe*,
-   *Ripe*, *Overripe*, *Empty Bunch*, dan *Abnormal* (lihat `configs/
-   dataset.yaml` untuk urutan indeks kelas yang dipakai kode).
+   dikategorikan ke dalam enam kelas kematangan: *Abnormal*, *Empty Bunch*,
+   *Overripe*, *Ripe*, *Underripe*, dan *Unripe* (urutan alfabetis sesuai
+   `configs/dataset.yaml`).
 
 2. Arsitektur deteksi yang dievaluasi adalah YOLOv11n (varian *nano*,
-   ~2,6 juta parameter), dengan seluruh lapisan *Batch Normalization*
-   dikonversi menjadi *Group Normalization*. Varian YOLOv11 lain (s/m/l/x)
-   berada di luar cakupan utama, dipilih setelah tinjauan atas penelitian
-   sejenis yang secara konsisten memakai varian nano untuk kebutuhan
-   *deployment* CPU/edge.
+   2.591.010 parameter), dengan seluruh 81 lapisan *Batch Normalization*
+   dikonversi menjadi *Group Normalization* (0 BatchNorm tersisa setelah
+   audit arsitektur). Varian YOLOv11 lain (s/m/l/x) berada di luar cakupan.
 
-3. Lingkungan FL dirancang sebagai sistem dengan satu *server aggregator*
-   dan K *client node*, dengan K di-*sweep* pada {2, 4, 8, 12, 16}.
-   Eksperimen pelatihan dijalankan sebagai *simulasi federated* yang
-   ekuivalen pada satu GPU (NVIDIA GeForce RTX 4080, 16 GB VRAM) dengan
-   skema pembagian data Non-IID (*Non-Independent and Identically Distributed*)
-   berbasis distribusi Dirichlet. *Deployment* inferensi model akhir
-   direalisasikan sebagai *image* Docker yang dibangun dan dijalankan pada
-   satu VPS CPU-only; yang berada di luar cakupan hanyalah pelatihan FL
-   terdistribusi lintas-host fisik dan orkestrasi multi-*container*.
+3. Lingkungan FL dirancang sebagai satu *server aggregator* dan **K = 4**
+   *client node* tersimulasi secara sekuensial pada satu GPU (NVIDIA
+   GeForce RTX 4080, 16 GB VRAM), dengan pembagian data Non-IID berbasis
+   distribusi Dirichlet (α = 0,5, *partition seed* = 42). *Sweep* atas
+   jumlah klien K lain (mis. {2, 8, 12, 16}) tersedia pada infrastruktur
+   kode (`configs/fl_config.yaml: clients.k_values`) namun **tidak**
+   dilaporkan pada tahap penelitian ini; hanya K = 4 yang dibahas.
 
-4. Perlindungan privasi diwujudkan melalui DP-SGD per-sampel menggunakan
-   *library* Opacus 1.5.4, yaitu *gradient clipping* per-sampel pada norma
-   maksimum C = 1,0 yang dipadukan dengan *Gaussian noise* berskala σ pada
-   gradien sebelum pembaruan bobot lokal. Konversi BatchNorm → GroupNorm
-   dilakukan supaya gradien per-sampel terdefinisi dan model lolos
-   *ModuleValidator* Opacus. Dua strategi DP-SGD dievaluasi sebagai
-   eksperimen utama: *full* DP-SGD (E1, seluruh parameter) dan *partial*
-   DP-SGD (E2, kepala deteksi saja, *backbone* dibekukan). Alternatif
-   seperti DP-Adam, *secure aggregation*, maupun *homomorphic encryption*
-   tidak diteliti.
+4. Perlindungan privasi formal melalui DP-SGD per-sampel, teknik
+   *Explainable AI* (Grad-CAM++), dan *deployment* layanan inferensi
+   berbasis Docker **berada di luar cakupan** rumusan masalah, tujuan, dan
+   hipotesis penelitian tahap ini, meski infrastrukturnya (Opacus,
+   `src/fedxpalm/xai/`, `deployment/`) sudah tersedia pada repositori kode
+   sebagai persiapan tahap lanjutan (Subbab 5.3). Konversi BatchNorm ->
+   GroupNorm pada Butir 2 tetap diterapkan karena juga bermanfaat langsung
+   bagi stabilitas B2 (Subbab 2.5), terlepas dari rencana DP-SGD.
 
-5. *Sweep* parameter privasi mencakup σ ∈ {0,5; 1,0; 1,5; 2,0; 3,0} dengan
-   *max_grad_norm* C = 1,0 tetap. Nilai *privacy budget* ε dihitung dari
-   (σ, q, T, δ) menggunakan *accountant* PRV (*Privacy Random Variable*)
-   Opacus pada δ = 1×10⁻⁵, bukan ditetapkan secara manual.
-
-6. Teknik XAI yang digunakan terbatas pada Grad-CAM++ untuk menghasilkan
-   peta atensi (*heatmap*) atas keputusan YOLOv11, dengan validasi
-   kuantitatif memakai metrik *Average Drop* (AD, berbasis oklusi terhadap
-   wilayah yang disorot penjelasan) dan *Focus Retention Rate* (FRR, rasio
-   massa aktivasi peta panas yang jatuh di dalam kotak *ground-truth*
-   dibanding total). Definisi operasional kedua metrik dijabarkan pada Bab
-   2 dan Bab 3. Evaluasi *faithfulness* per-kelas dihitung langsung pada
-   model federasi hasil agregasi.
+5. B2 direplikasi pada tiga *seed* pelatihan (42, 123, 2026) yang hanya
+   memvariasikan realisasi stokastik pelatihan; *partition seed* untuk
+   pembagian klien tetap 42 di ketiga *run*. B2 pada tahap ini dilaporkan
+   pada *split validation*; evaluasi B2 pada *split held-out test* yang
+   sama dengan B1 ditunda ke pelaporan berikutnya (Subbab 4.5, 5.3).
 
 ## 1.5 Metode Penelitian
 
 Penelitian ini menggunakan paradigma eksperimen kuantitatif yang
 dikombinasikan dengan pendekatan *Research and Development* (R&D).
-Eksperimen difokuskan pada pengembangan iteratif kerangka FedX-Palm dan
-pengukuran dampak penyisipan komponen *Differential Privacy* (DP) serta
-*Explainable AI* (XAI) terhadap performa deteksi YOLOv11n dalam lingkungan
-komputasi terdistribusi.
+Eksperimen difokuskan pada pengukuran selisih utilitas deteksi antara
+pelatihan tersentral (B1) dan pelatihan federasi Non-IID tanpa DP (B2) pada
+YOLOv11n.
 
 ### 1.5.1 Lingkungan dan Alat Implementasi
 
-Rincian lingkungan pengembangan dan eksekusi eksperimen adalah:
+1. **Platform Komputasi.** Seluruh pelatihan dijalankan pada satu
+   *workstation* dengan GPU NVIDIA GeForce RTX 4080 (16 GB VRAM), CPU
+   multi-*core*, dan RAM 32 GB. Bobot hasil pelatihan disimpan dalam format
+   `.pt` sebagai *checkpoint* untuk tahap evaluasi.
 
-1. **Platform Komputasi.** Seluruh pelatihan model YOLOv11n dijalankan pada
-   *workstation*/*server* dengan akselerator GPU NVIDIA GeForce RTX 4080
-   (16 GB VRAM). Bobot hasil pelatihan disimpan dalam
-   format `.pt` sebagai *checkpoint* untuk tahap evaluasi, eksplanasi XAI,
-   dan penyiapan *blueprint deployment* Docker.
-
-2. **Stack Perangkat Lunak.** Implementasi memanfaatkan Python 3.11 di atas
-   *framework* PyTorch 2.5.1, dengan paket Ultralytics 8.4.51 untuk YOLOv11.
-   Proteksi privasi DP-SGD per-sampel diterapkan melalui *library* Opacus
-   1.5.4 dengan `PrivacyEngine`, setelah konversi BatchNorm → GroupNorm agar
-   model lolos validasi per-sampel. Pelatihan federasi dijalankan sebagai
-   simulasi ekuivalen menggunakan *loop* FedAvg *sequential* pada satu GPU.
-   Model akhir di-*deploy* sebagai layanan inferensi dalam *image* Docker
-   (Flask + Ultralytics CPU) yang dibangun dan dijalankan pada satu VPS;
-   *Dockerfile* dan skrip inferensi disertakan untuk reprodusibilitas (lihat
-   Bab 4).
+2. **Stack Perangkat Lunak.** Implementasi memakai Python 3.10, PyTorch
+   2.5.1 (CUDA 12.1), dan Ultralytics 8.4.51 untuk YOLOv11. Pelatihan
+   federasi dijalankan sebagai simulasi *sequential* FedAvg pada satu GPU
+   -- klien dijalankan bergiliran dalam tiap ronde komunikasi, bukan
+   secara konkuren pada mesin fisik terpisah.
 
 3. **Dataset.** Citra TBS sawit enam kelas kematangan diperoleh dari
-   platform Roboflow (proyek *palm-fruit-ripeness-detection-f6sac-ccb2z*,
-   versi 2, workspace *dydy-worker*, format ekspor `yolov11`), lalu dibagi
-   ke K *client node* mengikuti distribusi Dirichlet dengan parameter
-   konsentrasi α = 0,5 untuk mensimulasikan kondisi Non-IID pada perkebunan
-   nyata.
+   platform Roboflow (10.814 citra), dibagi bebas-kebocoran pada level
+   kelompok sumber citra menjadi *train* (8.937 citra, 72 kelompok
+   sumber) / *validation* (826 citra, 8 kelompok sumber) / *held-out test*
+   (1.051 citra, 11 kelompok sumber), lalu *split train* dipartisi ke
+   K = 4 klien mengikuti distribusi Dirichlet (α = 0,5).
 
-### 1.5.2 Tahapan Penelitian FedX-Palm
+### 1.5.2 Tahapan Penelitian
 
-Realisasi sistem FedX-Palm dijalankan melalui delapan tahap berurutan
-berikut.
+Realisasi penelitian ini dijalankan melalui enam tahap berurutan.
 
-1. **Studi Literatur.** Difokuskan pada empat bidang, yaitu *Federated
-   Learning*, *Differential Privacy*, Grad-CAM++ sebagai metode XAI, dan
-   arsitektur YOLOv11. Agenda utamanya adalah memetakan celah riset seputar
-   keseimbangan antara perlindungan privasi dan keterjelasan model pada
-   konteks deteksi kematangan buah sawit.
+1. **Studi Literatur.** Difokuskan pada dua bidang utama: deteksi objek
+   berbasis YOLO untuk kematangan TBS sawit, dan *Federated Learning* di
+   bawah data Non-IID, guna memetakan celah riset seputar titik rujukan
+   utilitas tersentral-versus-federasi yang diaudit kebocorannya secara
+   eksplisit.
 
 2. **Perancangan Sistem.** Topologi FL dirancang dalam pola *server-client*
-   terpusat yang terdiri atas satu *server aggregator* dan K *client node*.
-   YOLOv11n dipilih sebagai tulang punggung model karena menyatukan tugas
-   lokalisasi dan klasifikasi pada satu *inference pipeline*, dan tetap
-   ringan untuk *deployment* CPU pada tahap akhir.
+   terpusat dengan satu *server aggregator* dan K = 4 *client node*.
+   YOLOv11n dipilih sebagai model dasar karena menyatukan tugas lokalisasi
+   dan klasifikasi pada satu *inference pipeline* dan ringan untuk
+   kebutuhan komputasi terbatas.
 
 3. **Penyiapan dan Distribusi Dataset.** Citra TBS sawit diunduh dari
-   Roboflow, dipecah ulang menjadi *train/validation/test* berbasis
-   identitas tandan (`bunch_id`) untuk mencegah kebocoran data (*leakage*)
-   antar-*split*, lalu dipecah ke K klien melalui *sampling* Dirichlet,
-   sehingga proporsi kelas kematangan tidak seragam antar klien dan
-   mendekati heterogenitas data perkebunan di lapangan.
+   Roboflow, dipecah ulang menjadi *train*/*validation*/*held-out test*
+   berbasis identitas kelompok sumber untuk mencegah kebocoran data
+   (*leakage*) antar-*split*, lalu *split train*-nya dipecah ke 4 klien
+   melalui *sampling* Dirichlet, sehingga proporsi kelas kematangan tidak
+   seragam antar klien.
 
-4. **Pelatihan Lokal (*Local Fine-tuning*).** Pada setiap ronde, klien
-   menjalankan *fine-tuning* YOLOv11n atas porsi data lokalnya. *Optimizer*
-   yang dipakai adalah SGD momentum, dengan *loss* *Complete IoU* (CIoU)
-   untuk regresi *bounding box* yang dipadukan dengan komponen *loss*
-   klasifikasi dan *Distribution Focal Loss* (DFL).
+4. **Pelatihan Tersentral (B1).** YOLOv11n dilatih di atas seluruh *split
+   train* dalam satu *run* non-federasi, menghasilkan titik rujukan
+   tersentral yang dievaluasi sekali pada *split held-out test* setelah
+   *checkpoint* dipilih berdasarkan performa validasi.
 
-5. **Penyuntikan *Differential Privacy* pada Gradien Per-sampel.** Selama
-   pelatihan lokal, mekanisme DP-SGD per-sampel diberlakukan melalui
-   `PrivacyEngine` Opacus. Dua langkahnya: norma gradien per-sampel dibatasi
-   melalui *clipping* C, lalu *Gaussian noise* berskala σ ditambahkan pada
-   gradien yang sudah dijumlahkan per-*batch* sebelum pembaruan bobot.
-   *Privacy budget* ε dihitung oleh *accountant* Opacus (PRV) dari
-   (σ, q, T, δ), bukan ditetapkan manual.
+5. **Pelatihan Federasi (B2, FedAvg).** Pada setiap ronde, tiap klien
+   menjalankan *fine-tuning* lokal atas bobot global ronde tersebut;
+   *server* merata-ratakan bobot klien secara berbobot ukuran data lokal
+   (FedAvg). Diulang pada tiga *seed* pelatihan independen untuk menguji
+   stabilitas konvergensi di bawah ketimpangan data antar klien.
 
-6. **Agregasi Bobot Global (*Federated Averaging*).** *Server*
-   mengonsolidasikan bobot dari semua klien menggunakan FedAvg untuk
-   membentuk model global baru $\mathbf{w}_{t+1}$:
-
-   $$\mathbf{w}_{t+1} = \sum_{k=1}^{K} \frac{n_k}{N} \mathbf{w}_k$$
-
-   dengan $\mathbf{w}_k$ adalah bobot lokal klien ke-$k$, $n_k$ ukuran data
-   lokalnya, dan $N$ jumlah total sampel di semua klien. Bobot global
-   kemudian dikirim kembali ke setiap klien untuk siklus pelatihan
-   berikutnya hingga 40 ronde federasi tercapai.
-
-7. **Pengujian Transparansi XAI.** Model global hasil agregasi diperiksa
-   kualitas interpretasinya menggunakan Grad-CAM++. Validasinya tidak
-   berhenti pada inspeksi visual; dikuatkan oleh dua indikator kuantitatif,
-   yaitu *Average Drop* dan *Focus Retention Rate* (FRR), yang definisi
-   operasionalnya dijabarkan pada Bab 2 dan Bab 3.
-
-8. **Evaluasi Akhir dan Sintesis Hasil.** Evaluasi penutup memetakan kinerja
-   sistem dalam tiga dimensi sekaligus: (a) metrik deteksi standar
-   (mAP@0.5, mAP@0.5:0.95, *Precision*, *Recall*, dan F1-Score); (b)
-   sensitivitas model terhadap variasi *privacy budget* ε dan jumlah klien
-   K; serta (c) kualitas penjelasan visual yang diukur dengan *Average
-   Drop* dan FRR.
+6. **Evaluasi dan Perbandingan.** Kedua model dievaluasi dengan metrik
+   deteksi standar (mAP@0.5, mAP@0.5:0.95, *Precision*, *Recall*), lalu
+   selisih utilitas B1-versus-B2 dianalisis sebagai titik rujukan
+   non-privat untuk perluasan DP-SGD pada tahap penelitian selanjutnya.
 
 ## 1.6 Hipotesis
 
 Mengacu pada kerangka teoretis dan rancangan metodologi yang telah
-diuraikan, penelitian ini menetapkan empat hipotesis kerja berikut.
+diuraikan, penelitian ini menetapkan satu hipotesis kerja utama.
 
-1. **H1 -- Kelayakan Deteksi YOLOv11n pada Skenario Non-IID.** Pelatihan
-   kolaboratif YOLOv11n dengan algoritma *Federated Averaging* (FedAvg)
-   tanpa DP di atas *client node* berdistribusi Non-IID diperkirakan mampu
-   menghasilkan model global dengan *mean Average Precision* (mAP@0.5)
-   dalam kategori layak (*acceptable*, ≥ 0,70) dan mendekati performa
-   pelatihan terpusat, dengan selisih utilitas (*FL-cost*) yang kecil.
+**H1 -- Kelayakan Deteksi YOLOv11n pada Skenario Federasi Non-IID.**
+Pelatihan kolaboratif YOLOv11n dengan algoritma *Federated Averaging*
+(FedAvg) tanpa DP di atas *client node* berdistribusi Non-IID (K = 4,
+Dirichlet α = 0,5) diperkirakan mampu menghasilkan model global dengan
+*mean Average Precision* (mAP@0.5) yang mendekati performa pelatihan
+tersentral (B1), dengan selisih utilitas (*FL-cost*) yang kecil dan
+konvergensi yang stabil di seluruh *seed* pelatihan yang diuji, meski
+ketimpangan proporsi data antar klien substansial.
 
-2. **H2 -- Bentuk *Trade-off* Privasi versus Utilitas.** Penerapan DP-SGD
-   per-sampel pada YOLOv11n diasumsikan menurunkan akurasi deteksi seiring
-   penguatan privasi (semakin kecil ε, semakin besar penurunan), namun
-   degradasinya diperkirakan bersifat bertahap (*gradual*) di sepanjang
-   rentang ε yang diuji.
-
-3. **H2-K -- Pengaruh Skala Jaringan pada DP-SGD Per-sampel.** Arah
-   pengaruh jumlah klien K pada DP-SGD per-sampel diperkirakan berkebalikan
-   dengan intuisi DP-FedAvg tingkat-klien: semakin besar K, semakin sedikit
-   sampel per klien, sehingga rasio *sub-sampling* membesar, *noise*
-   per-sampel makin mendominasi sinyal, dan utilitas menurun -- sementara
-   anggaran privasi ε justru membengkak. Hipotesis ini diuji secara empiris
-   dan dibahas pada Bab 4.
-
-4. **H3 -- Validitas Interpretasi Visual Model.** Integrasi Grad-CAM++ pada
-   model hasil federasi diprediksi menghasilkan peta panas yang konsisten
-   dengan fitur morfologis buah sawit. Hal ini ditunjukkan oleh nilai
-   *Average Drop* dan *Focus Retention Rate* yang mengindikasikan bahwa
-   keputusan model bertumpu pada wilayah objek (TBS), bukan pada latar.
+Hipotesis terkait bentuk *trade-off* privasi-utilitas DP-SGD (pengaruh σ
+dan K terhadap ε dan utilitas) serta validitas interpretasi visual XAI --
+yang menjadi bagian kerangka FedX-Palm secara lebih luas -- akan dirumuskan
+dan diuji pada tahap penelitian lanjutan, setelah B1/B2 di sini menetapkan
+titik rujukan non-privatnya.
