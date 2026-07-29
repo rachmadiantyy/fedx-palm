@@ -21,6 +21,7 @@ def evaluate_detector(weights_path: str, data_yaml: str, split: str = "test", im
     precision, recall, f1 = metrics.box.p, metrics.box.r, metrics.box.f1
     ap50, ap50_95 = metrics.box.ap50, metrics.box.ap
 
+    nt_per_class = getattr(metrics, "nt_per_class", None)
     per_class = {}
     for i, class_id in enumerate(metrics.box.ap_class_index):
         name = names[int(class_id)]
@@ -30,6 +31,7 @@ def evaluate_detector(weights_path: str, data_yaml: str, split: str = "test", im
             "f1": float(f1[i]),
             "ap50": float(ap50[i]),
             "ap50_95": float(ap50_95[i]),
+            "n_instances": int(nt_per_class[int(class_id)]) if nt_per_class is not None else None,
         }
 
     return {
@@ -39,4 +41,7 @@ def evaluate_detector(weights_path: str, data_yaml: str, split: str = "test", im
         "precision": float(metrics.box.mp),
         "recall": float(metrics.box.mr),
         "per_class": per_class,
+        # total ground-truth box instances in this split, summed across classes
+        # (Ultralytics' own nt_per_class -- not derived/re-counted here)
+        "n_boxes_total": int(nt_per_class.sum()) if nt_per_class is not None else None,
     }
