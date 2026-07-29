@@ -1,6 +1,8 @@
 # Manuskrip JUTIF -- FedXPalm B1/B2
 
-- `manuscript.tex` -- sumber LaTeX (isi sama persis dengan `JUTIF_Manuscript_FedXPalm_B1B2.docx`, dipertahankan sebagai referensi/backup). Diverifikasi langsung terhadap `JUTIF-Template.docx` (bukan cuma tebakan): margin (2,5/2,5/2,5/2,0 cm kiri/atas/kanan/bawah), *line spacing* 1,15, indentasi baris pertama paragraf 1,1cm, judul bold 14pt, nama penulis bold 10pt, header/footer (nama jurnal, Vol/No/Bulan/Tahun/Halaman, P-ISSN/E-ISSN, URL jurnal, DOI, nomor halaman otomatis), dan -- yang paling penting -- judul bab/subbab di template **TIDAK diberi nomor otomatis** (cuma bold huruf kapital utuh untuk bab utama, bold huruf normal untuk subbab), jadi seluruh referensi "Section N" di teks sudah diganti jadi nama subbab langsung (bukan `\ref{}` ke nomor yang memang tidak ada di template aslinya).
+**Judul & framing (update):** "Multi-Seed Reproducibility and Convergence Stability of Non-IID Federated YOLO11n for Oil Palm Fresh Fruit Bunch Detection" -- direframe dari versi lama ("Non-IID FL versus Centralized Training") karena perbandingan B1 (held-out test) vs B2 (validation) belum matched. Fokus sekarang: reproducibility & convergence lintas 3 seed federated (bukan perbandingan centralized-vs-federated). Detail penuh audit & rasional reframe ada di `EDITORIAL_REVIEW_REFRAME.md` di folder ini -- sudah diterapkan ke `manuscript.tex`.
+
+- `manuscript.tex` -- sumber LaTeX. Diverifikasi langsung terhadap `JUTIF-Template.docx` (bukan cuma tebakan): margin (2,5/2,5/2,5/2,0 cm kiri/atas/kanan/bawah), *line spacing* 1,15, indentasi baris pertama paragraf 1,1cm, judul bold 14pt, nama penulis bold 10pt, header/footer (nama jurnal, Vol/No/Bulan/Tahun/Halaman, P-ISSN/E-ISSN, URL jurnal, DOI, nomor halaman otomatis), dan -- yang paling penting -- judul bab/subbab di template **TIDAK diberi nomor otomatis** (cuma bold huruf kapital utuh untuk bab utama, bold huruf normal untuk subbab), jadi seluruh referensi "Section N" di teks sudah diganti jadi nama subbab langsung (bukan `\ref{}` ke nomor yang memang tidak ada di template aslinya).
 - `JUTIF-Template.docx` -- template resmi kosong dari JUTIF, dipakai sebagai rujukan verifikasi di atas.
 - `manuscript.pdf` -- hasil build dari `manuscript.tex`.
 - `fedxpalm_manuscript_overleaf.zip` -- paket siap unggah ke Overleaf (isinya `manuscript.tex` + semua gambar yang sudah final).
@@ -43,5 +45,7 @@ Item `\todo{...}` (tampil merah di PDF) masih menunggu diisi -- **jangan diisi d
 - Gambar 4 (confusion matrix/PR curve B1 di *held-out test* -- jalankan `scripts/42_generate_b1_test_plots.py`), Gambar 5 (contoh deteksi kualitatif) -- masih ditunggu dari penulis.
 - Gambar 3 (distribusi klien) sifatnya opsional -- angkanya sudah ada di Tabel 2.
 - ~~Pernyataan ketersediaan kode/data, dan acknowledgement~~ (sudah diisi).
+- **Baru sejak reframe**: Tabel 5 (best-round vs final-round mAP50 untuk seed 42 & 123), Tabel 6 (per-class AP50 tiga seed B2), Tabel 7 (matched held-out-test B1 vs B2 tiga seed) -- lihat checklist prioritas lengkap di `EDITORIAL_REVIEW_REFRAME.md` bagian 17. Beberapa item **tidak perlu retraining**, cuma evaluasi ulang checkpoint yang sudah ada.
+- Beberapa `\todo{NEEDS RECENT REFERENCE: ...}` di Related Work (referensi 2022-2025 soal convergence-round variance & multi-seed FL reproducibility) -- perlu dicari manual, jangan dikarang.
 
 Setelah semua `\todo{}` terisi, hapus definisi `\newcommand{\todo}` beserta pemanggilannya (cari-ganti ke teks final) sebelum submit ke JUTIF.
