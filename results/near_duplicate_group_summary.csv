@@ -1,0 +1,10 @@
+bunch_id_a,split_a,bunch_id_b,split_b,num_candidate_pairs,min_hamming,median_hamming,max_hamming,matching_frame_pattern,suspected_frame_offset,offset_support,review_status,review_note
+frame1,test,framesawit39,train,104,0,2.0,3,frame1-N <-> framesawit39-(N+2),-2,38/104,uncertain,
+frame10kombinasi,train,framesawit6,val,1,3,3,3,frame10kombinasi-N <-> framesawit6-(N-312),312,1/1,uncertain,
+frame11,train,framesawit16,val,1,3,3,3,frame11-N <-> framesawit16-(N+6),-6,1/1,uncertain,
+framementah12,test,framesawit22,train,2,3,3.0,3,framementah12-N <-> framesawit22-(N-5),5,2/2,uncertain,
+framementah12,test,framesawit34,val,1,3,3,3,framementah12-N <-> framesawit34-(N+15),-15,1/1,uncertain,
+framementah17,train,framesawit42,test,3,2,3,3,framementah17-N <-> framesawit42-(N-10),10,2/3,uncertain,
+framementah3,train,framesawit2,test,2,3,3.0,3,framementah3-N <-> framesawit2-(N+34),-34,2/2,uncertain,
+framementah7,train,framesawit2,test,2,3,3.0,3,framementah7-N <-> framesawit2-(N+13),-13,2/2,uncertain,
+framementah7,train,framesawit34,val,1,3,3,3,framementah7-N <-> framesawit34-(N+7),-7,1/1,uncertain,

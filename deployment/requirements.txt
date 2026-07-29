@@ -1,0 +1,8 @@
+# Deployment-only dependencies -- deliberately smaller than the repo-root
+# requirements.txt (no opacus/roboflow/pandas: training-only concerns).
+torch==2.5.1
+torchvision==0.20.1
+ultralytics==8.4.51
+opencv-python-headless
+flask==3.0.3
+pyyaml

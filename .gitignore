@@ -1,3 +1,27 @@
+# FedX-Palm generated artifacts (datasets, checkpoints, run logs, results) --
+# these are produced by scripts/ on your GPU box, not checked in. Anchored
+# to repo root (leading /) so these patterns don't also match same-named
+# source directories, e.g. src/fedxpalm/data/ or src/fedxpalm/models/.
+# NOTE: /data and /results use dir/* (not dir/) so specific files inside can
+# be re-included below -- git cannot re-include a file whose parent DIRECTORY
+# is excluded, but it can when only the directory's *contents* are excluded.
+/data/*
+/models/
+/runs/
+/results/*
+/weights/
+*.pt
+*.onnx
+
+# ...EXCEPT the human review decisions + audit evidence, which ARE version
+# controlled: they're small text files, they gate every experiment, and the
+# alias review represents manual work that must survive any machine loss.
+!/data/source_alias_review.csv
+!/data/source_group_aliases.json
+!/results/split_audit.json
+!/results/split_audit.md
+!/results/near_duplicate_group_summary.csv
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

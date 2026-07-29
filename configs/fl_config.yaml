@@ -1,0 +1,50 @@
+# Federated learning topology and local training hyperparameters.
+# Mirrors the original FedX-Palm experiment design (server-aggregator + K
+# client nodes, sequential FedAvg simulation on a single GPU).
+
+model:
+  arch: "yolo11n.pt"     # Ultralytics pretrained nano checkpoint (COCO), fine-tuned per client
+                          # ~2.6M params. Matches the original thesis's scope and the variant
+                          # most comparable oil palm FFB ripeness papers report (nano is the
+                          # common choice there specifically for CPU/edge deployment headroom).
+                          # Backbone/neck/head layer indices (0-10 / 11-22 / 23) also match
+                          # yolo11s/m/l/x, so freeze_stages (dp_config.yaml) and Grad-CAM++'s
+                          # target_layer_idx=22 (xai/gradcam.py) apply unchanged if this is
+                          # ever swapped back up for more capacity.
+  imgsz: 960                      # bumped from 640: B1 ablation showed +0.011 mAP50 / +0.017 mAP50-95
+                                    # (0.857->0.868 / 0.710->0.727) at negligible extra wall-clock cost.
+                                    # Applied globally (not just B1) so Delta_FL/Delta_DP comparisons
+                                    # across B1/B2/E1/E2 stay on the same base resolution.
+
+clients:
+  k_values: [2, 4, 8, 12, 16]     # sweep -- one full federated run per K
+  dirichlet_alpha: 0.5            # smaller alpha => more Non-IID class skew per client
+  partition_seed: 42
+
+federated:
+  rounds: 40                  # operating-point rounds (bumped from 25 -> 40 to chase mAP > 85%)
+  curve_rounds: 5              # cheaper rounds used only for the K-sweep curve (mirrors Table 4.2 note)
+  aggregation: "fedavg"         # w_{t+1} = sum_k (n_k / N) * w_k
+
+local_training:
+  epochs_per_round: 2           # bumped from 1 -> 2: more local signal per round before aggregating
+  batch_size: 8                 # halved from 16: imgsz=960 roughly doubles per-image VRAM, and E1/E2's
+                                  # per-sample DP-SGD (Opacus) adds further overhead on top of that.
+                                  # Override with --batch on scripts/06/07/08 if 8 still OOMs on E1/E2.
+  optimizer: "SGD"               # matches DP-SGD's own literature (SGD, not an adaptive optimizer --
+                                  # Adam/AdamW's second-moment estimate gets corrupted by the per-step
+                                  # Gaussian noise DP-SGD injects, an interaction that isn't as well
+                                  # characterized). Used for B1/B2 too so Delta_FL/Delta_DP comparisons
+                                  # across all four blocks aren't confounded by a change of optimizer.
+  lr0: 0.01
+  momentum: 0.9
+  weight_decay: 0.0005
+  patience: 0                   # no early stop locally -- federated rounds already cap total steps
+  loss: "ciou+cls+dfl"          # Ultralytics default detection loss (CIoU + classification + DFL)
+
+baseline_centralized:
+  epochs: 150                   # bumped from 100 -> 150
+  patience: 30                  # early-stop if val mAP plateaus for 30 epochs
+  batch_size: 16
+  optimizer: "SGD"
+  lr0: 0.01

@@ -1,0 +1,15 @@
+# FedX-Palm v2 -- pinned to match the reproducibility baseline of the original
+# FedX-Palm thesis (Dianty, 2026) so mAP/epsilon numbers stay comparable.
+torch==2.5.1
+torchvision==0.20.1
+ultralytics==8.4.51
+opacus==1.5.4
+roboflow==1.3.11
+numpy<2.0
+opencv-python-headless
+scikit-learn
+pandas
+pyyaml
+matplotlib
+tqdm
+flask==3.0.3

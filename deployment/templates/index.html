@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>FedX-Palm &mdash; Deteksi Kematangan TBS Sawit</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+    h1 { font-size: 1.4rem; }
+    .subtitle { color: #555; margin-bottom: 1.5rem; }
+    form { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
+    input[type=submit] { background: #2e7d32; color: white; border: none; padding: 0.5rem 1.2rem;
+                          border-radius: 6px; cursor: pointer; }
+    input[type=submit]:hover { background: #256428; }
+    .error { color: #b00020; margin-bottom: 1rem; }
+    .result img { max-width: 100%; border-radius: 8px; border: 1px solid #ddd; }
+    .result-label { font-size: 1.1rem; margin: 0.75rem 0; }
+    .badge { display: inline-block; background: #e8f5e9; color: #256428; padding: 0.15rem 0.6rem;
+             border-radius: 999px; font-weight: 600; }
+    footer { color: #999; font-size: 0.8rem; margin-top: 2rem; }
+  </style>
+</head>
+<body>
+  <h1>FedX-Palm</h1>
+  <p class="subtitle">Deteksi tingkat kematangan Tandan Buah Segar (TBS) kelapa sawit &mdash;
+     model YOLOv11 hasil pelatihan federasi, dengan penjelasan Grad-CAM++ pada setiap prediksi.</p>
+
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+  <form action="/predict" method="post" enctype="multipart/form-data">
+    <input type="file" name="image" accept="image/*" required>
+    <input type="submit" value="Deteksi">
+  </form>
+
+  {% if result %}
+    <div class="result">
+      {% if result.detected %}
+        <p class="result-label">Prediksi: <span class="badge">{{ result.class_name }}</span>
+           &mdash; keyakinan {{ "%.1f"|format(result.confidence * 100) }}%</p>
+      {% else %}
+        <p class="result-label">Tidak ada objek TBS yang terdeteksi pada ambang keyakinan yang ditetapkan.</p>
+      {% endif %}
+      <img src="data:image/jpeg;base64,{{ result.overlay_b64 }}" alt="Hasil deteksi dan peta panas Grad-CAM++">
+    </div>
+  {% endif %}
+
+  <footer>FedX-Palm &mdash; YOLOv11 + Federated Learning + Differential Privacy + Explainable AI</footer>
+</body>
+</html>
