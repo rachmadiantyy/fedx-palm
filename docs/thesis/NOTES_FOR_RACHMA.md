@@ -1,5 +1,37 @@
 # Catatan Serah Terima -- FedX-Palm v2
 
+## Update 2026-07-28 -- Cakupan dipersempit ke B1/B2 saja
+
+Kamu meng-upload manuskrip JUTIF (`docs/thesis/manuscript/
+JUTIF_Manuscript_FedXPalm_B1B2.docx`) yang sudah berisi hasil B1/B2 **nyata**
+dari GPU-mu (bukan lagi placeholder): B1 mAP50 *held-out test* = 0,8820,
+B2 mAP50 *validation* rata-rata tiga-*seed* = 0,8775 (SD = 0,0157). Atas
+permintaanmu, Bab 1-5 di `docs/thesis/` sudah dirombak total di *branch*
+`claude/tesis-b1-b2-c77afk` supaya cakupannya dipersempit **hanya ke B1
+(tersentral) dan B2 (federasi FedAvg tanpa DP, K=4)**, mengikuti persis
+cakupan manuskrip tersebut:
+
+- DP-SGD (E1/E2), *Explainable AI* (Grad-CAM++), dan *deployment* Docker
+  yang sebelumnya jadi tulang punggung kerangka FedX-Palm sekarang hanya
+  disebut sebagai **arah pengembangan lanjutan yang direncanakan** (Subbab
+  1.4, 3.9, 5.3) -- bukan lagi bagian dari rumusan masalah/tujuan/
+  hipotesis/hasil bab-bab ini. Infrastruktur kodenya (`src/fedxpalm/
+  privacy/`, `src/fedxpalm/xai/`, `deployment/`, `scripts/07-10`) tetap
+  ada di repo untuk tahap lanjutan, hanya tidak dijalankan/dilaporkan di
+  sini.
+- *Sweep* K $\in \{2,4,8,12,16\}$ juga dipersempit ke **K=4 saja**,
+  mengikuti manuskrip. Infrastruktur *sweep* K lain tetap tersedia di
+  `configs/fl_config.yaml`.
+- Bab 4 sekarang berisi tabel hasil B1 per-kelas dan B2 tiga-*seed* yang
+  asli, dikutip langsung dari manuskrip -- bukan lagi template kosong.
+- Item `[TODO: ...]` yang masih ada di manuskrip asli (penyebab performa
+  lemah kelas *Ripe*, nama co-author, email, tanggal submisi, pernyataan
+  ketersediaan kode/data) dipertahankan sebagai `[TODO]` di Bab 4, **jangan
+  diisi dengan tebakan**.
+- Jika suatu saat kamu lanjut ke DP-SGD/XAI/deployment, itu jadi laporan
+  terpisah yang membangun di atas titik rujukan B1/B2 di *branch* ini --
+  bukan menyisipkannya kembali ke Bab 1-5 yang sudah dipersempit ini.
+
 Ringkasan apa yang sudah dikerjakan di sesi ini, apa yang perlu kamu
 jalankan sendiri di GPU, dan apa yang perlu dikirim balik supaya Bab 4-5
 bisa ditulis dari angka asli (bukan tebakan).
