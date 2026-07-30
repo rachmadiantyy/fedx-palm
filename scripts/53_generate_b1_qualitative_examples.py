@@ -41,7 +41,11 @@ DEFAULT_WEIGHTS = "runs/b1_centralized_leakagefree/train/weights/best.pt"
 def first_image_per_class(images_dir: Path, labels_dir: Path, class_names: list[str]) -> dict[str, Path]:
     """Deterministic, GT-only selection: for each requested class name, the
     first image (sorted by filename) whose label file contains at least one
-    box of that class. Never looks at any model output."""
+    box of that class. Never looks at any model output.
+
+    Each image is assigned to at most one class (priority order = CLASS_ORDER),
+    so a single multi-class image can never be selected twice for two
+    different classes -- this guarantees N_TOTAL visually distinct images."""
     name_to_id = {n: i for i, n in enumerate(class_names)}
     image_paths = sorted(p for p in images_dir.glob("*") if p.suffix.lower() in (".jpg", ".jpeg", ".png"))
     found: dict[str, Path] = {}
@@ -58,10 +62,11 @@ def first_image_per_class(images_dir: Path, labels_dir: Path, class_names: list[
             if not line:
                 continue
             classes_in_image.add(int(line.split()[0]))
-        for cname in list(remaining):
-            if name_to_id.get(cname) in classes_in_image:
+        for cname in CLASS_ORDER:
+            if cname in remaining and name_to_id.get(cname) in classes_in_image:
                 found[cname] = img_path
                 remaining.discard(cname)
+                break  # this image is now "used" -- never reassigned to a second class
     return found
 
 
@@ -109,6 +114,10 @@ def main() -> int:
         save=True, project=str(OUT_DIR), name="predict", exist_ok=False,
     )
     print(f"\nSaved qualitative examples to {OUT_DIR / 'predict'}")
+    print("Ultralytics saves list-sourced predictions generically as image0.jpg, image1.jpg, ... "
+          "in the same order as the selection above, i.e.:")
+    for i, cname in enumerate(CLASS_ORDER[:N_TOTAL]):
+        print(f"  image{i}.jpg -> {cname}")
     print("Each output image already has Ultralytics' own drawn bounding boxes, class labels, "
           "and confidence scores -- use these directly for Figure 4.2, not a redrawn version.")
     return 0
