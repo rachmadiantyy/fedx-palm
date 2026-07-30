@@ -121,13 +121,13 @@ def main() -> int:
             y1 = (cy - h / 2) * args.imgsz
             x2 = (cx + w / 2) * args.imgsz
             y2 = (cy + h / 2) * args.imgsz
-            rel_img = str(img_path.relative_to(REPO_ROOT))
+            rel_img = str(img_path.resolve().relative_to(REPO_ROOT))
             if rel_img not in image_sha256_cache:
                 image_sha256_cache[rel_img] = sha256_of(img_path)
             samples_by_class[cls_id].append({
                 "image_path": rel_img,
                 "image_sha256": image_sha256_cache[rel_img],
-                "label_path": str(lbl_path.relative_to(REPO_ROOT)),
+                "label_path": str(lbl_path.resolve().relative_to(REPO_ROOT)),
                 "label_sha256": lbl_sha256,
                 "box_index": box_idx,
                 "class_id": cls_id,
@@ -176,8 +176,8 @@ def main() -> int:
         "quota_per_class": args.quota_per_class,
         "imgsz": args.imgsz,
         "test_split_identity": {
-            "images_dir": str(images_dir.relative_to(REPO_ROOT)),
-            "labels_dir": str(labels_dir.relative_to(REPO_ROOT)),
+            "images_dir": str(images_dir.resolve().relative_to(REPO_ROOT)),
+            "labels_dir": str(labels_dir.resolve().relative_to(REPO_ROOT)),
             "n_images_on_disk": len(image_paths),
             "n_images_expected": EXPECTED_TEST_IMAGES,
             "n_duplicate_label_rows_removed": total_dupes,
