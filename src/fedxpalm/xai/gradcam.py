@@ -47,12 +47,21 @@ class YOLOGradCAMPlusPlus:
         class_id: int,
         anchor_idx: int | None = None,
         output_size: tuple[int, int] | None = None,
-    ) -> tuple[np.ndarray, float, int]:
-        """Runs one forward+backward pass and returns (cam, raw_score, anchor_idx).
+    ) -> tuple[np.ndarray, float, int, np.ndarray]:
+        """Runs one forward+backward pass and returns (cam, raw_score, anchor_idx,
+        decoded_box_xywh).
 
         `image_tensor`: [1, 3, H, W], already preprocessed (0-1 float), NOT under
         torch.no_grad(). `cam` is a float32 array in [0, 1] resized to
-        `output_size` (defaults to the input image's H, W).
+        `output_size` (defaults to the input image's H, W). `decoded_box_xywh` is
+        the model's own decoded box (center_x, center_y, w, h, in the SAME pixel
+        scale as `image_tensor`'s H/W) for the anchor actually explained -- read
+        from `_y` (Ultralytics' `Detect._inference()` output: `cat((decoded_boxes,
+        scores.sigmoid()), dim=1)`, confirmed via `Detect._get_decode_boxes`/
+        `decode_bboxes(..., xywh=True)`), NOT re-derived here. This anchor may or
+        may not correspond to a correct detection of the queried class_id/GT box --
+        callers must check that separately (e.g. via IoU against the GT box), never
+        assume it from the mere existence of this returned box.
         """
         if image_tensor.dim() != 4 or image_tensor.shape[0] != 1:
             raise ValueError("image_tensor must be a single-image batch [1, 3, H, W]")
@@ -61,11 +70,12 @@ class YOLOGradCAMPlusPlus:
         was_training = self.model.training
         self.model.eval()
 
-        _y, preds = self.model(image_tensor)
+        y, preds = self.model(image_tensor)
         raw_scores = preds["scores"][0]  # [nc, num_anchors], pre-sigmoid
 
         anchor_idx = self._pick_anchor(raw_scores, class_id, anchor_idx)
         score = raw_scores[class_id, anchor_idx]
+        decoded_box_xywh = y[0, :4, anchor_idx].detach().cpu().numpy()  # [cx, cy, w, h], pixel scale
         score.backward(retain_graph=False)
 
         if was_training:
@@ -90,7 +100,7 @@ class YOLOGradCAMPlusPlus:
         h, w = output_size if output_size is not None else image_tensor.shape[-2:]
         cam = cv2.resize(cam, (w, h), interpolation=cv2.INTER_LINEAR)
 
-        return cam, float(score.detach().item()), anchor_idx
+        return cam, float(score.detach().item()), anchor_idx, decoded_box_xywh
 
 
 def overlay_heatmap(image_bgr_uint8: np.ndarray, cam: np.ndarray, alpha: float = 0.45) -> np.ndarray:

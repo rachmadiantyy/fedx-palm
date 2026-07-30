@@ -67,8 +67,8 @@ def run_inference(image_bgr: np.ndarray) -> dict:
         return {"detected": False, "overlay_b64": _to_b64(resized_bgr)}
 
     class_id, anchor_idx, box, confidence = detection
-    cam, _raw_score, _ = _gradcam.generate(tensor.clone(), class_id, anchor_idx=anchor_idx,
-                                            output_size=(IMGSZ, IMGSZ))
+    cam, _raw_score, _, _decoded_box = _gradcam.generate(tensor.clone(), class_id, anchor_idx=anchor_idx,
+                                                          output_size=(IMGSZ, IMGSZ))
     overlay = overlay_heatmap(resized_bgr, cam)
 
     x1, y1, x2, y2 = (int(v) for v in box)

@@ -78,7 +78,8 @@ def evaluate_faithfulness(
                 continue
 
             for box_idx, (class_id, x1, y1, x2, y2) in enumerate(boxes):
-                cam, raw_score, anchor_idx = cam_engine.generate(tensor.clone(), class_id, output_size=(imgsz, imgsz))
+                cam, raw_score, anchor_idx, _decoded_box = cam_engine.generate(
+                    tensor.clone(), class_id, output_size=(imgsz, imgsz))
                 y_c = torch.sigmoid(torch.tensor(raw_score)).item()
 
                 occluded = occlude_top_region(tensor, cam, top_fraction=top_fraction)
