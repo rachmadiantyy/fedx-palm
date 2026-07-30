@@ -473,23 +473,34 @@ Karena ukuran sampel antar klien berbeda substansial (Tabel 4.0c), laju
 berbeda per klien, sehingga jumlah langkah optimisasi privat per ronde
 juga berbeda:
 
-Tabel 4.8. Laju *sampling* dan langkah optimisasi privat per klien per
-ronde (logical batch=64, 2 epoch lokal/ronde)
+Tabel 4.8. Laju *sampling*, langkah optimisasi privat, dan ε per klien
+(logical batch=64, 2 epoch lokal/ronde) -- ε identik antara E1 dan E2 pada
+klien dan ronde yang sama
 
-| Klien | Citra | Laju *sampling* $q$ | Langkah privat/ronde | Langkah privat kumulatif @ ronde 20 |
-|---|---:|---:|---:|---:|
-| 0 | 860 | 0,071429 | 28 | 560 |
-| 1 | 775 | 0,076923 | 26 | 520 |
-| 2 | 5.305 | 0,012048 | 166 | 3.320 |
-| 3 | 1.997 | 0,031250 | 64 | 1.280 |
+| Klien | Citra | Laju *sampling* $q$ | Langkah privat/ronde | Langkah kumulatif @ ronde 20 | ε @ ronde 19 (terpilih) | ε @ ronde 20 (akhir) |
+|---|---:|---:|---:|---:|---:|---:|
+| 0 | 860 | 0,071429 | 28 | 560 | 21,2486 | 21,8765 |
+| 1 | 775 | 0,076923 | 26 | 520 | **22,1062** | **22,7626** |
+| 2 | 5.305 | 0,012048 | 166 | 3.320 | **7,8085** | **8,0190** |
+| 3 | 1.997 | 0,031250 | 64 | 1.280 | 13,4831 | 13,8627 |
 
-Klien 2 (data terbanyak, laju *sampling* terkecil) menempuh jauh lebih
-banyak langkah optimisasi privat per ronde (166) dibanding Klien 1 (26) --
-meski ε yang dilaporkan bab ini adalah ε maksimum lintas klien (Subbab
-4.6.1) sebagai ringkasan konservatif *worst-case*, bukan nilai per klien
-individual. [PERLU VERIFIKASI: nilai ε per klien individual, tersedia pada
-`epsilon_per_client_per_round` di berkas JSON hasil E1/E2, belum diekstrak
-terpisah untuk tabel ini.]
+Nilai ε per klien di atas identik persis antara E1 dan E2 (diverifikasi
+langsung dari `epsilon_per_client_at_best_round`/`epsilon_per_client_at
+_final_round` pada kedua berkas JSON hasil), menegaskan ulang bahwa ε
+tidak bergantung pada cakupan parameter *trainable* (Subbab 4.6.3). Pola
+yang menonjol: **Klien 1 (klien terkecil, 775 citra) mencapai ε
+tertinggi** (22,1062 @ ronde 19), sedangkan **Klien 2 (klien terbesar,
+5.305 citra) mencapai ε terendah** (7,8085) -- berlawanan dengan intuisi
+"makin banyak data, makin boros anggaran privasi". Penyebabnya adalah laju
+*sampling* $q$: Klien 1 memiliki $q$ tertinggi (0,076923) meski jumlah
+langkah privat per rondenya paling sedikit (26), sedangkan Klien 2
+memiliki $q$ terendah (0,012048) meski menempuh langkah privat terbanyak
+(166) -- pada mekanisme *accountant* PRV, laju *sampling* yang tinggi
+menaikkan kebocoran privasi per langkah secara lebih dominan daripada
+penurunan yang diperoleh dari lebih sedikitnya jumlah langkah. ε maksimum
+yang dilaporkan sebagai ringkasan *worst-case* di seluruh bab ini (Subbab
+4.5.1-4.5.2, 4.6.1) karenanya berasal dari Klien 1, bukan klien dengan
+data terbanyak.
 
 ### 4.6.3 Hubungan Privasi dan Utilitas
 
