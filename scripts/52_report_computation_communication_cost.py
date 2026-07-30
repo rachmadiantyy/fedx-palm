@@ -55,7 +55,7 @@ E1_TRAINABLE_PARAMS = 2_590_994
 E2_TRAINABLE_PARAMS = 929_522
 K_CLIENTS = 4
 
-B1_RESULTS_CSV = REPO_ROOT / "runs/b1_centralized/train/results.csv"
+B1_RESULTS_CSV = REPO_ROOT / "runs/b1_centralized_leakagefree/train/results.csv"
 B2_RESULTS_JSON = REPO_ROOT / "results/b2_k4_seed42_leakagefree_stageA_seedfix.json"
 E1_HISTORY = REPO_ROOT / "runs/final_dp_canonical/e1_full/seed42_20r/history.json"
 E2_HISTORY = REPO_ROOT / "runs/final_dp_canonical/e2_partial_p2/seed42_20r/history.json"
@@ -110,15 +110,24 @@ def main() -> int:
         print(f"FAIL: {OUT_JSON} already exists -- refusing to overwrite")
         return 1
 
-    missing = [p for p in (B1_RESULTS_CSV, B2_RESULTS_JSON, E1_HISTORY, E2_HISTORY,
-                           E1_RESULT_JSON, E2_RESULT_JSON) if not p.exists()]
-    if missing:
+    # B1 is reported best-effort: its runs/ directory has been observed to move
+    # between machines/sessions (e.g. b1_centralized -> b1_centralized_leakagefree),
+    # and its wall-clock time is a nice-to-have, not something B2/E1/E2's own
+    # report should be blocked on if it can't be found.
+    missing_required = [p for p in (B2_RESULTS_JSON, E1_HISTORY, E2_HISTORY,
+                                    E1_RESULT_JSON, E2_RESULT_JSON) if not p.exists()]
+    if missing_required:
         print("FAIL: required file(s) not found:")
-        for p in missing:
+        for p in missing_required:
             print(f"  {p}")
         return 1
 
-    b1_time = read_b1_time(B1_RESULTS_CSV)
+    if B1_RESULTS_CSV.exists():
+        b1_time = read_b1_time(B1_RESULTS_CSV)
+    else:
+        print(f"[!] {B1_RESULTS_CSV} not found -- B1 wall-clock time omitted from this report "
+              f"(B2/E1/E2 are unaffected)")
+        b1_time = None
 
     with open(B2_RESULTS_JSON) as f:
         b2 = json.load(f)
@@ -204,7 +213,10 @@ def main() -> int:
         json.dump(report, f, indent=2)
 
     print(f"{'experiment':>14}{'rounds/epochs':>15}{'total_sec':>12}{'sec/round':>12}{'params_comm':>13}")
-    print(f"{'B1':>14}{b1_time['n_epochs']:>15}{b1_time['total_wall_clock_sec']:>12.1f}{'n/a':>12}{'n/a':>13}")
+    if b1_time is not None:
+        print(f"{'B1':>14}{b1_time['n_epochs']:>15}{b1_time['total_wall_clock_sec']:>12.1f}{'n/a':>12}{'n/a':>13}")
+    else:
+        print(f"{'B1':>14}{'n/a (not found)':>15}")
     print(f"{'B2':>14}{b2_time['n_rounds']:>15}{b2_time['total_wall_clock_sec']:>12.1f}"
           f"{b2_time['mean_round_sec']:>12.1f}{TOTAL_PARAMS:>13}")
     print(f"{'E1':>14}{e1_time['n_rounds']:>15}{e1_time['total_wall_clock_sec']:>12.1f}"
