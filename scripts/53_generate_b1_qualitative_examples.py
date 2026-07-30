@@ -86,7 +86,7 @@ def main() -> int:
     with open("configs/dataset.yaml") as f:
         ds_cfg = yaml.safe_load(f)
     class_names = ds_cfg["names"]
-    splits_dir = Path(ds_cfg["output_dir"])
+    splits_dir = Path(ds_cfg["output_dir"]).resolve()
     images_dir = splits_dir / "test" / "images"
     labels_dir = splits_dir / "test" / "labels"
 
