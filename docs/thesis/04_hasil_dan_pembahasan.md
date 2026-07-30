@@ -151,29 +151,46 @@ Tabel 4.1. B1 *baseline* tersentral -- hasil *held-out test*
 *Precision* keseluruhan = 0,8745; *Recall* keseluruhan = 0,8653.
 
 *Ripe* adalah kelas dengan performa terlemah pada B1, baik dari sisi AP50
-maupun AP50-95, dengan selisih besar terhadap kelas lain. [TODO: Selidiki
-dan laporkan penyebabnya begitu analisis *confusion matrix*/dataset
-tersedia -- tidak ada penyebab pasti yang diklaim di sini.] Konsisten
-dengan struktur kelas pada Subbab 2.1.2, dua kelas yang secara struktural
-paling berbeda (*Abnormal*, *Empty Bunch*) serta tahap kematangan yang
-paling tidak ambigu secara visual (*Unripe*) mencapai nilai AP50 tertinggi
-(seluruhnya $\ge 0{,}9817$), sedangkan *Ripe* -- tahap tengah yang diapit
-*Underripe* dan *Overripe* -- mencapai AP50 terendah (0,5571). *Underripe*
-(0,8275), juga tahap tengah, menunjukkan nilai AP50 menengah yang secara
-umum konsisten dengan pola ini, meski *Overripe* (0,9406) tidak sepenuhnya
-sesuai dengan pola tersebut; penjelasan atas ketidaksesuaian ini
-diserahkan pada analisis *confusion matrix* yang disebutkan di atas.
+maupun AP50-95, dengan selisih besar terhadap kelas lain. *Confusion
+matrix* ternormalisasi (`confusion_matrix_normalized.png`, Gambar 4.1)
+mengonfirmasi penyebabnya secara langsung: dari seluruh instans *Ripe*
+sebenarnya, hanya 60% yang diprediksi benar sebagai *Ripe*, sedangkan 35%
+salah diprediksi sebagai *Underripe* dan 5% sebagai *Overripe* -- artinya
+kesalahan model pada kelas *Ripe* terkonsentrasi hampir seluruhnya pada
+dua tahap kematangan yang bersebelahan dengannya, bukan pada kelas yang
+secara visual tidak berkaitan. Konsisten dengan struktur kelas pada
+Subbab 2.1.2, dua kelas yang secara struktural paling berbeda (*Abnormal*,
+*Empty Bunch*) serta tahap kematangan yang paling tidak ambigu secara
+visual (*Unripe*) mencapai nilai AP50 tertinggi (seluruhnya
+$\ge 0{,}9817$), sedangkan *Ripe* -- tahap tengah yang diapit *Underripe*
+dan *Overripe* -- mencapai AP50 terendah (0,5571). *Underripe* (0,8275),
+juga tahap tengah, menunjukkan nilai AP50 menengah yang secara umum
+konsisten dengan pola ini, dan pada *confusion matrix* yang sama juga
+terlihat 35% instans *Underripe* sebenarnya salah diprediksi sebagai
+*Ripe* (kesalahan batas *Ripe*/*Underripe* bersifat dua arah/simetris),
+sedangkan *Overripe* (0,9406) hanya tertukar dengan *Ripe* pada 5% instans
+sebenarnya -- menjelaskan mengapa *Overripe* tidak sepenuhnya sesuai
+dengan pola tersebut.
 
 **Gambar 4.1** dan **4.1b** BUKAN grafik batang gambar-tangan: keduanya
-diambil langsung dari `confusion_matrix.png` dan `PR_curve.png` yang
-dihasilkan Ultralytics sendiri saat mengevaluasi B1 pada *split held-out
-test* (jalankan `python scripts/42_generate_b1_test_plots.py --weights
+diambil langsung dari `confusion_matrix_normalized.png` dan
+`box_PR_curve.png` yang dihasilkan Ultralytics sendiri saat mengevaluasi B1
+pada *split held-out test* (jalankan `python
+scripts/42_generate_b1_test_plots.py --weights
 runs/b1_centralized_leakagefree/train/weights/best.pt --data
 data/splits_v2/data.yaml`, lihat Subbab 3.6/3.8) -- angka yang ditampilkan
 dijamin sama persis dengan Tabel 4.1 karena berasal dari evaluasi yang
-sama, hanya dengan `plots=True` dinyalakan. **Gambar 4.2**: 2-4 citra
-*held-out test* dengan kotak deteksi, label kelas, dan skor keyakinan hasil
-prediksi B1, termasuk minimal satu contoh dari kelas Ripe.
+sama, hanya dengan `plots=True` dinyalakan. Kedua berkas ini sudah diterima
+dan disimpan di `docs/thesis/manuscript/` (bersama variannya
+`confusion_matrix.png` / `box_F1_curve.png` / `box_P_curve.png` /
+`box_R_curve.png`), dan telah diverifikasi memberikan angka yang sama
+persis dengan Tabel 4.1 (mAP@0,5 = 0,882; Ripe = 0,557; dst). **Gambar
+4.2**: 2-4 citra *held-out test* dengan kotak deteksi, label kelas, dan
+skor keyakinan hasil prediksi B1, termasuk minimal satu contoh dari kelas
+Ripe -- **[TODO]** *belum diterima*: jalankan
+`scripts/53_generate_b1_qualitative_examples.py` (lihat output di
+`runs/b1_qualitative_examples/predict/`) dan unggah hasilnya sebelum
+subbab ini dianggap lengkap.
 
 ### 4.2.2 Hasil B2: Federated Learning Tanpa DP
 
