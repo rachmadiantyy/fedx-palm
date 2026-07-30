@@ -185,12 +185,20 @@ dan disimpan di `docs/thesis/manuscript/` (bersama variannya
 `confusion_matrix.png` / `box_F1_curve.png` / `box_P_curve.png` /
 `box_R_curve.png`), dan telah diverifikasi memberikan angka yang sama
 persis dengan Tabel 4.1 (mAP@0,5 = 0,882; Ripe = 0,557; dst). **Gambar
-4.2**: 2-4 citra *held-out test* dengan kotak deteksi, label kelas, dan
-skor keyakinan hasil prediksi B1, termasuk minimal satu contoh dari kelas
-Ripe -- **[TODO]** *belum diterima*: jalankan
-`scripts/53_generate_b1_qualitative_examples.py` (lihat output di
-`runs/b1_qualitative_examples/predict/`) dan unggah hasilnya sebelum
-subbab ini dianggap lengkap.
+4.2**: 4 citra *held-out test* dengan kotak deteksi, label kelas, dan skor
+keyakinan hasil prediksi B1 (output asli `model.predict()`, bukan gambar
+tangan), dihasilkan `scripts/53_generate_b1_qualitative_examples.py`
+melalui seleksi berbasis GT (satu citra berbeda per kelas, tanpa
+*cherry-picking*), sudah diterima dan disimpan sebagai
+`docs/thesis/manuscript/qual_ripe.jpg` / `qual_abnormal.jpg` /
+`qual_unripe.jpg` / `qual_overripe.jpg`. Sudah diverifikasi memuat kotak
+deteksi asli beserta skor keyakinan; `qual_ripe.jpg` menunjukkan kelas
+*Ripe* (kelas terlemah B1) terdeteksi benar dengan keyakinan tinggi
+(0,96). Catatan: `qual_ripe.jpg` dan `qual_abnormal.jpg` adalah dua crop
+augmentasi (flip) dari *scene* multi-tandan yang sama (Underripe,
+Abnormal, Ripe, dan Overripe muncul bersamaan dalam satu bingkai),
+sedangkan `qual_unripe.jpg` dan `qual_overripe.jpg` masing-masing berasal
+dari *scene* yang berbeda.
 
 ### 4.2.2 Hasil B2: Federated Learning Tanpa DP
 
