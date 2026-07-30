@@ -148,7 +148,7 @@ def main() -> int:
             "protocol_fingerprint": exp["protocol_fingerprint"],
             "run_fingerprint": exp["run_fingerprint"],
             "eval_config": {"split": "test", "imgsz": IMGSZ, "device": args.device},
-            "dataset_test_split_path": str(test_images_dir.relative_to(REPO_ROOT)),
+            "dataset_test_split_path": str(test_images_dir.resolve().relative_to(REPO_ROOT)),
             "n_test_images_on_disk": n_test_images_on_disk,
             "n_test_images_expected": EXPECTED_TEST_IMAGES,
             "n_boxes_total": metrics["n_boxes_total"],
