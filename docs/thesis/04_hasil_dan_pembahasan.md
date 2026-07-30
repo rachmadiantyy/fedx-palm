@@ -589,7 +589,7 @@ tersedia (`results/xai_matched/visual_panels/`, 2 sampel per kelas), badan
 tesis menampilkan tiga representatif: satu kelas dengan deteksi berhasil
 pada ketiga model (mis. *Unripe* atau *Underripe*), satu kelas sulit
 (*Ripe* atau *Overripe*), dan satu-dua panel *Empty Bunch* (Subbab 4.7.6);
-sisanya dilampirkan pada Lampiran [TODO: nomor lampiran].
+sisanya dilampirkan pada **Lampiran A**.
 
 ### 4.7.6 Interpretasi XAI pada *Empty Bunch*
 
