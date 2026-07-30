@@ -106,7 +106,7 @@ E1/E2 (*flat* versus *per-layer*, Subbab 4.4) juga divalidasi pada ketiga
 komputasi (setiap *run* 20 ronde memakan 2-2,5 jam, Subbab 4.8.1),
 konfigurasi E1/E2 *final* yang dilaporkan (Subbab 4.5 dst.) hanya
 dijalankan pada **satu *seed* (42)** -- dicatat sebagai keterbatasan
-(Subbab 4.9.3).
+(Subbab 4.10.3).
 
 ### 4.1.4 Protokol Pemilihan Model dan *Held-Out Test*
 
@@ -648,10 +648,10 @@ pada kode saat ini, dicatat sebagai arah kerja mendatang (Subbab 4.10.4).
 
 ## 4.9 Implementasi dan *Deployment* Sistem
 
-[TODO: bagian ini memerlukan detail konkret yang belum diverifikasi pada
-sesi penulisan ini -- spesifikasi VPS, status *build* Docker, dan hasil
-pengujian fungsional. Jangan menambahkan klaim *latency* atau *throughput*
-bila belum dilakukan pengukuran formal.]
+[TODO: spesifikasi VPS sudah dikonfirmasi (Tabel 4.13), namun status
+*build* Docker dan hasil pengujian fungsional masih perlu dikonfirmasi.
+Jangan menambahkan klaim *latency* atau *throughput* bila belum dilakukan
+pengukuran formal.]
 
 ### 4.9.1 Arsitektur *Deployment*
 
@@ -671,9 +671,21 @@ penulis.]
 
 ### 4.9.3 *Deployment* pada VPS
 
-Aplikasi di-*deploy* pada sebuah VPS (*Virtual Private Server*). [TODO:
-spesifikasi VPS (penyedia, vCPU/RAM, sistem operasi), struktur *service*,
-dan mekanisme *startup*/*restart* perlu dikonfirmasi.]
+Aplikasi di-*deploy* pada sebuah VPS (*Virtual Private Server*) dengan
+spesifikasi berikut:
+
+Tabel 4.13. Spesifikasi VPS *deployment*
+
+| Parameter | Nilai |
+|---|---|
+| CPU | 2 vCPU |
+| Memori | 4 GB RAM |
+| Penyimpanan | 60 GB SSD |
+| Sistem operasi | Ubuntu 24.04 |
+| Wilayah (*region*) | Jakarta |
+
+[TODO: struktur *service* (mis. `systemd`/`docker run` langsung/*reverse
+proxy*) dan mekanisme *startup*/*restart* belum dikonfirmasi.]
 
 ### 4.9.4 Pengujian Fungsional
 
