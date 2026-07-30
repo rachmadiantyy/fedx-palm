@@ -1,45 +1,77 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>FedX-Palm &mdash; Deteksi Kematangan TBS Sawit</title>
+  <title>FedX-Palm &mdash; Oil Palm FFB Ripeness Detection</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
-    h1 { font-size: 1.4rem; }
-    .subtitle { color: #555; margin-bottom: 1.5rem; }
-    form { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
-    input[type=submit] { background: #2e7d32; color: white; border: none; padding: 0.5rem 1.2rem;
-                          border-radius: 6px; cursor: pointer; }
-    input[type=submit]:hover { background: #256428; }
+    body { font-family: system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem;
+           color: #1a1a1a; background: #f4f5f7; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.15rem; }
+    .subtitle { color: #666; margin-bottom: 1.5rem; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;
+              margin-bottom: 1.5rem; }
+    .stat-card { background: #fff; border: 1px solid #e3e3e6; border-radius: 8px; padding: 0.9rem 1rem; }
+    .stat-label { font-size: 0.7rem; letter-spacing: 0.04em; text-transform: uppercase; color: #888; }
+    .stat-value { font-size: 1.3rem; font-weight: 700; margin-top: 0.2rem; }
+    .panel { background: #fff; border: 1px solid #e3e3e6; border-radius: 8px; padding: 1.25rem;
+             margin-bottom: 1.5rem; }
+    .panel h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+    form { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+    input[type=file] { flex: 1; min-width: 200px; }
+    input[type=submit] { background: #2952cc; color: #fff; border: none; padding: 0.55rem 1.2rem;
+                          border-radius: 6px; cursor: pointer; font-weight: 600; }
+    input[type=submit]:hover { background: #1f3fa3; }
+    .hint { color: #777; font-size: 0.82rem; margin-top: 0.5rem; width: 100%; }
     .error { color: #b00020; margin-bottom: 1rem; }
     .result img { max-width: 100%; border-radius: 8px; border: 1px solid #ddd; }
-    .result-label { font-size: 1.1rem; margin: 0.75rem 0; }
-    .badge { display: inline-block; background: #e8f5e9; color: #256428; padding: 0.15rem 0.6rem;
+    .result-label { font-size: 1.05rem; margin: 0 0 0.75rem; }
+    .badge { display: inline-block; background: #e8f0ff; color: #1f3fa3; padding: 0.15rem 0.6rem;
              border-radius: 999px; font-weight: 600; }
-    footer { color: #999; font-size: 0.8rem; margin-top: 2rem; }
+    footer { color: #999; font-size: 0.78rem; margin-top: 2rem; }
   </style>
 </head>
 <body>
-  <h1>FedX-Palm</h1>
-  <p class="subtitle">Deteksi tingkat kematangan Tandan Buah Segar (TBS) kelapa sawit &mdash;
-     model YOLOv11 hasil pelatihan federasi, dengan penjelasan Grad-CAM++ pada setiap prediksi.</p>
+  <h1>FedX-Palm &mdash; Oil Palm FFB Ripeness Detection</h1>
+  <p class="subtitle">YOLOv11 + Federated Learning + Grad-CAM++ explainability</p>
 
-  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">Operating model</div>
+      <div class="stat-value">{{ stats.model_label }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">mAP@0.5</div>
+      <div class="stat-value">{{ stats.map50 }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">FRR (XAI)</div>
+      <div class="stat-value">{{ stats.frr }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Confidence threshold</div>
+      <div class="stat-value">{{ stats.conf_threshold }}</div>
+    </div>
+  </div>
 
-  <form action="/predict" method="post" enctype="multipart/form-data">
-    <input type="file" name="image" accept="image/*" required>
-    <input type="submit" value="Deteksi">
-  </form>
+  <div class="panel">
+    <h2>Upload a palm bunch image</h2>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <form action="/predict" method="post" enctype="multipart/form-data">
+      <input type="file" name="image" accept="image/*" required>
+      <input type="submit" value="Detect &amp; Explain">
+      <span class="hint">Pick a JPG/PNG image and submit.</span>
+    </form>
+  </div>
 
   {% if result %}
-    <div class="result">
+    <div class="panel result">
       {% if result.detected %}
-        <p class="result-label">Prediksi: <span class="badge">{{ result.class_name }}</span>
-           &mdash; keyakinan {{ "%.1f"|format(result.confidence * 100) }}%</p>
+        <p class="result-label">Prediction: <span class="badge">{{ result.class_name }}</span>
+           &mdash; confidence {{ "%.1f"|format(result.confidence * 100) }}%</p>
       {% else %}
-        <p class="result-label">Tidak ada objek TBS yang terdeteksi pada ambang keyakinan yang ditetapkan.</p>
+        <p class="result-label">No FFB object detected at the configured confidence threshold.</p>
       {% endif %}
-      <img src="data:image/jpeg;base64,{{ result.overlay_b64 }}" alt="Hasil deteksi dan peta panas Grad-CAM++">
+      <img src="data:image/jpeg;base64,{{ result.overlay_b64 }}" alt="Detection result with Grad-CAM++ heatmap">
     </div>
   {% endif %}
 

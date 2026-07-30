@@ -25,6 +25,16 @@ IMGSZ = int(os.environ.get("FEDXPALM_IMGSZ", "640"))
 CONF_THRESHOLD = float(os.environ.get("FEDXPALM_CONF_THRESHOLD", "0.25"))
 TARGET_LAYER_IDX = int(os.environ.get("FEDXPALM_GRADCAM_LAYER", "22"))
 
+# Dashboard display only -- NOT read from the loaded checkpoint, so these
+# must be kept in sync by hand with whichever model is actually mounted at
+# WEIGHTS_PATH. Defaults below match the locked B2 seed42 held-out test
+# result (Bab 4 Tabel 4.2b: mAP50=0.7951) and its matched-sample XAI result
+# (Tabel 4.9: FRR=0.109) -- override via env var if a different checkpoint
+# (e.g. E1/E2) is ever mounted instead, rather than editing this file.
+MODEL_LABEL = os.environ.get("FEDXPALM_MODEL_LABEL", "B2 federated, K=4")
+MODEL_MAP50 = os.environ.get("FEDXPALM_MODEL_MAP50", "0.7951")
+MODEL_FRR = os.environ.get("FEDXPALM_MODEL_FRR", "0.109")
+
 app = Flask(__name__)
 
 with open(Path(__file__).resolve().parent.parent / "configs" / "dataset.yaml") as f:
@@ -89,24 +99,30 @@ def _to_b64(image_bgr: np.ndarray) -> str:
     return base64.b64encode(buf).decode("ascii") if ok else ""
 
 
+def _stats():
+    return {"model_label": MODEL_LABEL, "map50": MODEL_MAP50, "frr": MODEL_FRR,
+            "conf_threshold": CONF_THRESHOLD}
+
+
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html", result=None)
+    return render_template("index.html", result=None, error=None, stats=_stats())
 
 
 @app.route("/predict", methods=["POST"])
 def predict():
     file = request.files.get("image")
     if file is None or file.filename == "":
-        return render_template("index.html", result=None, error="Pilih file citra TBS terlebih dahulu.")
+        return render_template("index.html", result=None, error="Pilih file citra TBS terlebih dahulu.",
+                               stats=_stats())
 
     data = np.frombuffer(file.read(), dtype=np.uint8)
     image_bgr = cv2.imdecode(data, cv2.IMREAD_COLOR)
     if image_bgr is None:
-        return render_template("index.html", result=None, error="File bukan citra yang valid.")
+        return render_template("index.html", result=None, error="File bukan citra yang valid.", stats=_stats())
 
     result = run_inference(image_bgr)
-    return render_template("index.html", result=result, error=None)
+    return render_template("index.html", result=result, error=None, stats=_stats())
 
 
 @app.route("/health", methods=["GET"])
