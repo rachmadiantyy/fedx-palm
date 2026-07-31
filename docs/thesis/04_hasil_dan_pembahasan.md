@@ -1,22 +1,4 @@
-<!--
-CATATAN PENULISAN (hapus komentar ini sebelum submit):
-Bab ini diisi dengan angka NYATA hasil eksperimen B1/B2/E1/E2/XAI/biaya
-yang sudah dijalankan penulis di GPU (NVIDIA GeForce RTX 4080, 16 GB
-VRAM). Bagian B1/B2 dikutip langsung dari
-docs/thesis/manuscript/JUTIF_Manuscript_FedXPalm_B1B2.docx dan Bab 3.
-Bagian E1/E2 (DP-SGD canonical, 20 ronde, seed 42), audit pipeline DP
-(17/17, results/audit_dp_seedfix/dp_pipeline_sanity_audit.json),
-perbandingan tersandingkan B2-E1-E2 pada held-out test, analisis XAI
-matched-sample (Grad-CAM++), dan laporan biaya komputasi/komunikasi
-berasal dari results/final_dp_canonical/, results/final_b2/,
-results/xai_matched/, dan results/cost_report/ (lihat scripts/36, 38,
-44, 45, 47, 48, 49, 50, 51, 52). Item [TODO: ...] yang masih tersisa
-(penyebab pasti kelas Ripe lemah, detail spesifikasi VPS/pengujian
-fungsional deployment, code/data availability statement) dipertahankan
-sebagai [TODO] -- JANGAN diisi dengan tebakan.
--->
-
-# CHAPTER 4 -- HASIL DAN PEMBAHASAN
+# BAB 4 -- HASIL DAN PEMBAHASAN
 
 ## 4.1 Konfigurasi dan Protokol Eksperimen
 

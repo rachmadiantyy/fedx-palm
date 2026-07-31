@@ -1,16 +1,4 @@
-<!--
-CATATAN PENULISAN (hapus komentar ini sebelum submit):
-Bab ini diperluas agar konsisten dengan cakupan penuh Bab 1-4: mencakup
-kesimpulan dan saran atas DP-SGD (E1/E2), XAI (Grad-CAM++), biaya
-komputasi/komunikasi, dan deployment -- yang pada draf sebelumnya sengaja
-ditunda sebagai "arah lanjutan belum dikerjakan" (lihat riwayat pada
-docs/thesis/NOTES_FOR_RACHMA.md). Seluruh komponen tersebut sekarang
-SUDAH dikerjakan dan dilaporkan dengan hasil nyata pada Bab 4, sehingga
-kesimpulan/keterbatasan/saran di bawah ini ditulis berdasarkan hasil
-NYATA tersebut, bukan lagi sebagai rencana yang belum terealisasi.
--->
-
-# CHAPTER 5 -- KESIMPULAN DAN SARAN
+# BAB 5 -- KESIMPULAN DAN SARAN
 
 ## 5.1 Kesimpulan
 
@@ -49,7 +37,7 @@ NYATA tersebut, bukan lagi sebagai rencana yang belum terealisasi.
    tetap menunjukkan pembelajaran yang koheren dan *recall* yang cukup
    tinggi pada sebagian kelas. E1 dan E2 tercatat **praktis setara** pada
    *held-out test* meski cakupan parameter *trainable*-nya sangat berbeda
-   (2.591.010 vs 929.522) -- pembatasan cakupan parameter (*partial* DP)
+   (2.590.994 vs 929.522) -- pembatasan cakupan parameter (*partial* DP)
    **tidak** memberikan keunggulan utilitas maupun privasi yang jelas
    (ε maksimum identik, 22,106, karena akuntansi PRV ditentukan oleh jumlah
    langkah optimisasi, bukan jumlah parameter), hanya keunggulan komputasi

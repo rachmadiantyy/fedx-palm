@@ -164,7 +164,7 @@ eksperimen B2/E1/E2 akan salah secara diam-diam:
    dari `.yaml` lalu cuma mentransplantasi tensor yang cocok nama+bentuk.
    Ini baru ketahuan lewat *crash* FedAvg di ronde kedua. Diperbaiki
    dengan `src/fedxpalm/federated/trainer_utils.py` -- lihat penjelasan
-   lengkap di komentar file itu dan di Bab 3 Subbab 3.6.2.
+   lengkap di komentar file itu dan di Bab 3 Subbab 3.5.3.
 
 Keduanya sudah divalidasi lewat smoke test 3-ronde FedAvg + DP-SGD di
 sandbox (CPU, data sintetis) sebelum kode ini di-commit.

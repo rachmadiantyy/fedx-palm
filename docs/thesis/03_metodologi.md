@@ -1,19 +1,4 @@
-<!--
-CATATAN PENULISAN (hapus komentar ini sebelum submit):
-Bab ini diperluas agar konsisten dengan cakupan penuh Bab 1, 2, dan 4:
-mencakup metodologi DP-SGD (Opacus, verifikasi kontrak loss, pemilihan
-strategi clipping, E1/E2, akuntansi privasi per klien), protokol XAI
-Grad-CAM++ matched-sample, analisis biaya komputasi/komunikasi, dan
-containerization/deployment -- yang pada draf sebelumnya sengaja dihapus
-dan dipindah ke "cakupan yang ditunda" (lihat riwayat pada
-docs/thesis/NOTES_FOR_RACHMA.md). Seluruh angka pada bab ini dikutip
-langsung dari eksperimen nyata yang sudah dijalankan penulis di GPU
-(lihat docs/thesis/04_hasil_dan_pembahasan.md untuk hasilnya) -- cross-
-check terhadap configs/*.yaml dan scripts/*.py sebelum submit bila
-konfigurasi berubah.
--->
-
-# CHAPTER 3 -- METODOLOGI PENELITIAN
+# BAB 3 -- METODOLOGI PENELITIAN
 
 ## 3.1 Rancangan Penelitian
 

@@ -1,17 +1,4 @@
-<!--
-CATATAN PENULISAN (hapus komentar ini sebelum submit):
-Bab ini diperluas agar konsisten dengan cakupan penuh Bab 1 dan Bab 4:
-mencakup teori formal DP-SGD ((ε,δ)-DP, gradient clipping, mekanisme
-Gaussian, akuntansi privasi, Opacus), Explainable AI (Grad-CAM++, Average
-Drop, Focus Retention Rate), dan containerization/deployment -- yang pada
-draf sebelumnya sengaja dihapus dari landasan teori inti (lihat riwayat
-pada docs/thesis/NOTES_FOR_RACHMA.md), namun sekarang relevan penuh
-karena E1/E2/XAI/deployment sudah dikerjakan dan dilaporkan di Bab 4.
-Rujukan bernomor [n] adalah placeholder -- lengkapi dengan sitasi pustaka
-aktual sebelum submit.
--->
-
-# CHAPTER 2 -- LANDASAN TEORI
+# BAB 2 -- LANDASAN TEORI
 
 Bab ini membahas dasar-dasar teori yang menopang penelitian ini, dimulai
 dari domain aplikasi (kematangan TBS sawit), arsitektur detektor (YOLOv11),
@@ -29,12 +16,12 @@ Kelapa sawit (*Elaeis guineensis* Jacq.) merupakan penghasil minyak nabati
 dengan produktivitas tertinggi per hektar di antara komoditas serupa.
 Buahnya tumbuh dalam Tandan Buah Segar (TBS) yang dapat memuat ribuan
 brondolan. Kualitas *Crude Palm Oil* (CPO) yang dihasilkan sangat ditentukan
-oleh tingkat kematangan TBS saat dipanen [n]. Tandan yang dipanen terlalu
-dini, yang dikategorikan sebagai *Unripe* atau *Underripe*, memiliki
+oleh tingkat kematangan TBS saat dipanen [1], [2]. Tandan yang dipanen
+terlalu dini, yang dikategorikan sebagai *Unripe* atau *Underripe*, memiliki
 kandungan minyak rendah karena pembentukan minyak di mesokarp belum optimal.
 Sebaliknya, tandan yang terlambat dipanen (*Overripe*) mengalami peningkatan
 kadar Asam Lemak Bebas (*Free Fatty Acid*, FFA) yang menurunkan mutu CPO
-[n].
+[1], [2].
 
 ### 2.1.2 Kriteria Kematangan Berdasarkan Perubahan Warna
 
@@ -116,7 +103,7 @@ seperti pada generasi YOLO lebih awal. Penelitian ini memakai varian
 **nano** (YOLOv11n, 2.591.010 parameter setelah konversi GroupNorm --
 Subbab 2.5) karena mayoritas penelitian sejenis pada domain kematangan TBS
 sawit yang ditinjau memilih varian ini demi ruang gerak *deployment*
-CPU/*edge* [n][n], sekaligus lapisan konvolusi terakhir pada blok `C3k2`
+CPU/*edge* [1], [3], sekaligus lapisan konvolusi terakhir pada blok `C3k2`
 (indeks tahap 22) yang memberi masukan ke kepala `Detect` menjadi
 *target layer* analisis Grad-CAM++ pada Subbab 2.6.
 
@@ -155,13 +142,13 @@ merekonstruksi gradien per-sampel dengan benar (lihat Subbab 4.3).
 
 *Federated Learning* (FL) adalah paradigma pembelajaran mesin terdistribusi
 yang memungkinkan banyak pihak melatih satu model bersama tanpa
-mempertukarkan data mentah mereka [n]. Setiap partisipan (*client*) melatih
+mempertukarkan data mentah mereka [4]. Setiap partisipan (*client*) melatih
 model secara lokal di atas datanya sendiri, dan hanya pembaruan
 parameter -- bukan data -- yang dikirim ke *server* pengagregasi.
 
 ### 2.3.1 Algoritma FedAvg
 
-*Federated Averaging* (FedAvg), diperkenalkan oleh McMahan dkk. (2017) [n],
+*Federated Averaging* (FedAvg), diperkenalkan oleh McMahan dkk. (2017) [4],
 adalah algoritma agregasi FL paling mendasar dan menjadi tulang punggung
 penelitian ini. Pada setiap ronde komunikasi $t$, *server* mengirim model
 global $\mathbf{w}_t$ ke seluruh (atau subset) klien; setiap klien $k$
@@ -186,7 +173,7 @@ menjadi relevan langsung bagi analisis biaya komunikasi E2 pada Subbab
 ### 2.3.2 *Cross-silo* dan *Cross-device*
 
 Literatur FL membedakan dua skenario deployment berdasarkan karakteristik
-klien [n]. **Cross-device** melibatkan jutaan klien tak-andal (mis.
+klien [5]. **Cross-device** melibatkan jutaan klien tak-andal (mis.
 ponsel), masing-masing dengan data sangat sedikit dan konektivitas tidak
 stabil. **Cross-silo** melibatkan sedikit klien (puluhan hingga ratusan)
 yang relatif andal dan bertahan sepanjang pelatihan -- misalnya organisasi,
@@ -206,7 +193,7 @@ jarang berlaku pada kondisi lapangan: komposisi kelas kematangan TBS antara
 satu kebun dan kebun lain dapat berbeda jauh, dipengaruhi oleh jadwal panen,
 varietas, dan kondisi agronomis setempat. Untuk mensimulasikan heterogenitas
 ini secara terkendali, penelitian menggunakan **partisi Dirichlet**
-berbasis skema *latent Dirichlet allocation* [n]: untuk setiap kelas $c$,
+berbasis skema *latent Dirichlet allocation* [6]: untuk setiap kelas $c$,
 proporsi sampel yang jatuh ke tiap klien ditarik dari distribusi Dirichlet
 $\mathrm{Dir}(\alpha, \ldots, \alpha)$ atas $K$ klien. Parameter konsentrasi
 $\alpha$ mengendalikan derajat heterogenitas: $\alpha \to 0$ menghasilkan
@@ -214,7 +201,7 @@ partisi yang sangat timpang (satu klien mendominasi satu kelas), sedangkan
 $\alpha \to \infty$ mendekati pembagian IID seragam. Nilai konsentrasi ini
 dipilih langsung karena secara langsung mengendalikan derajat *skew*
 distribusi kelas antar klien tanpa memerlukan aturan alokasi heuristik
-tambahan [16]. Penelitian ini memakai $\alpha = 0{,}5$ dengan K = 4 klien
+tambahan [6]. Penelitian ini memakai $\alpha = 0{,}5$ dengan K = 4 klien
 dan *partition seed* = 42, nilai moderat yang umum dipakai pada literatur FL
 untuk mensimulasikan heterogenitas realistis tanpa membuat sebagian klien
 kehabisan sampel kelas tertentu sama sekali; hasil partisi konkretnya
@@ -234,11 +221,11 @@ sering disebut pada literatur:
 1. ***Membership Inference Attack* (MIA).** Penyerang mencoba menebak
    apakah suatu sampel data tertentu pernah dipakai dalam pelatihan model,
    dengan mengamati pola keluaran atau gradien model terhadap sampel
-   tersebut [n].
+   tersebut [5].
 2. ***Gradient Inversion Attack*.** Penyerang mencoba merekonstruksi
    kembali citra masukan asli dari gradien yang teramati, dengan
    mengoptimalkan citra sintetis sedemikian rupa hingga gradiennya
-   menyerupai gradien yang disadap [n]. Serangan ini terbukti efektif
+   menyerupai gradien yang disadap [7], [8]. Serangan ini terbukti efektif
    terutama pada *batch* berukuran kecil.
 
 Kedua risiko ini adalah alasan mengapa "menghindari pengiriman citra
@@ -267,7 +254,7 @@ dengan $N$ jumlah sampel).
 
 ### 2.4.3 DP-SGD: *Gradient Clipping* dan Mekanisme Gaussian
 
-DP-SGD [n] mencapai jaminan $(\varepsilon,\delta)$-DP dengan memodifikasi
+DP-SGD [9] mencapai jaminan $(\varepsilon,\delta)$-DP dengan memodifikasi
 setiap langkah SGD lewat dua operasi tambahan pada gradien **per-sampel**
 $g_i$ (bukan gradien rata-rata *batch*):
 
@@ -310,8 +297,8 @@ melatih seluruh parameter (*full* DP) -- dianalisis empiris pada Subbab
 
 ### 2.4.5 Opacus sebagai Pustaka Implementasi
 
-Penelitian ini mengimplementasikan DP-SGD melalui **Opacus**, pustaka DP
-untuk PyTorch yang menyediakan `PrivacyEngine` untuk membungkus model,
+Penelitian ini mengimplementasikan DP-SGD melalui **Opacus** [18], pustaka
+DP untuk PyTorch yang menyediakan `PrivacyEngine` untuk membungkus model,
 *optimizer*, dan `DataLoader` standar menjadi versi yang menghitung gradien
 per-sampel, menerapkan *clipping* dan penambahan *noise* (Persamaan 2.5-2.6),
 serta melacak anggaran $\varepsilon$ terakumulasi lewat *accountant* PRV.
@@ -342,7 +329,7 @@ DP-SGD (Subbab 2.4.3): statistik *batch*-nya membuat gradien satu sampel
 bergantung pada sampel lain dalam *batch* yang sama, sehingga konsep
 "gradien per-sampel yang independen" tidak terdefinisi dengan bersih.
 
-*Group Normalization* (GroupNorm) [n] menjadi pengganti yang mengatasi
+*Group Normalization* (GroupNorm) [10] menjadi pengganti yang mengatasi
 kedua persoalan di atas sekaligus: alih-alih menormalisasi lintas *batch*,
 GroupNorm membagi kanal suatu lapisan menjadi beberapa grup dan
 menormalisasi **di dalam satu sampel saja** (lintas grup kanal, bukan
@@ -367,7 +354,7 @@ umumnya bersifat *black-box*: keputusan klasifikasi/lokalisasinya sulit
 ditelusuri secara langsung dari aktivasi internal jaringan. *Class
 Activation Mapping* (CAM) dan variannya menjawab persoalan ini dengan
 menghasilkan peta panas (*heatmap*) yang menunjukkan wilayah citra masukan
-yang paling berkontribusi terhadap skor suatu kelas. **Grad-CAM++** [n]
+yang paling berkontribusi terhadap skor suatu kelas. **Grad-CAM++** [11]
 memperluas Grad-CAM dengan memakai kombinasi berbobot dari turunan parsial
 positif orde lebih tinggi pada peta fitur lapisan konvolusi terakhir
 terhadap skor kelas target, menghasilkan lokalisasi yang lebih baik
@@ -432,20 +419,21 @@ pelatihan GPU (Subbab 4.9).
 
 Deteksi objek berbasis *deep learning* untuk kematangan TBS sawit
 sebelumnya telah diteliti memakai detektor satu-tahap, khususnya arsitektur
-berbasis YOLO dengan *backbone* konvolusional seperti CSPNet [9] dan
-jaringan residual [8], karena performa *real-time*-nya [3]-[7]. Sebagai
-contoh, Lai dkk. menerapkan YOLOv4 untuk deteksi tandan matang secara
-*real-time* di lingkungan perkebunan [3], sementara Suharjito dkk.
-menyasar *deployment* pada perangkat *mobile* untuk klasifikasi kematangan
-TBS [4]; sebuah tinjauan terbaru atas metode klasifikasi kematangan TBS
-mencatat bahwa mayoritas sistem yang dilaporkan masih berupa model
-tersentral pada satu lokasi, dengan mekanisme tata kelola data lintas-lokasi
-seperti federasi baru jarang dibahas [7]. *Federated Learning* secara
-terpisah telah diteliti untuk tugas klasifikasi dan deteksi visual di bawah
-distribusi data Non-IID [12]-[14], [16], termasuk skema federasi yang
-menormalisasi aktivasi tanpa bergantung pada statistik *batch* yang tidak
-stabil di bawah heterogenitas klien [11], [15]. Penerapan DP-SGD pada
-*deep learning* umum telah mapan [n], namun karakterisasi *trade-off*
+berbasis YOLO dengan *backbone* konvolusional seperti CSPNet [12] dan
+jaringan residual [13], karena performa *real-time*-nya [1], [2], [3],
+[14], [15]. Sebagai contoh, Lai dkk. menerapkan YOLOv4 untuk deteksi
+tandan matang secara *real-time* di lingkungan perkebunan [14], sementara
+Suharjito dkk. menyasar *deployment* pada perangkat *mobile* untuk
+klasifikasi kematangan TBS [1]; sebuah tinjauan terbaru atas metode
+klasifikasi kematangan TBS mencatat bahwa mayoritas sistem yang dilaporkan
+masih berupa model tersentral pada satu lokasi, dengan mekanisme tata
+kelola data lintas-lokasi seperti federasi baru jarang dibahas [2].
+*Federated Learning* secara terpisah telah diteliti untuk tugas
+klasifikasi dan deteksi visual di bawah distribusi data Non-IID [4], [5],
+[6], [16], termasuk skema federasi yang menormalisasi aktivasi tanpa
+bergantung pada statistik *batch* yang tidak stabil di bawah heterogenitas
+klien [10], [17]. Penerapan DP-SGD pada *deep learning* umum telah mapan
+[9], namun karakterisasi *trade-off*
 privasi-utilitasnya secara tersandingkan penuh untuk detektor objek
 federasi pada domain pertanian -- dilengkapi analisis interpretasi visual
 (XAI) yang membandingkan model dengan dan tanpa DP secara langsung --
@@ -468,10 +456,10 @@ Tabel 2.1. Posisi penelitian ini terhadap penelitian sejenis
 
 | Penelitian | Model | FL | DP | XAI | Pembagian bebas-kebocoran | Catatan |
 |---|---|---|---|---|---|---|
-| Lai dkk. [3] | YOLOv4 | Tidak | Tidak | Tidak | Tidak dilaporkan | Deteksi tandan matang *real-time* di perkebunan |
-| Suharjito dkk. [4] | Model klasifikasi kematangan (varian *mobile*) | Tidak | Tidak | Tidak | Tidak dilaporkan | Target *deployment* perangkat *mobile* |
-| Asrol dkk. [6] | YOLOv4 (modifikasi) | Tidak | Tidak | Tidak | Tidak dilaporkan | Sistem *grading* *real-time* via *smartphone* |
-| Goh dkk. (tinjauan) [7] | Beragam | Mayoritas tidak | Tidak | Tidak | Jarang dibahas eksplisit | Tinjauan metode klasifikasi kematangan TBS |
+| Lai dkk. [14] | YOLOv4 | Tidak | Tidak | Tidak | Tidak dilaporkan | Deteksi tandan matang *real-time* di perkebunan |
+| Suharjito dkk. [1] | Model klasifikasi kematangan (varian *mobile*) | Tidak | Tidak | Tidak | Tidak dilaporkan | Target *deployment* perangkat *mobile* |
+| Asrol dkk. [3] | YOLOv4 (modifikasi) | Tidak | Tidak | Tidak | Tidak dilaporkan | Sistem *grading* *real-time* via *smartphone* |
+| Goh dkk. (tinjauan) [2] | Beragam | Mayoritas tidak | Tidak | Tidak | Jarang dibahas eksplisit | Tinjauan metode klasifikasi kematangan TBS |
 | **Penelitian ini (B1/B2/E1/E2)** | YOLOv11n + GroupNorm | **Ya** (FedAvg, K = 4, Non-IID) | **Ya** (DP-SGD *full*/*partial*, akuntansi ε per klien) | **Ya** (Grad-CAM++ *matched-sample*) | **Ya**, diaudit eksplisit | Titik rujukan tersentral-versus-federasi, karakterisasi *trade-off* privasi-utilitas, dan validasi XAI tersandingkan; ditutup demonstrasi *deployment* |
 
 Penelitian ini tidak mengklaim sebagai penerapan pertama *Federated
@@ -481,3 +469,87 @@ kontribusinya adalah karakterisasi empiris *trade-off* privasi-utilitas
 dan interpretabilitas yang tersandingkan penuh (B1 vs B2 vs E1 vs E2) untuk
 tugas, arsitektur, dan pengaturan federasi spesifik ini, dilengkapi
 demonstrasi kelayakan operasionalnya.
+
+## Daftar Pustaka (Bab 2)
+
+[1] Suharjito, G. N. Elwirehardja, dan J. S. Prayoga, "Oil Palm Fresh
+Fruit Bunch Ripeness Classification on Mobile Devices Using Deep Learning
+Approaches," *Computers and Electronics in Agriculture*, vol. 188, art.
+106359, 2021, doi: 10.1016/j.compag.2021.106359.
+
+[2] J. Y. Goh, Y. Md Yunos, dan M. S. Mohamed Ali, "Fresh Fruit Bunch
+Ripeness Classification Methods: A Review," *Food and Bioprocess
+Technology*, vol. 18, no. 1, hlm. 183-206, 2025, doi:
+10.1007/s11947-024-03483-0.
+
+[3] M. Asrol, D. N. Utama, F. A. Junior, dan Marimin, "Real-Time Oil Palm
+Fruit Grading System Using Smartphone and Modified YOLOv4," *IEEE
+Access*, vol. 11, hlm. 59758-59773, 2023, doi:
+10.1109/ACCESS.2023.3285537.
+
+[4] H. B. McMahan, E. Moore, D. Ramage, S. Hampson, dan B. Agüera y Arcas,
+"Communication-Efficient Learning of Deep Networks from Decentralized
+Data," dalam *Proc. 20th Int. Conf. Artificial Intelligence and
+Statistics (AISTATS)*, PMLR vol. 54, 2017, hlm. 1273-1282.
+
+[5] P. Kairouz, H. B. McMahan, B. Avent, A. Bellet, M. Bennis, A. N.
+Bhagoji, dkk., "Advances and Open Problems in Federated Learning,"
+*Foundations and Trends in Machine Learning*, vol. 14, no. 1-2, hlm.
+1-210, 2021, doi: 10.1561/2200000083.
+
+[6] T.-M. H. Hsu, H. Qi, dan M. Brown, "Measuring the Effects of
+Non-Identical Data Distribution for Federated Visual Classification,"
+arXiv:1909.06335, 2019.
+
+[7] L. Zhu, Z. Liu, dan S. Han, "Deep Leakage from Gradients," dalam
+*Advances in Neural Information Processing Systems (NeurIPS)*, vol. 32,
+2019, hlm. 14747-14756.
+
+[8] B. Zhao, K. R. Mopuri, dan H. Bilen, "iDLG: Improved Deep Leakage from
+Gradients," arXiv:2001.02610, 2020.
+
+[9] M. Abadi, A. Chu, I. Goodfellow, H. B. McMahan, I. Mironov, K. Talwar,
+dan L. Zhang, "Deep Learning with Differential Privacy," dalam *Proc. ACM
+SIGSAC Conf. Computer and Communications Security (CCS)*, 2016, hlm.
+308-318, doi: 10.1145/2976749.2978318.
+
+[10] Y. Wu dan K. He, "Group Normalization," dalam *Proc. European Conf.
+Computer Vision (ECCV)*, 2018, hlm. 3-19, doi:
+10.1007/978-3-030-01261-8_1.
+
+[11] A. Chattopadhyay, A. Sarkar, P. Howlader, dan V. N. Balasubramanian,
+"Grad-CAM++: Generalized Gradient-Based Visual Explanations for Deep
+Convolutional Networks," dalam *Proc. IEEE Winter Conf. Applications of
+Computer Vision (WACV)*, 2018, hlm. 839-847, doi:
+10.1109/WACV.2018.00097.
+
+[12] C.-Y. Wang, H.-Y. M. Liao, Y.-H. Wu, P.-Y. Chen, J.-W. Hsieh, dan
+I.-H. Yeh, "CSPNet: A New Backbone that can Enhance Learning Capability
+of CNN," dalam *Proc. IEEE/CVF Conf. Computer Vision and Pattern
+Recognition Workshops (CVPRW)*, 2020.
+
+[13] K. He, X. Zhang, S. Ren, dan J. Sun, "Deep Residual Learning for
+Image Recognition," dalam *Proc. IEEE Conf. Computer Vision and Pattern
+Recognition (CVPR)*, 2016, hlm. 770-778, doi: 10.1109/CVPR.2016.90.
+
+[14] J. W. Lai, H. R. Ramli, L. I. Ismail, dan W. Z. W. Hasan, "Real-Time
+Detection of Ripe Oil Palm Fresh Fruit Bunch Based on YOLOv4," *IEEE
+Access*, vol. 10, hlm. 95763-95770, 2022, doi:
+10.1109/ACCESS.2022.3204762.
+
+[15] Suharjito, F. A. Junior, Y. P. Koeswandy, Debi, P. W. Nurhayati, M.
+Asrol, dan Marimin, "Annotated Datasets of Oil Palm Fruit Bunch Piles for
+Ripeness Grading Using Deep Learning," *Scientific Data*, vol. 10, no. 1,
+art. 72, 2023, doi: 10.1038/s41597-023-01958-x.
+
+[16] J. Konečný, H. B. McMahan, F. X. Yu, P. Richtárik, A. T. Suresh, dan
+D. Bacon, "Federated Learning: Strategies for Improving Communication
+Efficiency," arXiv:1610.05492, 2016.
+
+[17] X. Li, M. Jiang, X. Zhang, M. Kamp, dan Q. Dou, "FedBN: Federated
+Learning on Non-IID Features via Local Batch Normalization,"
+arXiv:2102.07623, 2021.
+
+[18] A. Yousefpour, I. Shilov, A. Sablayrolles, D. Testuggine, K. Prasad,
+M. Malek, dkk., "Opacus: User-Friendly Differential Privacy Library in
+PyTorch," arXiv:2109.12298, 2021.

@@ -1,19 +1,4 @@
-<!--
-CATATAN PENULISAN (hapus komentar ini sebelum submit):
-Bab ini mencakup SELURUH kerangka FedX-Palm: B1 (baseline tersentral),
-B2 (baseline federasi tanpa DP), E1/E2 (DP-SGD full/partial), XAI
-(Grad-CAM++), dan deployment Docker -- seluruhnya sudah dikerjakan dan
-dilaporkan dengan hasil nyata pada Bab 4 (lihat
-docs/thesis/04_hasil_dan_pembahasan.md untuk seluruh angka rujukan pada
-bab ini). Draf sebelumnya sempat mempersempit cakupan bab ini hanya ke
-B1/B2 (lihat riwayat pada docs/thesis/NOTES_FOR_RACHMA.md); penyempitan
-itu sudah TIDAK berlaku lagi sejak E1/E2/XAI/deployment selesai
-dikerjakan dan dilaporkan penuh di Bab 4 -- rumusan masalah/tujuan/
-batasan/hipotesis di bawah ini diperluas agar konsisten dengan cakupan
-Bab 4 yang sebenarnya.
--->
-
-# CHAPTER 1 -- PENDAHULUAN
+# BAB 1 -- PENDAHULUAN
 
 ## 1.1 Latar Belakang
 
