@@ -27,11 +27,14 @@ NYATA tersebut, bukan lagi sebagai rencana yang belum terealisasi.
    B2 mencapai mAP50 *validation* rata-rata 0,8775 (SD = 0,0157) di tiga
    *seed* pelatihan independen -- selisih indikatif hanya 0,0045, meski
    ketimpangan data antar klien substansial (8,67% hingga 59,36% dari
-   *split train* per klien). Namun, ketika *checkpoint* B2 *seed* 42
-   dievaluasi tersandingkan penuh pada *split held-out test* yang sama
-   dengan B1, selisih *validation*-ke-*test*-nya ternyata jauh lebih besar
-   (0,8850 → 0,7951) -- menunjukkan bahwa perbandingan berbasis *validation*
-   semata dapat meremehkan gap utilitas federasi yang sesungguhnya. Ini
+   *split train* per klien). Namun, ketika ketiga *checkpoint* B2 dievaluasi
+   tersandingkan penuh pada *split held-out test* yang sama dengan B1,
+   gap-nya ternyata jauh lebih besar dari perbandingan indikatif di
+   atas -- baik untuk *seed* 42 saja (*validation*-ke-*test*: 0,8850 →
+   0,7951) maupun untuk rata-rata tiga *seed* (0,8031, SD=0,0319, gap
+   0,0789 terhadap B1) -- menunjukkan bahwa perbandingan berbasis
+   *validation* semata dapat meremehkan gap utilitas federasi yang
+   sesungguhnya. Ini
    menjawab rumusan masalah 2 dan mendukung H1 (Subbab 1.6) secara
    sebagian: FedAvg tanpa DP menghasilkan konvergensi yang relatif stabil
    lintas *seed*, namun besaran gap terhadap *baseline* tersentral perlu
@@ -168,7 +171,9 @@ mengindikasikan bahwa, untuk tugas dan dataset ini, berpindah dari
 pelatihan tersentral ke pelatihan federasi Non-IID tanpa DP membawa biaya
 utilitas yang relatif kecil pada level *validation* -- meski perbandingan
 tersandingkan penuh pada *held-out test* menunjukkan gap yang lebih besar
-(0,0789) dari yang terlihat pada perbandingan indikatif. Operator
+dari yang terlihat pada perbandingan indikatif: 0,0869 untuk *checkpoint
+seed* 42 saja (0,8820 vs 0,7951, Tabel 4.2b), dan 0,0789 untuk rata-rata
+tiga *seed* (0,8820 vs 0,8031, Tabel 4.2c). Operator
 perkebunan yang menghadapi kendala berbagi-data atau bandwidth jaringan
 dapat mempertimbangkan federasi sebagai alternatif yang layak, dengan
 catatan bahwa evaluasi *held-out test* yang tersandingkan penuh -- bukan

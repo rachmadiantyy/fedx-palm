@@ -237,6 +237,27 @@ Tabel 4.2b. B2 *seed* 42 -- hasil *held-out test* (ronde 9, terkunci)
 | Precision | 0,7648 |
 | Recall | 0,7316 |
 
+Selain *seed* 42 (dipakai sebagai titik pembanding tersandingkan-penuh
+dengan E1/E2 pada Subbab 4.5.4, karena E1/E2 juga hanya dilatih pada *seed*
+42, Subbab 1.4), *checkpoint validation*-terbaik dari ketiga *seed* B2
+juga dikunci dan dievaluasi pada *split held-out test* yang sama, untuk
+melengkapi gambaran reproduktibilitas B2 di luar *split validation*.
+
+Tabel 4.2c. B2 -- hasil *held-out test* tiga *seed*
+
+| Seed | mAP50 | mAP50-95 |
+|---|---:|---:|
+| 42 | 0,7951 | 0,6528 |
+| 123 | 0,7760 | 0,6373 |
+| 2026 | 0,8383 | 0,6859 |
+| **Rata-rata** | **0,8031** | **0,6587** |
+| **SD** | **0,0319** | **0,0246** |
+
+Sebaran mAP50 *held-out test* antar *seed* (SD=0,0319) hampir dua kali
+lipat sebaran pada *split validation* (SD=0,0157, Tabel 4.2) -- menunjukkan
+bahwa variabilitas lintas-*seed* B2 yang sesungguhnya lebih besar dari yang
+terlihat pada evaluasi *validation* semata.
+
 ### 4.2.3 Perbandingan B1 dan B2
 
 Selisih antara mAP50 *held-out test* B1 (0,8820) dan mAP50 *validation*
@@ -248,11 +269,13 @@ klien berdasarkan jumlah sampel lokalnya; karena Klien 2 menyumbang 59,36%
 data latih, sinyal gradiennya dapat mendominasi pembaruan teragregasi,
 sebagian mengimbangi heterogenitas dari ketiga klien yang lebih kecil.
 
-Namun, ketika B2 *seed* 42 dievaluasi tersandingkan penuh pada *split
-held-out test* yang sama dengan B1 (Tabel 4.2b), selisih *validation*-ke-
-*test*-nya ternyata cukup besar (0,8850 → 0,7951, turun ~0,09) -- jauh
-lebih besar dari selisih indikatif B1-versus-B2 di atas. Ini dibahas lebih
-lanjut pada Subbab 4.10.3.
+Namun, ketika B2 dievaluasi tersandingkan penuh pada *split held-out test*
+yang sama dengan B1, gap-nya ternyata jauh lebih besar dari selisih
+indikatif di atas -- baik untuk *seed* 42 saja (Tabel 4.2b: 0,8820 vs
+0,7951, selisih 0,0869; selisih *validation*-ke-*test* B2 *seed* 42
+sendiri: 0,8850 → 0,7951, turun ~0,09) maupun untuk rata-rata tiga *seed*
+(Tabel 4.2c: 0,8820 vs 0,8031, selisih 0,0789). Ini dibahas lebih lanjut
+pada Subbab 4.10.3.
 
 Tabel 4.3. Ringkasan B1 vs B2 (validation dan held-out test)
 
@@ -777,8 +800,10 @@ dibuat karena belum dilakukan pengukuran formal.
 - DP-SGD menyebabkan *severe utility degradation* (bukan *total
   collapse*) pada σ=0,75, C=1.
 - E1 dan E2 praktis setara pada *held-out test*, meski ε yang diakumulasi
-  identik dan cakupan parameter *trainable*-nya sangat berbeda
-  (2.590.994 vs 929.522).
+  identik dan cakupan parameter *trainable*-nya sangat berbeda: E1
+  melatih 2.590.994 parameter (2.591.010 total dikurangi 16 parameter
+  tetap `Conv2d` pada modul DFL, `requires_grad=False`, Subbab 3.5.2),
+  sedangkan E2 hanya melatih 929.522 parameter.
 - E2 lebih hemat komputasi ~15% dibanding E1, namun belum menghemat
   komunikasi pada implementasi *fedavg* saat ini.
 - *Flat clipping* lebih konsisten arahnya dibanding *per-layer* pada tiga
