@@ -673,10 +673,12 @@ pada kode saat ini, dicatat sebagai arah kerja mendatang (Subbab 4.10.4).
 
 ## 4.9 Implementasi dan *Deployment* Sistem
 
-[TODO: spesifikasi VPS sudah dikonfirmasi (Tabel 4.13), namun status
-*build* Docker dan hasil pengujian fungsional masih perlu dikonfirmasi.
-Jangan menambahkan klaim *latency* atau *throughput* bila belum dilakukan
-pengukuran formal.]
+Sistem telah di-*deploy* pada VPS (Tabel 4.13), dibangun ulang langsung
+dari kode `deployment/app.py`/`deployment/Dockerfile` di repositori ini
+(bukan *image* lama yang sempat berjalan dengan *checkpoint* dan kode
+yang berbeda), dan diuji fungsional dengan hasil positif (Subbab 4.9.4).
+Tidak ada klaim *latency*/*throughput* dibuat di bawah ini karena belum
+dilakukan pengukuran formal.
 
 ### 4.9.1 Arsitektur *Deployment*
 
@@ -684,15 +686,25 @@ pengukuran formal.]
 *preprocessing* (resize ke imgsz model) → *inference* YOLOv11 →
 keluaran kotak deteksi dan kelas → visualisasi Grad-CAM++ opsional
 menggunakan mekanisme yang sama dengan Subbab 4.7 (`fedxpalm.xai.gradcam`).
-[TODO: konfirmasi *checkpoint* mana yang dipakai untuk *deployment* --
-B1, B2, atau salah satu varian DP.]
+*Checkpoint* yang dipakai untuk *deployment* adalah **B2 *seed* 42**
+(*checkpoint* federated terkunci yang sama dengan yang dilaporkan pada
+Tabel 4.9/Tabel tab:matched), dikonfirmasi lewat pencocokan *hash* SHA-256
+penuh antara *file* di VPS dan *file checkpoint* terkunci
+(`18f04739bb9e9ee0be99d3bf42e928a8eee85b9a9dd60121eed79067012a6dab`) --
+bukan asumsi. Statistik yang ditampilkan pada *dashboard* (mAP@0,5 =
+0,7951; FRR = 0,109) juga bersumber dari hasil *held-out test* B2 *seed*
+42 yang sama (Tabel tab:matched), bukan nilai lama/berbeda.
 
 ### 4.9.2 *Containerization* Menggunakan Docker
 
-`deployment/Dockerfile` mendefinisikan *image* aplikasi. [TODO: rincian
-*dependency*, pemetaan *port*, dan strategi pemasangan *volume*/*checkpoint*
-model perlu dikonfirmasi dari `Dockerfile` dan catatan *deployment*
-penulis.]
+*Image* dibangun dari `deployment/Dockerfile` (basis `python:3.11-slim`,
+CPU-*only*, tanpa dependensi GPU) dengan *build context* di root
+repositori (`docker build -t fedx-palm:repo -f deployment/Dockerfile .`).
+*Checkpoint* model dipasang sebagai *bind mount* ke `/app/models` di
+dalam *container* (sesuai `VOLUME ["/app/models"]` dan *env var* bawaan
+`FEDXPALM_WEIGHTS=/app/models/best.pt` pada `Dockerfile`), bukan di-*bake*
+ke dalam *image*. Aplikasi berjalan di *port* 8000 di dalam *container*,
+dipetakan ke *port* 8080 pada *host* VPS (`-p 8080:8000`).
 
 ### 4.9.3 *Deployment* pada VPS
 
@@ -709,15 +721,24 @@ Tabel 4.13. Spesifikasi VPS *deployment*
 | Sistem operasi | Ubuntu 24.04 |
 | Wilayah (*region*) | Jakarta |
 
-[TODO: struktur *service* (mis. `systemd`/`docker run` langsung/*reverse
-proxy*) dan mekanisme *startup*/*restart* belum dikonfirmasi.]
+*Container* dijalankan langsung lewat perintah `docker run` (bukan
+`docker-compose` maupun `systemd` *unit*), tanpa *reverse proxy* --
+aplikasi diakses langsung lewat `http://<IP-VPS>:8080/`. Mekanisme *restart* otomatis saat *container* atau VPS *reboot* belum
+dikonfigurasi (*run* saat ini tidak memakai *flag* `--restart`); ini
+dicatat sebagai keterbatasan operasional pada Subbab 4.10.3, bukan
+diklaim sebagai sudah tersedia.
 
 ### 4.9.4 Pengujian Fungsional
 
-[TODO: konfirmasi hasil pengujian -- apakah model berhasil dimuat,
-*endpoint* menerima masukan dan mengembalikan hasil deteksi dengan benar,
-serta keluaran tervisualisasi sesuai ekspektasi. Jangan mengklaim
-*latency*/*throughput* tanpa pengukuran formal.]
+Pengujian fungsional dilakukan dengan mengunggah satu citra tandan sawit
+nyata lewat antarmuka *dashboard* (`http://<IP-VPS>:8080/predict`).
+Hasilnya: model berhasil dimuat (tidak ada *error* saat *startup*
+*container*), *endpoint* menerima berkas gambar dan mengembalikan hasil
+deteksi dengan benar -- kelas **Ripe** dengan *confidence* **93,4%**,
+disertai kotak deteksi dan visualisasi *heatmap* Grad-CAM++ yang
+tervisualisasi sesuai ekspektasi (area perhatian model terlihat jelas
+pada tandan-tandan dalam citra). Tidak ada klaim *latency*/*throughput*
+dibuat karena belum dilakukan pengukuran formal.
 
 ## 4.10 Pembahasan Menyeluruh
 
@@ -794,7 +815,11 @@ berlaku merata di seluruh kelas. Kedelapan, analisis XAI bersifat
 *post-hoc* semata (Subbab 4.7) dan tidak memengaruhi pemilihan
 *checkpoint*/konfigurasi manapun; metrik *Average Drop* memiliki
 keterbatasan yang telah diketahui dalam membandingkan model dengan
-tingkat keyakinan prediksi yang jauh berbeda (Subbab 4.7.4).
+tingkat keyakinan prediksi yang jauh berbeda (Subbab 4.7.4). Kesembilan,
+*deployment* pada VPS (Subbab 4.9) dijalankan sebagai satu *container*
+`docker run` tanpa mekanisme *restart* otomatis saat *container*/VPS
+*reboot* dan tanpa *reverse proxy* -- cukup untuk demonstrasi fungsional,
+namun bukan konfigurasi tingkat produksi.
 
 ### 4.10.4 Implikasi dan Peluang Pengembangan
 
