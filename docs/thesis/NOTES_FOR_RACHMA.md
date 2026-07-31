@@ -1,5 +1,42 @@
 # Catatan Serah Terima -- FedX-Palm v2
 
+## Update 2026-07-31 -- Cakupan diperluas kembali ke FULL SCOPE (B1/B2/E1/E2/XAI/deployment)
+
+Penyempitan cakupan pada entri 2026-07-28 di bawah ini **sudah tidak
+berlaku**. Sejak entri itu ditulis, E1/E2 (DP-SGD *full*/*partial*),
+analisis XAI Grad-CAM++ *matched-sample*, laporan biaya komputasi/
+komunikasi, dan demonstrasi *deployment* Docker di VPS semuanya sudah
+dikerjakan dan dilaporkan dengan hasil nyata di Bab 4
+(`docs/thesis/04_hasil_dan_pembahasan.md`). Karena itu, atas permintaan
+eksplisit, Bab 1, 2, 3, dan 5 di `docs/thesis/` sudah ditulis ulang agar
+cakupannya konsisten dengan Bab 4 yang sebenarnya:
+
+- Bab 1: rumusan masalah, tujuan, batasan, dan hipotesis diperluas
+  mencakup DP-SGD, strategi *clipping*, XAI, dan *deployment* -- bukan
+  lagi dikecualikan.
+- Bab 2: ditambahkan teori formal $(\varepsilon,\delta)$-DP, *gradient
+  clipping*, mekanisme Gaussian, akuntansi privasi (PRV, Opacus),
+  Grad-CAM++/*Average Drop*/*Focus Retention Rate*, dan dasar
+  *containerization*/*deployment*.
+- Bab 3: ditambahkan metodologi verifikasi implementasi DP-SGD, pemilihan
+  strategi *clipping*, prosedur E1/E2, akuntansi ε per klien, protokol
+  XAI *matched-sample*, analisis biaya, dan *deployment* VPS
+  (menggantikan bekas Subbab 3.9 "cakupan yang ditunda").
+- Bab 5: kesimpulan, keterbatasan, dan saran diperluas mencakup temuan
+  DP-SGD/XAI/*deployment* yang sebenarnya (bukan lagi rencana yang belum
+  terealisasi); saran yang sudah selesai dikerjakan (evaluasi B2
+  *held-out test*, perluasan DP-SGD, integrasi XAI, demonstrasi
+  *deployment*) dihapus dari daftar saran dan diganti arah baru yang
+  benar-benar belum dikerjakan (replikasi multi-*seed* DP-SGD, penanganan
+  *zero-recall collapse Empty Bunch*, optimasi komunikasi *partial* DP,
+  *secure aggregation*, *deployment* tingkat produksi, dll).
+
+Seluruh angka yang dipakai pada penulisan ulang ini diambil langsung dari
+Bab 4 (E1/E2 §4.3-4.6, XAI §4.7, biaya §4.8, *deployment* §4.9), yang
+sudah diverifikasi terhadap `results/*.json` dan eksekusi nyata di
+GPU/VPS -- bukan tebakan. Entri 2026-07-28 di bawah ini dipertahankan
+sebagai riwayat, bukan dihapus.
+
 ## Update 2026-07-28 -- Cakupan dipersempit ke B1/B2 saja
 
 Kamu meng-upload manuskrip JUTIF (`docs/thesis/manuscript/
