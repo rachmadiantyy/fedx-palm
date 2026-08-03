@@ -941,3 +941,11 @@ dengan *mean latency* 504,226 ms, p95 520,357 ms, dan *throughput* 1,952
 citra/detik; hasil ini berlaku untuk protokol lokal sekuensial, bukan
 kapasitas produksi melalui jaringan publik. Bersama-sama, temuan ini
 menjadi dasar kesimpulan dan rekomendasi pada Bab V.
+
+## 4.12 Ketersediaan Kode dan Data
+
+Sebagaimana disebutkan pada Subbab 3.15, implementasi kode (pemrosesan
+data, pelatihan B1/B2/E1/E2, evaluasi, XAI, dan *deployment*), manifes
+pembagian dataset, berkas konfigurasi, serta hasil eksperimen yang
+dilaporkan pada bab ini tersedia dari penulis koresponden atas permintaan
+yang wajar.
