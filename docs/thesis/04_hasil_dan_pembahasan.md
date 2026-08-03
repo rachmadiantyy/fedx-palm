@@ -133,26 +133,26 @@ Tabel 4.1. B1 *baseline* tersentral -- hasil *held-out test*
 *Precision* keseluruhan = 0,8745; *Recall* keseluruhan = 0,8653.
 
 *Ripe* adalah kelas dengan performa terlemah pada B1, baik dari sisi AP50
-maupun AP50-95, dengan selisih besar terhadap kelas lain. *Confusion
-matrix* ternormalisasi (`confusion_matrix_normalized.png`, Gambar 4.1)
-mengonfirmasi penyebabnya secara langsung: dari seluruh instans *Ripe*
-sebenarnya, hanya 60% yang diprediksi benar sebagai *Ripe*, sedangkan 35%
-salah diprediksi sebagai *Underripe* dan 5% sebagai *Overripe* -- artinya
-kesalahan model pada kelas *Ripe* terkonsentrasi hampir seluruhnya pada
-dua tahap kematangan yang bersebelahan dengannya, bukan pada kelas yang
-secara visual tidak berkaitan. Konsisten dengan struktur kelas pada
-Subbab 2.1.2, dua kelas yang secara struktural paling berbeda (*Abnormal*,
-*Empty Bunch*) serta tahap kematangan yang paling tidak ambigu secara
-visual (*Unripe*) mencapai nilai AP50 tertinggi (seluruhnya
-$\ge 0{,}9817$), sedangkan *Ripe* -- tahap tengah yang diapit *Underripe*
-dan *Overripe* -- mencapai AP50 terendah (0,5571). *Underripe* (0,8275),
-juga tahap tengah, menunjukkan nilai AP50 menengah yang secara umum
-konsisten dengan pola ini, dan pada *confusion matrix* yang sama juga
-terlihat 35% instans *Underripe* sebenarnya salah diprediksi sebagai
-*Ripe* (kesalahan batas *Ripe*/*Underripe* bersifat dua arah/simetris),
-sedangkan *Overripe* (0,9406) hanya tertukar dengan *Ripe* pada 5% instans
-sebenarnya -- menjelaskan mengapa *Overripe* tidak sepenuhnya sesuai
-dengan pola tersebut.
+maupun AP50-95, dengan selisih besar terhadap kelas lain. Berdasarkan
+orientasi *confusion matrix* ternormalisasi
+(`confusion_matrix_normalized.png`, Gambar 4.1), kolom menunjukkan kelas
+sebenarnya dan baris menunjukkan kelas prediksi. Dari seluruh instans
+*Ripe* sebenarnya, 60% diprediksi benar sebagai *Ripe*, sedangkan 35%
+diprediksi sebagai *Underripe*. Sebaliknya, 17% instans *Underripe*
+sebenarnya diprediksi sebagai *Ripe*. Selain itu, 5% instans *Overripe*
+sebenarnya diprediksi sebagai *Ripe*. Dengan demikian, kekeliruan utama
+terkonsentrasi pada kelas-kelas dengan tingkat kematangan yang berdekatan,
+terutama pada batas *Ripe* dan *Underripe*, bukan pada kelas yang secara
+visual tidak berkaitan.
+
+Pola tersebut konsisten dengan nilai AP50 per kelas pada Tabel 4.1.
+*Abnormal*, *Empty Bunch*, dan *Unripe* mencapai AP50 tertinggi
+(seluruhnya $\ge 0{,}9817$), sedangkan *Ripe* sebagai tahap kematangan
+tengah memperoleh AP50 terendah (0,5571). *Underripe* memperoleh AP50
+0,8275 dan *Overripe* 0,9406. Matriks juga menunjukkan bahwa kesalahan
+*Ripe*--*Underripe* terjadi dua arah, tetapi tidak simetris: proporsi
+*Ripe* yang diprediksi sebagai *Underripe* (35%) lebih besar daripada
+proporsi *Underripe* yang diprediksi sebagai *Ripe* (17%).
 
 **Gambar 4.1** dan **4.1b** BUKAN grafik batang gambar-tangan: keduanya
 diambil langsung dari `confusion_matrix_normalized.png` dan
@@ -679,71 +679,135 @@ pada kode saat ini, dicatat sebagai arah kerja mendatang (Subbab 4.10.4).
 ## 4.9 Implementasi dan *Deployment* Sistem
 
 Sistem telah di-*deploy* pada VPS (Tabel 4.13), dibangun ulang langsung
-dari kode `deployment/app.py`/`deployment/Dockerfile` di repositori ini
-(bukan *image* lama yang sempat berjalan dengan *checkpoint* dan kode
-yang berbeda), dan diuji fungsional dengan hasil positif (Subbab 4.9.4).
-Tidak ada klaim *latency*/*throughput* dibuat di bawah ini karena belum
-dilakukan pengukuran formal.
+dari kode `deployment/app.py` dan `deployment/Dockerfile` di repositori
+ini, serta menggunakan *checkpoint* B2 *seed* 42 yang telah diverifikasi
+melalui *hash* SHA-256. Selain pengujian fungsional, layanan telah diuji
+melalui *benchmark* formal sebanyak 300 permintaan sekuensial pada 100
+citra *held-out test* yang dipilih secara deterministik. Hasil pengujian
+disajikan pada Subbab 4.9.6.
 
 ### 4.9.1 Arsitektur *Deployment*
 
-`deployment/app.py` mengimplementasikan alur: pengguna mengunggah citra →
-*preprocessing* (resize ke imgsz model) → *inference* YOLOv11 →
-keluaran kotak deteksi dan kelas → visualisasi Grad-CAM++ opsional
-menggunakan mekanisme yang sama dengan Subbab 4.7 (`fedxpalm.xai.gradcam`).
-*Checkpoint* yang dipakai untuk *deployment* adalah **B2 *seed* 42**
-(*checkpoint* federated terkunci yang sama dengan yang dilaporkan pada
-Tabel 4.9/Tabel tab:matched), dikonfirmasi lewat pencocokan *hash* SHA-256
-penuh antara *file* di VPS dan *file checkpoint* terkunci
-(`18f04739bb9e9ee0be99d3bf42e928a8eee85b9a9dd60121eed79067012a6dab`) --
-bukan asumsi. Statistik yang ditampilkan pada *dashboard* (mAP@0,5 =
-0,7951; FRR = 0,109) juga bersumber dari hasil *held-out test* B2 *seed*
-42 yang sama (Tabel tab:matched), bukan nilai lama/berbeda.
+`deployment/app.py` mengimplementasikan alur: pengguna mengunggah citra,
+*preprocessing* melakukan penyesuaian ukuran masukan, YOLOv11n menjalankan
+inferensi deteksi, kemudian layanan mengembalikan kotak deteksi, kelas,
+nilai keyakinan, dan visualisasi Grad-CAM++. Ukuran masukan efektif pada
+layanan adalah 640×640, yaitu nilai bawaan `FEDXPALM_IMGSZ` ketika
+variabel lingkungan tersebut tidak ditetapkan. Nilai ini berbeda dari
+ukuran 960×960 yang digunakan saat pelatihan dan evaluasi eksperimen
+utama, sehingga hasil *benchmark deployment* tidak digunakan untuk
+menghitung ulang metrik akurasi pada Tabel 4.1--4.7.
+
+*Checkpoint* yang digunakan adalah B2 *seed* 42, dengan *hash* SHA-256
+`18f04739bb9e9ee0be99d3bf42e928a8eee85b9a9dd60121eed79067012a6dab`.
+Nilai tersebut cocok dengan berkas `/srv/fedxpalm/weights/best.pt` yang
+dipasang ke dalam *container*. *Endpoint health* melaporkan perangkat
+`cpu`, status `ok`, dan lokasi bobot `/app/models/best.pt`.
 
 ### 4.9.2 *Containerization* Menggunakan Docker
 
-*Image* dibangun dari `deployment/Dockerfile` (basis `python:3.11-slim`,
-CPU-*only*, tanpa dependensi GPU) dengan *build context* di root
-repositori (`docker build -t fedx-palm:repo -f deployment/Dockerfile .`).
-*Checkpoint* model dipasang sebagai *bind mount* ke `/app/models` di
-dalam *container* (sesuai `VOLUME ["/app/models"]` dan *env var* bawaan
-`FEDXPALM_WEIGHTS=/app/models/best.pt` pada `Dockerfile`), bukan di-*bake*
-ke dalam *image*. Aplikasi berjalan di *port* 8000 di dalam *container*,
-dipetakan ke *port* 8080 pada *host* VPS (`-p 8080:8000`).
+*Image* dibangun dari `deployment/Dockerfile` dengan *build context* pada
+root repositori dan dijalankan sebagai *image* `fedx-palm:repo`.
+*Checkpoint* tidak ditanam di dalam *image*, tetapi dipasang melalui
+*bind mount* dari `/srv/fedxpalm/weights` ke `/app/models`. Aplikasi
+berjalan pada *port* 8000 di dalam *container* dan dipetakan ke *port*
+8080 pada *host*. Pada saat pengujian, *container* bernama
+`fedx-palm-v2` berjalan menggunakan Docker 29.6.0 dalam mode CPU-*only*.
 
 ### 4.9.3 *Deployment* pada VPS
-
-Aplikasi di-*deploy* pada sebuah VPS (*Virtual Private Server*) dengan
-spesifikasi berikut:
 
 Tabel 4.13. Spesifikasi VPS *deployment*
 
 | Parameter | Nilai |
 |---|---|
 | CPU | 2 vCPU |
-| Memori | 4 GB RAM |
-| Penyimpanan | 60 GB SSD |
-| Sistem operasi | Ubuntu 24.04 |
+| Memori | 4 GB RAM nominal (3,6 GiB terdeteksi sistem operasi) |
+| Penyimpanan | 60 GB nominal (59 GB pada *filesystem*) |
+| Sistem operasi | Ubuntu 24.04.4 LTS |
+| Kernel | Linux 6.8.0-117-generic, x86_64 |
 | Wilayah (*region*) | Jakarta |
+| Perangkat inferensi | CPU |
 
-*Container* dijalankan langsung lewat perintah `docker run` (bukan
-`docker-compose` maupun `systemd` *unit*), tanpa *reverse proxy* --
-aplikasi diakses langsung lewat `http://<IP-VPS>:8080/`. Mekanisme *restart* otomatis saat *container* atau VPS *reboot* belum
-dikonfigurasi (*run* saat ini tidak memakai *flag* `--restart`); ini
-dicatat sebagai keterbatasan operasional pada Subbab 4.10.3, bukan
-diklaim sebagai sudah tersedia.
+*Container* dijalankan langsung melalui `docker run`, bukan
+`docker-compose` atau unit `systemd`. Layanan diakses langsung melalui
+`http://<IP-VPS>:8080/` tanpa *reverse proxy*, TLS, autentikasi, dan
+mekanisme *restart* otomatis. Setelah pembersihan artefak yang tidak
+diperlukan, penyimpanan VPS tercatat 37 GB terpakai dan 20 GB tersedia
+(65% terpakai). Konfigurasi ini memadai untuk demonstrasi dan pengujian,
+tetapi belum merupakan konfigurasi produksi.
 
 ### 4.9.4 Pengujian Fungsional
 
-Pengujian fungsional dilakukan dengan mengunggah satu citra tandan sawit
-nyata lewat antarmuka *dashboard* (`http://<IP-VPS>:8080/predict`).
-Hasilnya: model berhasil dimuat (tidak ada *error* saat *startup*
-*container*), *endpoint* menerima berkas gambar dan mengembalikan hasil
-deteksi dengan benar -- kelas **Ripe** dengan *confidence* **93,4%**,
-disertai kotak deteksi dan visualisasi *heatmap* Grad-CAM++ yang
-tervisualisasi sesuai ekspektasi (area perhatian model terlihat jelas
-pada tandan-tandan dalam citra). Tidak ada klaim *latency*/*throughput*
-dibuat karena belum dilakukan pengukuran formal.
+Pengujian fungsional dilakukan melalui antarmuka *dashboard* dengan
+mengunggah satu citra TBS. Model berhasil dimuat, *endpoint* menerima
+berkas, dan layanan mengembalikan deteksi kelas **Ripe** dengan
+*confidence* **93,4%**, kotak deteksi, serta *heatmap* Grad-CAM++.
+Pengujian awal menggunakan `curl` juga menghasilkan HTTP 200 dengan waktu
+total 0,514 detik. Lima permintaan *smoke test* berikutnya seluruhnya
+berhasil dan memuat penanda Grad-CAM++, dengan *mean latency* 0,510 detik
+(rentang 0,503--0,521 detik).
+
+### 4.9.5 Protokol *Benchmark Deployment*
+
+Populasi pengujian terdiri atas 1.051 citra *held-out test*. Sebanyak 100
+citra dipilih menggunakan peringkat SHA-256 deterministik dengan *seed*
+42. Tidak ditemukan label yang hilang maupun kosong. *Hash* SHA-256
+manifes sampel adalah
+`8df3affcab42dc1bd0b23c25a566f07e33d74fe50f3ff6b909d57c183d75e9b8`,
+sehingga himpunan sampel dapat diverifikasi dan digunakan ulang.
+
+Tabel 4.14. Distribusi kelas pada 100 citra sampel *benchmark*
+
+| ID | Kelas | Jumlah citra | Jumlah objek |
+|---:|---|---:|---:|
+| 0 | Abnormal | 20 | 46 |
+| 1 | Empty Bunch | 18 | 72 |
+| 2 | Overripe | 14 | 54 |
+| 3 | Ripe | 36 | 41 |
+| 4 | Underripe | 31 | 69 |
+| 5 | Unripe | 29 | 80 |
+
+Satu citra dapat memuat lebih dari satu kelas, sehingga jumlah pada kolom
+citra tidak harus sama dengan 100. Setiap citra dikirim secara sekuensial
+ke `http://localhost:8080/predict` dari *host* VPS. Himpunan 100 citra
+yang sama diuji dalam tiga *run*, sehingga totalnya 300 permintaan.
+Pengujian mencakup unggah citra, *preprocessing*, inferensi YOLOv11n,
+pembentukan Grad-CAM++, dan pengembalian respons HTML. Layanan pemantauan
+yang tidak diperlukan dihentikan sementara agar penggunaan sumber daya
+lebih terisolasi.
+
+### 4.9.6 Hasil *Benchmark Deployment*
+
+Tabel 4.15. Hasil *benchmark* layanan inferensi pada VPS
+
+| Metrik | Hasil |
+|---|---:|
+| Permintaan berhasil | 300/300 (100%) |
+| Respons memuat Grad-CAM++ | 300/300 (100%) |
+| *Mean latency* | 504,226 ms |
+| Median (p50) | 502,300 ms |
+| p95 | 520,357 ms |
+| *Throughput* sekuensial agregat | 1,952 citra/detik |
+
+Tabel 4.16. Konsistensi hasil per *run*
+
+| Run | Permintaan berhasil | Waktu total | *Throughput* |
+|---:|---:|---:|---:|
+| 1 | 100/100 | 51,293 detik | 1,950 citra/detik |
+| 2 | 100/100 | 51,188 detik | 1,954 citra/detik |
+| 3 | 100/100 | 51,208 detik | 1,953 citra/detik |
+
+Ketiga *run* menunjukkan hasil yang konsisten dan tidak terdapat respons
+gagal. Pemantauan Portainer memperlihatkan penggunaan CPU mendekati 100%
+selama *benchmark*, sedangkan penggunaan memori *container* relatif
+stabil sekitar 0,41 GB dan tidak ditemukan indikasi *out-of-memory*.
+Setelah pengujian, *endpoint health* tetap mengembalikan status `ok`.
+
+Angka pada tabel merepresentasikan skenario permintaan **sekuensial dari
+*host* VPS yang sama**, bukan kapasitas layanan terhadap permintaan
+konkuren atau latensi pengguna melalui jaringan publik. Oleh karena itu,
+*throughput* 1,952 citra/detik diperlakukan sebagai hasil eksperimental
+untuk konfigurasi VPS dan protokol ini, bukan klaim kapasitas produksi.
 
 ## 4.10 Pembahasan Menyeluruh
 
@@ -773,6 +837,10 @@ dibuat karena belum dilakukan pengukuran formal.
    komputasi nyata (23-45% lebih lambat per ronde dari B2); *partial* DP
    menghemat komputasi (~15% vs *full* DP) namun **belum** menghemat
    komunikasi pada implementasi saat ini.
+7. **Kelayakan operasional layanan inferensi** (Subbab 4.9): layanan
+   CPU-*only* berhasil memproses 300/300 permintaan sekuensial dengan
+   *mean latency* 504,226 ms, p95 520,357 ms, dan *throughput* 1,952
+   citra/detik pada VPS 2 vCPU.
 
 ### 4.10.2 Temuan Utama
 
@@ -795,6 +863,9 @@ dibuat karena belum dilakukan pengukuran formal.
 - XAI menunjukkan perbedaan AD/FRR yang mencolok antar-model, namun
   interpretasinya memerlukan kehati-hatian metodologis terhadap
   keterbatasan metrik AD.
+- Layanan inferensi CPU-*only* stabil pada 300 permintaan sekuensial:
+  seluruh respons berhasil dan memuat Grad-CAM++, dengan *mean latency*
+  504,226 ms dan *throughput* 1,952 citra/detik.
 
 ### 4.10.3 Keterbatasan Penelitian
 
@@ -824,9 +895,12 @@ berlaku merata di seluruh kelas. Kedelapan, analisis XAI bersifat
 keterbatasan yang telah diketahui dalam membandingkan model dengan
 tingkat keyakinan prediksi yang jauh berbeda (Subbab 4.7.4). Kesembilan,
 *deployment* pada VPS (Subbab 4.9) dijalankan sebagai satu *container*
-`docker run` tanpa mekanisme *restart* otomatis saat *container*/VPS
-*reboot* dan tanpa *reverse proxy* -- cukup untuk demonstrasi fungsional,
-namun bukan konfigurasi tingkat produksi.
+`docker run` tanpa mekanisme *restart* otomatis, *reverse proxy*, TLS,
+atau autentikasi. *Benchmark* hanya menggunakan permintaan sekuensial
+dari *host* VPS yang sama; pengujian konkurensi dan latensi melalui
+jaringan publik belum dilakukan. Penggunaan CPU juga mendekati 100%
+selama pengujian, sehingga hasil ini menunjukkan kelayakan demonstrasi,
+bukan kapasitas tingkat produksi.
 
 ### 4.10.4 Implikasi dan Peluang Pengembangan
 
@@ -839,7 +913,10 @@ benar-benar hemat parameter untuk *partial* DP (Subbab 4.8.3, potensi
 ~64% penghematan); *secure aggregation* dan DP tingkat-klien sebagai
 lapisan privasi tambahan; evaluasi multi-*seed* untuk konfigurasi E1/E2
 *final*; serta validasi pada data lapangan yang lebih beragam (perkebunan,
-kultivar, kondisi pencahayaan lain).
+kultivar, kondisi pencahayaan lain). Pada sisi *deployment*, pengembangan
+berikutnya perlu mencakup pengujian konkurensi, *worker* jamak,
+kuantisasi atau ekspor ONNX, *reverse proxy*, TLS, autentikasi, dan
+kebijakan *restart* otomatis.
 
 ## 4.11 Ringkasan Bab
 
@@ -858,5 +935,9 @@ teramankan. Analisis Grad-CAM++ tersandingkan pada 3.821 sampel identik
 lintas ketiga model mengungkap perbedaan AD/FRR yang mencolok namun
 memerlukan interpretasi hati-hati akibat keterbatasan metrik AD. Laporan
 biaya menunjukkan *partial* DP menghemat komputasi (~15%) namun belum
-menghemat komunikasi pada implementasi saat ini. Bersama-sama, temuan ini
+menghemat komunikasi pada implementasi saat ini. Layanan inferensi
+CPU-*only* pada VPS berhasil memproses 300/300 permintaan sekuensial
+dengan *mean latency* 504,226 ms, p95 520,357 ms, dan *throughput* 1,952
+citra/detik; hasil ini berlaku untuk protokol lokal sekuensial, bukan
+kapasitas produksi melalui jaringan publik. Bersama-sama, temuan ini
 menjadi dasar kesimpulan dan rekomendasi pada Bab V.
